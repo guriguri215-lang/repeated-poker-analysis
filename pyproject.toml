@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repeated-poker-analysis"
+version = "0.1.0"
+description = "Exact Villain best-response analysis against a fully fixed Hero strategy in a finite two-player extensive-form poker game with rake."
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "Proprietary" }
+authors = [{ name = "repeated-poker-analysis" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
