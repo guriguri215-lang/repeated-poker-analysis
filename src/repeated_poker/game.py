@@ -116,6 +116,22 @@ class HeroStrategy:
         return self.probabilities.get(info_set, {}).get(action, 0.0)
 
 
+@dataclass
+class VillainStrategy:
+    """A fixed mixed strategy for Villain, symmetric to :class:`HeroStrategy`.
+
+    ``probabilities[info_set][action]`` is the probability that Villain plays
+    ``action`` at ``info_set``.  This represents a fixed Villain baseline; the
+    exact best-response engine in :mod:`repeated_poker.exact_response` does not
+    use it and instead optimises Villain freely.
+    """
+
+    probabilities: Dict[InfoSetId, Dict[Action, float]]
+
+    def action_probability(self, info_set: InfoSetId, action: Action) -> float:
+        return self.probabilities.get(info_set, {}).get(action, 0.0)
+
+
 # ---------------------------------------------------------------------------
 # Tree traversal helpers
 # ---------------------------------------------------------------------------
@@ -297,37 +313,87 @@ def _check_no_repeated_info_set_on_path(
     raise TypeError(f"unknown node type: {type(node)!r}")
 
 
+def _validate_player_strategy(
+    player: str,
+    probabilities: Dict[InfoSetId, Dict[Action, float]],
+    info_sets: Dict[InfoSetId, Tuple[Action, ...]],
+    tolerance: float,
+) -> None:
+    """Validate a player's mixed strategy against the tree's information sets.
+
+    Shared by Hero and Villain validation so the two stay at the same level.
+    Every information set must carry a distribution over exactly its legal
+    actions, with finite, non-negative probabilities summing to one.  A
+    strategy that references an information set absent from the tree (an
+    ``unknown`` information set) is rejected.
+    """
+
+    require_valid_tolerance(tolerance)
+
+    unknown_info_sets = set(probabilities) - set(info_sets)
+    if unknown_info_sets:
+        raise ValueError(
+            f"{player} strategy has unknown information sets "
+            f"{sorted(unknown_info_sets)}"
+        )
+
+    for info_set, legal_actions in info_sets.items():
+        if info_set not in probabilities:
+            raise ValueError(
+                f"{player} strategy is missing information set {info_set!r}"
+            )
+        dist = probabilities[info_set]
+        unknown = set(dist) - set(legal_actions)
+        if unknown:
+            raise ValueError(
+                f"{player} strategy for {info_set!r} has illegal actions "
+                f"{sorted(unknown)}"
+            )
+        if any(not math.isfinite(p) for p in dist.values()):
+            raise ValueError(
+                f"{player} strategy for {info_set!r} has a non-finite probability"
+            )
+        if any(p < 0 for p in dist.values()):
+            raise ValueError(
+                f"{player} strategy for {info_set!r} has a negative probability"
+            )
+        total = sum(dist.get(action, 0.0) for action in legal_actions)
+        if abs(total - 1.0) > tolerance:
+            raise ValueError(
+                f"{player} strategy for {info_set!r} sums to {total}, expected 1"
+            )
+
+
 def validate_hero_strategy(
     tree: GameTree, hero_strategy: HeroStrategy, tolerance: float = 1e-9
 ) -> None:
     """Validate that ``hero_strategy`` is a proper mixed strategy on ``tree``.
 
     Every Hero info set must be assigned a probability distribution over
-    exactly its legal actions, with non-negative probabilities summing to one.
+    exactly its legal actions, with finite, non-negative probabilities summing
+    to one.  Strategies that reference an unknown Hero information set are
+    rejected.
     """
 
-    require_valid_tolerance(tolerance)
+    _validate_player_strategy(
+        "Hero", hero_strategy.probabilities, collect_hero_info_sets(tree), tolerance
+    )
 
-    hero_info_sets = collect_hero_info_sets(tree)
-    for info_set, legal_actions in hero_info_sets.items():
-        if info_set not in hero_strategy.probabilities:
-            raise ValueError(f"Hero strategy is missing information set {info_set!r}")
-        dist = hero_strategy.probabilities[info_set]
-        unknown = set(dist) - set(legal_actions)
-        if unknown:
-            raise ValueError(
-                f"Hero strategy for {info_set!r} has illegal actions {sorted(unknown)}"
-            )
-        if any(not math.isfinite(p) for p in dist.values()):
-            raise ValueError(
-                f"Hero strategy for {info_set!r} has a non-finite probability"
-            )
-        if any(p < 0 for p in dist.values()):
-            raise ValueError(
-                f"Hero strategy for {info_set!r} has a negative probability"
-            )
-        total = sum(dist.get(action, 0.0) for action in legal_actions)
-        if abs(total - 1.0) > tolerance:
-            raise ValueError(
-                f"Hero strategy for {info_set!r} sums to {total}, expected 1"
-            )
+
+def validate_villain_strategy(
+    tree: GameTree, villain_strategy: VillainStrategy, tolerance: float = 1e-9
+) -> None:
+    """Validate that ``villain_strategy`` is a proper mixed strategy on ``tree``.
+
+    Every Villain info set must be assigned a probability distribution over
+    exactly its legal actions, with finite, non-negative probabilities summing
+    to one.  Strategies that reference an unknown Villain information set are
+    rejected.
+    """
+
+    _validate_player_strategy(
+        "Villain",
+        villain_strategy.probabilities,
+        collect_villain_info_sets(tree),
+        tolerance,
+    )
