@@ -8,6 +8,13 @@ from .exact_response import (
     enumerate_villain_pure_strategies,
     solve_exact_response,
 )
+from .candidates import HeroStrategyCandidate, generate_shift_candidates
+from .comparison import (
+    CandidateComparison,
+    CandidateComparisonReport,
+    compare_candidates,
+)
+from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
 from .game import (
     ChanceNode,
     GameTree,
@@ -15,11 +22,13 @@ from .game import (
     HeroStrategy,
     TerminalNode,
     VillainNode,
+    VillainStrategy,
     collect_hero_info_sets,
     collect_villain_info_sets,
     iter_terminals,
     validate_hero_strategy,
     validate_tree,
+    validate_villain_strategy,
 )
 from .payoffs import (
     CHOP,
@@ -37,17 +46,26 @@ __all__ = [
     "count_villain_pure_strategies",
     "enumerate_villain_pure_strategies",
     "solve_exact_response",
+    "FixedProfileValue",
+    "evaluate_fixed_profile",
+    "HeroStrategyCandidate",
+    "generate_shift_candidates",
+    "CandidateComparison",
+    "CandidateComparisonReport",
+    "compare_candidates",
     "ChanceNode",
     "GameTree",
     "HeroNode",
     "HeroStrategy",
     "TerminalNode",
     "VillainNode",
+    "VillainStrategy",
     "collect_hero_info_sets",
     "collect_villain_info_sets",
     "iter_terminals",
     "validate_hero_strategy",
     "validate_tree",
+    "validate_villain_strategy",
     "CHOP",
     "HERO",
     "VILLAIN",
