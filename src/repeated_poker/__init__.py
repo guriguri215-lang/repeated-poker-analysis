@@ -15,6 +15,16 @@ from .comparison import (
     compare_candidates,
 )
 from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
+from .selection import (
+    L1_DISTANCE_EXCEEDS_LIMIT,
+    NOT_ROBUSTLY_PROFITABLE,
+    CandidateSelectionReport,
+    ExcludedCandidate,
+    candidate_exclusion_reasons,
+    pareto_frontier,
+    select_candidates,
+    select_minimum_villain_ev,
+)
 from .game import (
     ChanceNode,
     GameTree,
@@ -53,6 +63,14 @@ __all__ = [
     "CandidateComparison",
     "CandidateComparisonReport",
     "compare_candidates",
+    "L1_DISTANCE_EXCEEDS_LIMIT",
+    "NOT_ROBUSTLY_PROFITABLE",
+    "CandidateSelectionReport",
+    "ExcludedCandidate",
+    "candidate_exclusion_reasons",
+    "pareto_frontier",
+    "select_candidates",
+    "select_minimum_villain_ev",
     "ChanceNode",
     "GameTree",
     "HeroNode",
