@@ -14,6 +14,14 @@ from .comparison import (
     CandidateComparisonReport,
     compare_candidates,
 )
+from .analysis_report import (
+    CandidateAnalysisReport,
+    CandidateAnalysisRow,
+    DeadlineConfiguration,
+    SelectionConfiguration,
+    SelectionSummaryCounts,
+    build_candidate_analysis_report,
+)
 from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
 from .repeated import (
     DEFAULT_MAX_HORIZON,
@@ -83,6 +91,12 @@ __all__ = [
     "calculate_adaptation_deadline",
     "calculate_candidate_adaptation_deadline",
     "calculate_candidate_adaptation_deadlines",
+    "CandidateAnalysisReport",
+    "CandidateAnalysisRow",
+    "DeadlineConfiguration",
+    "SelectionConfiguration",
+    "SelectionSummaryCounts",
+    "build_candidate_analysis_report",
     "L1_DISTANCE_EXCEEDS_LIMIT",
     "NOT_ROBUSTLY_PROFITABLE",
     "CandidateSelectionReport",
