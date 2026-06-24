@@ -101,6 +101,36 @@ def _validate_horizon(horizon: int, max_horizon: int) -> None:
         )
 
 
+def _validate_response_mode(response_mode: str) -> None:
+    """Reject any Villain response mode outside the supported set."""
+
+    if response_mode not in _RESPONSE_MODES:
+        raise ValueError(
+            f"unknown response_mode {response_mode!r}; expected one of {_RESPONSE_MODES}"
+        )
+
+
+def validate_deadline_parameters(
+    horizon: int,
+    discount: float = 1.0,
+    tolerance: float = 1e-9,
+    max_horizon: int = DEFAULT_MAX_HORIZON,
+) -> None:
+    """Validate the horizon/discount/tolerance/max_horizon deadline parameters.
+
+    Shared by :func:`calculate_adaptation_deadline` and any caller (such as the
+    analysis-report builder) that must apply the same rules even when there are
+    no candidates to iterate, so the validation never depends on candidate
+    presence.
+    """
+
+    require_valid_tolerance(tolerance)
+    require_finite(discount, "discount")
+    if not 0.0 < discount <= 1.0:
+        raise ValueError(f"discount must satisfy 0 < discount <= 1, got {discount!r}")
+    _validate_horizon(horizon, max_horizon)
+
+
 def calculate_adaptation_deadline(
     baseline_hero_ev: float,
     pre_adaptation_hero_ev: float,
@@ -124,11 +154,7 @@ def calculate_adaptation_deadline(
     require_finite(baseline_hero_ev, "baseline_hero_ev")
     require_finite(pre_adaptation_hero_ev, "pre_adaptation_hero_ev")
     require_finite(post_adaptation_hero_ev, "post_adaptation_hero_ev")
-    require_valid_tolerance(tolerance)
-    require_finite(discount, "discount")
-    if not 0.0 < discount <= 1.0:
-        raise ValueError(f"discount must satisfy 0 < discount <= 1, got {discount!r}")
-    _validate_horizon(horizon, max_horizon)
+    validate_deadline_parameters(horizon, discount, tolerance, max_horizon)
 
     total_weight = _geometric_sum(horizon, discount)
     baseline_total = baseline_hero_ev * total_weight
@@ -185,13 +211,10 @@ class CandidateAdaptationDeadline:
 def _post_adaptation_hero_ev(
     comparison: CandidateComparison, response_mode: str
 ) -> float:
+    _validate_response_mode(response_mode)
     if response_mode == RESPONSE_MODE_WORST:
         return comparison.best_response.ev_h_worst
-    if response_mode == RESPONSE_MODE_BEST:
-        return comparison.best_response.ev_h_best
-    raise ValueError(
-        f"unknown response_mode {response_mode!r}; expected one of {_RESPONSE_MODES}"
-    )
+    return comparison.best_response.ev_h_best  # RESPONSE_MODE_BEST (validated)
 
 
 def calculate_candidate_adaptation_deadline(
