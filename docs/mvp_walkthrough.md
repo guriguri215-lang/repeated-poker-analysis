@@ -45,6 +45,9 @@ If you want an isolated environment, see the `## Development` section of the
 The examples only need the package on the Python path; they do not require any
 external solver or network access.
 
+For a guide to every example script and the recommended order for running them,
+see [Examples Guide](examples_guide.md).
+
 ## Minimal Python example
 
 The snippet below mirrors `examples/analysis_pipeline.py`. The tree and the
