@@ -107,3 +107,9 @@ detection distances and two distinct detection-vs-deadline reads:
 This local model is conditional on reaching the candidate's information set,
 ignores tree reach probability, and does not guarantee real opponent learning
 or adaptation.
+
+### Markdown summary
+
+`format_candidate_analysis_markdown` can render a human-readable Markdown
+summary from a `CandidateAnalysisReport`. It is presentation-only: it does not
+change analysis results, and it does not write files (it returns a string).
