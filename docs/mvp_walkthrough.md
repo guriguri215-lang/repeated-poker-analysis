@@ -168,6 +168,9 @@ opponent learning.
 - No real card ranges, card removal, external solver I/O, CLI, file output, or
   STT / ICM are implemented yet.
 
+For a more explicit list of modelling assumptions and non-claims, see
+[Assumptions and Limitations](assumptions_and_limitations.md).
+
 ## Roadmap after MVP
 
 - better candidate generation
