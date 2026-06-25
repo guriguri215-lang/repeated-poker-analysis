@@ -130,3 +130,9 @@ pre-filtering, fixed-profile comparison, analysis reporting, and optional
 Markdown rendering into a single call for a small abstract game. It is an
 orchestration helper, not a new solver; it does not write files and adds no
 CLI.
+
+### MVP walkthrough
+
+See [docs/mvp_walkthrough.md](docs/mvp_walkthrough.md) for an end-to-end
+explanation of the current minimum viable workflow and how to read the pipeline
+output.
