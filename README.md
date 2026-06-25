@@ -142,3 +142,8 @@ output.
 See [docs/assumptions_and_limitations.md](docs/assumptions_and_limitations.md)
 for the modelling assumptions, interpretation limits, and responsible-publication
 notes.
+
+### Examples guide
+
+See [docs/examples_guide.md](docs/examples_guide.md) for a guide to the example
+scripts and the recommended order for running them.
