@@ -88,3 +88,22 @@ opponent-adaptation model. It is separate from `T_deadline`: `T_deadline` is an
 economic adaptation deadline, while `T_detect` is a behavioural-identification
 estimate. Strategy-space L1 distance and observable-distribution distance are
 different concepts and must not be conflated.
+
+`build_candidate_analysis_report` can optionally include a per-candidate local
+`T_detect`: pass `baseline_hero_strategy` together with
+`detection_log_likelihood_threshold` (and optionally
+`detection_occurrence_probability_per_opportunity`). Each row then carries the
+detection distances and two distinct detection-vs-deadline reads:
+
+- `t_detect_is_no_later_than_t_deadline` is a pure time comparison
+  (`estimated_opportunities <= t_deadline`). It does **not** mean Hero is
+  economically safe: `t_deadline` is only the latest passing opportunity, and
+  Hero EV need not be monotone in the switching opportunity.
+- `detected_adaptation_is_at_least_baseline` is the economic read. It maps the
+  estimated detection opportunity onto the adaptation-deadline timing rows
+  (clamped to the `m = N+1` never-adapts row beyond the horizon) and reports
+  whether Hero is at least at baseline EV if Villain adapts exactly then.
+
+This local model is conditional on reaching the candidate's information set,
+ignores tree reach probability, and does not guarantee real opponent learning
+or adaptation.
