@@ -136,3 +136,9 @@ CLI.
 See [docs/mvp_walkthrough.md](docs/mvp_walkthrough.md) for an end-to-end
 explanation of the current minimum viable workflow and how to read the pipeline
 output.
+
+### Assumptions and limitations
+
+See [docs/assumptions_and_limitations.md](docs/assumptions_and_limitations.md)
+for the modelling assumptions, interpretation limits, and responsible-publication
+notes.
