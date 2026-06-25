@@ -74,6 +74,7 @@ from .payoffs import (
     make_fold_terminal,
     make_showdown_terminal,
 )
+from .summary import format_candidate_analysis_markdown
 
 __all__ = [
     "DEFAULT_MAX_PURE_STRATEGIES",
@@ -104,6 +105,7 @@ __all__ = [
     "SelectionConfiguration",
     "SelectionSummaryCounts",
     "build_candidate_analysis_report",
+    "format_candidate_analysis_markdown",
     "DetectionConfiguration",
     "DetectionResult",
     "calculate_candidate_local_detection",
