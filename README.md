@@ -72,3 +72,19 @@ The exact enumerator materialises the entire Villain pure-strategy space and is
 intended for small abstract trees only; it is guarded by a configurable
 `max_pure_strategies` limit and is not yet the scalable, range-based response
 engine described in the implementation plan.
+
+### Detection time (`T_detect`)
+
+`repeated_poker.detection` provides a v0 detection-time estimate
+(`calculate_detection_time`, `calculate_candidate_local_detection`). It compares
+two observable event distributions (for example, action frequencies) with the
+total variation distance and the KL divergence in nats, then converts the
+divergence into a required number of observations via a log-likelihood
+threshold.
+
+`T_detect` is a sensitivity analysis based on observable event distributions. It
+is not a psychological model, not a real learning-speed estimate, and not a full
+opponent-adaptation model. It is separate from `T_deadline`: `T_deadline` is an
+economic adaptation deadline, while `T_detect` is a behavioural-identification
+estimate. Strategy-space L1 distance and observable-distribution distance are
+different concepts and must not be conflated.
