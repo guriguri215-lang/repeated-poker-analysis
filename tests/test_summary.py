@@ -19,6 +19,7 @@ from repeated_poker import (
     compare_candidates,
     format_candidate_analysis_markdown,
     generate_shift_candidates,
+    validate_markdown_max_rows,
 )
 
 
@@ -220,6 +221,18 @@ def test_no_remaining_message_when_all_rows_shown():
 def test_invalid_max_rows_is_rejected(bad):
     with pytest.raises(ValueError, match="max_rows"):
         format_candidate_analysis_markdown(_report(_rows(1)), max_rows=bad)
+
+
+def test_validate_markdown_max_rows_accepts_none_and_non_negative_int():
+    validate_markdown_max_rows(None)
+    validate_markdown_max_rows(0)
+    validate_markdown_max_rows(5)
+
+
+@pytest.mark.parametrize("bad", [-1, True, 2.5])
+def test_validate_markdown_max_rows_rejects_invalid(bad):
+    with pytest.raises(ValueError, match="max_rows"):
+        validate_markdown_max_rows(bad)
 
 
 def test_integration_from_nuts_chop_report():

@@ -122,3 +122,11 @@ detection minimum). It does not replace `compare_candidates` or
 `select_candidates`. The detection-based filter uses local observable
 distributions and does not model tree reach probability or real opponent
 learning.
+
+### Analysis pipeline
+
+`run_candidate_analysis_pipeline` wires candidate generation, optional
+pre-filtering, fixed-profile comparison, analysis reporting, and optional
+Markdown rendering into a single call for a small abstract game. It is an
+orchestration helper, not a new solver; it does not write files and adds no
+CLI.

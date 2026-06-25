@@ -82,7 +82,16 @@ from .payoffs import (
     make_fold_terminal,
     make_showdown_terminal,
 )
-from .summary import format_candidate_analysis_markdown
+from .pipeline import (
+    CandidateAnalysisPipelineResult,
+    CandidateFilterConfig,
+    CandidateGenerationConfig,
+    run_candidate_analysis_pipeline,
+)
+from .summary import (
+    format_candidate_analysis_markdown,
+    validate_markdown_max_rows,
+)
 
 __all__ = [
     "DEFAULT_MAX_PURE_STRATEGIES",
@@ -120,6 +129,11 @@ __all__ = [
     "SelectionSummaryCounts",
     "build_candidate_analysis_report",
     "format_candidate_analysis_markdown",
+    "validate_markdown_max_rows",
+    "CandidateAnalysisPipelineResult",
+    "CandidateFilterConfig",
+    "CandidateGenerationConfig",
+    "run_candidate_analysis_pipeline",
     "DetectionConfiguration",
     "DetectionResult",
     "calculate_candidate_local_detection",
