@@ -80,6 +80,37 @@ def _validate_distribution(
         raise ValueError(f"{name} sums to {total}, expected 1")
 
 
+def validate_detection_parameters(
+    log_likelihood_threshold: float,
+    occurrence_probability_per_opportunity: Optional[float] = None,
+    tolerance: float = 1e-9,
+) -> None:
+    """Validate the scalar detection parameters (no distributions required).
+
+    Shared by :func:`calculate_detection_time` and any caller (such as the
+    analysis-report builder) that must reject invalid parameters even when there
+    are no candidate distributions to evaluate.
+    """
+
+    require_valid_tolerance(tolerance)
+    require_finite(log_likelihood_threshold, "log_likelihood_threshold")
+    if log_likelihood_threshold <= 0:
+        raise ValueError(
+            "log_likelihood_threshold must be positive, got "
+            f"{log_likelihood_threshold!r}"
+        )
+    if occurrence_probability_per_opportunity is not None:
+        require_finite(
+            occurrence_probability_per_opportunity,
+            "occurrence_probability_per_opportunity",
+        )
+        if not 0.0 < occurrence_probability_per_opportunity <= 1.0:
+            raise ValueError(
+                "occurrence_probability_per_opportunity must satisfy 0 < p <= 1, "
+                f"got {occurrence_probability_per_opportunity!r}"
+            )
+
+
 def calculate_detection_time(
     baseline: EventDistribution,
     candidate: EventDistribution,
@@ -106,23 +137,9 @@ def calculate_detection_time(
     ``None`` when ``required_observations`` is ``None``).
     """
 
-    require_valid_tolerance(tolerance)
-    require_finite(log_likelihood_threshold, "log_likelihood_threshold")
-    if log_likelihood_threshold <= 0:
-        raise ValueError(
-            "log_likelihood_threshold must be positive, got "
-            f"{log_likelihood_threshold!r}"
-        )
-    if occurrence_probability_per_opportunity is not None:
-        require_finite(
-            occurrence_probability_per_opportunity,
-            "occurrence_probability_per_opportunity",
-        )
-        if not 0.0 < occurrence_probability_per_opportunity <= 1.0:
-            raise ValueError(
-                "occurrence_probability_per_opportunity must satisfy 0 < p <= 1, "
-                f"got {occurrence_probability_per_opportunity!r}"
-            )
+    validate_detection_parameters(
+        log_likelihood_threshold, occurrence_probability_per_opportunity, tolerance
+    )
 
     if set(baseline) != set(candidate):
         raise ValueError(

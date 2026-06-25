@@ -1,6 +1,7 @@
 """Tests for the consolidated candidate analysis report."""
 
 import json
+import math
 
 import pytest
 
@@ -349,3 +350,254 @@ def test_integration_full_pipeline_is_consistent():
             comparison.fixed_profile_value.villain_ev
         )
     assert report.summary_counts.total == len(report.rows)
+
+
+# ---------------------------------------------------------------------------
+# Detection integration
+# ---------------------------------------------------------------------------
+
+_DETECTION_KEYS = [
+    "detection_total_variation_distance",
+    "detection_kl_divergence_nats",
+    "detection_required_observations",
+    "detection_estimated_opportunities",
+    "t_detect_estimated_opportunities",
+    "t_detect_is_no_later_than_t_deadline",
+    "detected_adaptation_opportunity",
+    "detected_adaptation_delta_from_baseline",
+    "detected_adaptation_is_at_least_baseline",
+]
+
+
+def _detection_comparison(
+    candidate_id, info_set, candidate_dist, fixed_hero_ev, ev_h_worst
+):
+    candidate = HeroStrategyCandidate(
+        candidate_id=candidate_id,
+        info_set=info_set,
+        source_action="check",
+        target_action="bet",
+        shift_amount=0.1,
+        hero_strategy=HeroStrategy({info_set: candidate_dist}),
+        l1_distance=0.2,
+    )
+    return CandidateComparison(
+        candidate=candidate,
+        fixed_profile_value=FixedProfileValue(
+            hero_ev=fixed_hero_ev, villain_ev=0.0, house_rake=0.0
+        ),
+        villain_ev_diff_from_baseline=0.0,
+        hero_ev_diff_from_baseline=0.0,
+        best_response=_best_response(ev_h_worst, ev_h_worst),
+        post_response_hero_ev_worst_diff=0.0,
+        post_response_hero_ev_best_diff=0.0,
+        robustly_profitable=False,
+    )
+
+
+def test_detection_disabled_keeps_detection_fields_none():
+    comparison_report = _nuts_chop_comparison_report()
+    report = build_candidate_analysis_report(comparison_report, horizon=HORIZON)
+
+    assert report.detection_configuration.enabled is False
+    for row in report.rows:
+        assert row.detection_total_variation_distance is None
+        assert row.detection_kl_divergence_nats is None
+        assert row.detection_required_observations is None
+        assert row.detection_estimated_opportunities is None
+        assert row.t_detect_estimated_opportunities is None
+        assert row.t_detect_is_no_later_than_t_deadline is None
+        assert row.detected_adaptation_opportunity is None
+        assert row.detected_adaptation_delta_from_baseline is None
+        assert row.detected_adaptation_is_at_least_baseline is None
+    # Detection keys are still present (as null) in the serialised rows.
+    for serialised in report.summary_rows():
+        for key in _DETECTION_KEYS:
+            assert key in serialised
+            assert serialised[key] is None
+
+
+def test_detection_enabled_populates_rows():
+    comparison_report = _nuts_chop_comparison_report()
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=HORIZON,
+        baseline_hero_strategy=default_hero_strategy(),
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=0.5,
+    )
+
+    assert report.detection_configuration.enabled is True
+    assert report.detection_configuration.log_likelihood_threshold == 3.0
+    assert (
+        report.detection_configuration.occurrence_probability_per_opportunity == 0.5
+    )
+    for row in report.rows:
+        # Each candidate shifts probability, so the distributions differ.
+        assert row.detection_total_variation_distance is not None
+        assert row.detection_kl_divergence_nats is not None
+        assert row.detection_required_observations is not None
+        assert row.detection_estimated_opportunities is not None
+        # The comparison field mirrors the detection estimate.
+        assert (
+            row.t_detect_estimated_opportunities
+            == row.detection_estimated_opportunities
+        )
+
+
+def test_summary_rows_include_detection_keys_when_enabled():
+    comparison_report = _nuts_chop_comparison_report()
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=HORIZON,
+        baseline_hero_strategy=default_hero_strategy(),
+        detection_log_likelihood_threshold=3.0,
+    )
+    for serialised in report.summary_rows():
+        for key in _DETECTION_KEYS:
+            assert key in serialised
+
+
+def test_to_dict_includes_detection_configuration():
+    comparison_report = _nuts_chop_comparison_report()
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=HORIZON,
+        baseline_hero_strategy=default_hero_strategy(),
+        detection_log_likelihood_threshold=3.0,
+    )
+    as_dict = json.loads(json.dumps(report.to_dict()))
+    assert as_dict["detection_configuration"]["enabled"] is True
+    assert as_dict["detection_configuration"]["log_likelihood_threshold"] == 3.0
+
+
+def test_t_detect_no_later_than_deadline_is_not_economic_safety():
+    # b=1, a=2, l=0, N=3 -> t_deadline=3. KL=inf -> required=1; p=1 -> estimated=1.
+    # Detection at m=1 is no later than the deadline, yet Hero is BELOW baseline
+    # there: the time comparison must not be read as economic safety.
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=1.0,
+    )
+    row = report.rows[0]
+    assert row.t_deadline == 3
+    assert row.detection_estimated_opportunities == 1
+    assert row.t_detect_is_no_later_than_t_deadline is True
+    assert row.detected_adaptation_opportunity == 1
+    assert row.detected_adaptation_delta_from_baseline == pytest.approx(-3.0)
+    assert row.detected_adaptation_is_at_least_baseline is False
+
+
+def test_detected_adaptation_beyond_horizon_uses_never_adapts_row():
+    # KL=inf -> required=1; p=0.1 -> estimated=10 > horizon=3.
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=0.1,
+    )
+    reference = calculate_candidate_adaptation_deadline(
+        comparison_report, comparison, horizon=3
+    )
+    never_adapts_row = reference.result.timing[-1]  # m = N+1
+
+    row = report.rows[0]
+    assert row.detection_estimated_opportunities == 10
+    assert row.detected_adaptation_opportunity == 4  # horizon + 1
+    assert row.detected_adaptation_delta_from_baseline == pytest.approx(
+        never_adapts_row.delta_from_baseline
+    )
+    assert (
+        row.detected_adaptation_is_at_least_baseline
+        == never_adapts_row.is_at_least_baseline
+    )
+    assert row.t_detect_is_no_later_than_t_deadline is False
+
+
+def test_detected_adaptation_none_without_occurrence():
+    # Without an occurrence probability, estimated_opportunities is None.
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+    )
+    row = report.rows[0]
+    assert row.t_deadline == 3
+    assert row.detection_estimated_opportunities is None
+    assert row.t_detect_is_no_later_than_t_deadline is None
+    assert row.detected_adaptation_opportunity is None
+    assert row.detected_adaptation_delta_from_baseline is None
+    assert row.detected_adaptation_is_at_least_baseline is None
+
+
+def test_infinite_kl_candidate_is_reportable():
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+    )
+    row = report.rows[0]
+    assert math.isinf(row.detection_kl_divergence_nats)
+    assert row.detection_required_observations == 1
+    # json with the default allow_nan serialises inf as "Infinity".
+    dumped = json.dumps(report.to_dict())
+    assert "Infinity" in dumped
+
+
+def test_detection_enabled_requires_baseline_hero_strategy():
+    comparison_report = _nuts_chop_comparison_report()
+    with pytest.raises(ValueError, match="baseline_hero_strategy is required"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=HORIZON,
+            detection_log_likelihood_threshold=3.0,
+        )
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, math.nan, math.inf])
+def test_empty_report_rejects_invalid_detection_threshold(bad):
+    with pytest.raises(ValueError, match="log_likelihood_threshold"):
+        build_candidate_analysis_report(
+            _empty_report(),
+            horizon=3,
+            baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0}}),
+            detection_log_likelihood_threshold=bad,
+        )
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 1.5, math.nan, math.inf])
+def test_empty_report_rejects_invalid_detection_occurrence(bad):
+    with pytest.raises(ValueError, match="occurrence_probability_per_opportunity"):
+        build_candidate_analysis_report(
+            _empty_report(),
+            horizon=3,
+            baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0}}),
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=bad,
+        )

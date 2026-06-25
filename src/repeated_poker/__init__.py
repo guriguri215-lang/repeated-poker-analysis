@@ -18,6 +18,7 @@ from .analysis_report import (
     CandidateAnalysisReport,
     CandidateAnalysisRow,
     DeadlineConfiguration,
+    DetectionConfiguration,
     SelectionConfiguration,
     SelectionSummaryCounts,
     build_candidate_analysis_report,
@@ -26,6 +27,7 @@ from .detection import (
     DetectionResult,
     calculate_candidate_local_detection,
     calculate_detection_time,
+    validate_detection_parameters,
 )
 from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
 from .repeated import (
@@ -102,9 +104,11 @@ __all__ = [
     "SelectionConfiguration",
     "SelectionSummaryCounts",
     "build_candidate_analysis_report",
+    "DetectionConfiguration",
     "DetectionResult",
     "calculate_candidate_local_detection",
     "calculate_detection_time",
+    "validate_detection_parameters",
     "L1_DISTANCE_EXCEEDS_LIMIT",
     "NOT_ROBUSTLY_PROFITABLE",
     "CandidateSelectionReport",
