@@ -113,3 +113,12 @@ or adaptation.
 `format_candidate_analysis_markdown` can render a human-readable Markdown
 summary from a `CandidateAnalysisReport`. It is presentation-only: it does not
 change analysis results, and it does not write files (it returns a string).
+
+### Candidate pre-filter
+
+`filter_candidates` is a lightweight pre-comparison pruning helper for generated
+candidates (by allowed information set, strategy-space L1 distance, or a local
+detection minimum). It does not replace `compare_candidates` or
+`select_candidates`. The detection-based filter uses local observable
+distributions and does not model tree reach probability or real opponent
+learning.

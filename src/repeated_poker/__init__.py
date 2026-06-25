@@ -9,6 +9,14 @@ from .exact_response import (
     solve_exact_response,
 )
 from .candidates import HeroStrategyCandidate, generate_shift_candidates
+from .candidate_filters import (
+    INFO_SET_NOT_ALLOWED,
+    REQUIRED_OBSERVATIONS_BELOW_LIMIT,
+    CandidateFilterResult,
+    CandidateFilterSummaryCounts,
+    ExcludedGeneratedCandidate,
+    filter_candidates,
+)
 from .comparison import (
     CandidateComparison,
     CandidateComparisonReport,
@@ -87,6 +95,12 @@ __all__ = [
     "evaluate_fixed_profile",
     "HeroStrategyCandidate",
     "generate_shift_candidates",
+    "INFO_SET_NOT_ALLOWED",
+    "REQUIRED_OBSERVATIONS_BELOW_LIMIT",
+    "CandidateFilterResult",
+    "CandidateFilterSummaryCounts",
+    "ExcludedGeneratedCandidate",
+    "filter_candidates",
     "CandidateComparison",
     "CandidateComparisonReport",
     "compare_candidates",
