@@ -92,7 +92,13 @@ def _markdown_table_row(cells: List[str]) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
-def _validate_max_rows(max_rows: Optional[int]) -> None:
+def validate_markdown_max_rows(max_rows: Optional[int]) -> None:
+    """Validate a Markdown ``max_rows`` argument (``None`` or non-negative int).
+
+    Public helper so that callers such as the pipeline can apply the same rule
+    without depending on a private function.
+    """
+
     if max_rows is None:
         return
     if isinstance(max_rows, bool) or not isinstance(max_rows, int):
@@ -111,7 +117,7 @@ def format_candidate_analysis_markdown(
     function only formats existing results; it changes nothing in the analysis.
     """
 
-    _validate_max_rows(max_rows)
+    validate_markdown_max_rows(max_rows)
 
     selection = report.selection_configuration
     deadline = report.deadline_configuration
