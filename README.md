@@ -147,3 +147,10 @@ notes.
 
 See [docs/examples_guide.md](docs/examples_guide.md) for a guide to the example
 scripts and the recommended order for running them.
+
+### MVP check script
+
+Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It runs
+the test suite and the key examples. The script uses only the Python standard
+library and does not perform version-control, network, or file-output
+operations.

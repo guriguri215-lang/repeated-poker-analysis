@@ -40,6 +40,12 @@ python -m pytest -q
 python examples/analysis_pipeline.py
 ```
 
+For a one-command MVP sanity check, run:
+
+```powershell
+python scripts/check_mvp.py
+```
+
 If you want an isolated environment, see the `## Development` section of the
 [README](../README.md) for the virtual-environment and editable-install steps.
 The examples only need the package on the Python path; they do not require any
