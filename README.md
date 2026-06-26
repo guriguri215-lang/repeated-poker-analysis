@@ -181,6 +181,11 @@ notes.
 See [docs/examples_guide.md](docs/examples_guide.md) for a guide to the example
 scripts and the recommended order for running them.
 
+### Public readiness
+
+See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
+before changing repository visibility from private to public.
+
 ### MVP check script
 
 Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It runs
