@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 
 def _scanned_files():
-    files = [_ROOT / "README.md"]
+    files = [_ROOT / "README.md", _ROOT / "LICENSE"]
     files += sorted((_ROOT / "docs").glob("*.md"))
     files += sorted((_ROOT / "examples").glob("*.py"))
     files += sorted((_ROOT / "src").rglob("*.py"))
