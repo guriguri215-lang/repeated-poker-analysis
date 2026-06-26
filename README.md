@@ -36,20 +36,20 @@ python scripts/check_mvp.py
 | Topic | Decision |
 |---|---|
 | First target | A river spot with ranges and rake. This is where the repeated-game core will be validated. |
-| Second target | Preflop SB-vs-BB Push/Fold in an STT. The earlier phrase “flop BvB” is interpreted as preflop because the described spot begins after everyone folds to the small blind. |
+| Second target | Preflop SB-vs-BB Push/Fold in an STT. The earlier phrase "flop BvB" is interpreted as preflop because the described spot begins after everyone folds to the small blind. |
 | Game model | Two strategic players plus a non-strategic house rake account. Rake makes the game non-zero-sum; it does not by itself create a third strategic player. |
-| Hero lock | Hero’s mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
-| Villain response | Villain retains every legal action. The tool calculates Villain’s exact best-response set to the fully fixed Hero strategy. |
+| Hero lock | Hero's mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
+| Villain response | Villain retains every legal action. The tool calculates Villain's exact best-response set to the fully fixed Hero strategy. |
 | Baseline equilibrium | An existing solver may optionally provide the baseline solution. The first version does not embed or control that solver. |
 | Analysis form | A fixed-Hero response is a commitment analysis, not automatically a repeated-game equilibrium. Known finite repetition, uncertain horizon, and discounted infinite repetition are reported separately. |
 | Implementation | Start a clean standalone project rather than extending the earlier prototype. |
 | Quality bar | Mathematical specifications, input validation, hand-calculated benchmarks, reproducible run manifests, and tests are required from the beginning. |
 
-The original idea—find Hero strategies that lower Villain’s EV while Villain initially remains at the baseline strategy, then evaluate Villain’s response—is retained as a candidate generator. It is not the only criterion. Each candidate is evaluated after Villain’s response, with explicit treatment of best-response ties.
+The original idea - find Hero strategies that lower Villain's EV while Villain initially remains at the baseline strategy, then evaluate Villain's response - is retained as a candidate generator. It is not the only criterion. Each candidate is evaluated after Villain's response, with explicit treatment of best-response ties.
 
 ## Project document
 
-- [02_research_and_implementation_plan.md](02_research_and_implementation_plan.md) — mathematical model, response correspondence, timing measures, inputs and outputs, and development phases.
+- [02_research_and_implementation_plan.md](02_research_and_implementation_plan.md) - mathematical model, response correspondence, timing measures, inputs and outputs, and development phases.
 
 ## Current working state
 
@@ -85,6 +85,13 @@ Run the test suite from the project root:
 
 ```
 pytest
+```
+
+For a quick local sanity check that runs the test suite and the key examples in
+one command, use:
+
+```
+python scripts/check_mvp.py
 ```
 
 Run the worked examples:

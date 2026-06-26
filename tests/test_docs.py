@@ -101,6 +101,23 @@ def test_readme_describes_current_state(phrase):
     assert phrase in _README.read_text(encoding="utf-8")
 
 
+def test_readme_is_ascii_only():
+    # ASCII-only guarantees no mojibake glyphs, no replacement character, and no
+    # smart quotes / dashes that render badly in some terminals.
+    assert _README.read_text(encoding="utf-8").isascii()
+
+
+# Forbidden code points: the mojibake glyph U+7AB6, the U+FFFD replacement
+# character, curly single/double quotes, and en/em dashes. They are given as
+# code points so this test file stays ASCII.
+@pytest.mark.parametrize(
+    "code_point",
+    [0x7AB6, 0xFFFD, 0x2018, 0x2019, 0x201C, 0x201D, 0x2013, 0x2014],
+)
+def test_readme_has_no_mojibake_or_smart_punctuation(code_point):
+    assert chr(code_point) not in _README.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     "phrase",
     [
