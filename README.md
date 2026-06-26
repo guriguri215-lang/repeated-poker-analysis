@@ -187,3 +187,10 @@ Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It run
 the test suite and the key examples. The script uses only the Python standard
 library and does not perform version-control, network, or file-output
 operations.
+
+### Ranking report rows
+
+`rank_candidate_rows` can sort analysis report rows by diagnostic criteria (for
+example, post-response worst-case Hero EV difference, baseline-Villain EV, L1
+distance, `T_deadline`, or local `T_detect`). It is not automatic strategy
+selection and does not claim optimality.

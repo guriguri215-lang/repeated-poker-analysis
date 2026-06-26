@@ -17,10 +17,11 @@
    the exclusion reasons.
 4. `examples/analysis_pipeline.py` - the most important example for an MVP check:
    it wires every stage together end to end.
-5. `examples/markdown_summary.py` - render an existing report as Markdown.
-6. `examples/analysis_report.py` - build the consolidated report directly, at a
+5. `examples/ranking.py` - sort the pipeline's report rows by diagnostic criteria.
+6. `examples/markdown_summary.py` - render an existing report as Markdown.
+7. `examples/analysis_report.py` - build the consolidated report directly, at a
    lower level than the pipeline.
-7. `examples/value_bluff_river.py` - a contrasting non-chop spot.
+8. `examples/value_bluff_river.py` - a contrasting non-chop spot.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -75,6 +76,13 @@ single most important example to run.
   summary into one call.
 - The best example for an end-to-end sanity check.
 
+### `examples/ranking.py`
+
+- Sorts the pipeline's analysis report rows by diagnostic criteria (for example,
+  post-response worst-case Hero EV difference or local `T_detect`).
+- Diagnostic / presentation only: it does not auto-select a candidate and makes
+  no optimality claim.
+
 ## How to run examples
 
 The examples need both `src` and `examples` on the Python path (some reuse the
@@ -85,6 +93,7 @@ python examples/nuts_chop_river.py
 python examples/candidate_library.py
 python examples/candidate_filters.py
 python examples/analysis_pipeline.py
+python examples/ranking.py
 python examples/markdown_summary.py
 python examples/analysis_report.py
 python examples/value_bluff_river.py
