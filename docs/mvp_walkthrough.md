@@ -152,6 +152,47 @@ These two measures answer different questions and must not be conflated:
 information set; it ignores tree reach probability and does not model real
 opponent learning.
 
+## Motivating nuts-chop steal regression
+
+The repository now includes a regression test
+(`tests/test_nuts_chop_steal_commitment.py`) for the original motivating
+nuts-chop steal spot.
+
+Parameters:
+
+- initial commitment = 1
+- initial pot = 2
+- bet = 98
+- rake = 5%
+- rake cap = 4
+
+Terminal EVs:
+
+| Line | Hero/IP EV | Villain/OOP EV |
+|---|---:|---:|
+| check-check | -0.05 | -0.05 |
+| bet-fold | -1.00 | +1.00 |
+| bet-call | -2.00 | -2.00 |
+
+Interpretation:
+
+- Single-hand play prefers fold for IP and bet for OOP.
+- Locking IP to call makes OOP's best response check.
+- This is a toy regression example, not a real-hand recommendation.
+
+`T_deadline` inputs and results (discount = 1.0):
+
+- baseline Hero EV = -1.00
+- pre-adaptation Hero EV = -2.00
+- post-adaptation Hero EV = -0.05
+
+| N | T_deadline |
+|---:|---:|
+| 10 | 5 |
+| 20 | 10 |
+| 50 | 25 |
+| 100 | 49 |
+
 ## Recommended MVP workflow
 
 1. Start with the nuts-chop example.
