@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Exact Villain best-response analysis against a fully fixed Hero strategy in a finite two-player extensive-form poker game with rake."
 requires-python = ">=3.10"
 readme = "README.md"
-license = { text = "Proprietary" }
+license = { file = "LICENSE" }
 authors = [{ name = "repeated-poker-analysis" }]
 dependencies = []
 
