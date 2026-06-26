@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 
 def _scanned_files():
-    files = [_ROOT / "README.md", _ROOT / "LICENSE"]
+    files = [_ROOT / "README.md", _ROOT / "LICENSE", _ROOT / "pyproject.toml"]
     files += sorted((_ROOT / "docs").glob("*.md"))
     files += sorted((_ROOT / "examples").glob("*.py"))
     files += sorted((_ROOT / "src").rglob("*.py"))
@@ -45,6 +45,8 @@ _FORBIDDEN_STRINGS = [
     "PASS" + "WORD",
     "SEC" + "RET",
     ".claude/" + "settings.local.json",
+    # A stale non-MIT license marker must not reappear (the license is MIT).
+    "Propri" + "etary",
 ]
 
 _EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")

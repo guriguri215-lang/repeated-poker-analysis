@@ -11,7 +11,10 @@ _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
 _LICENSE = _ROOT / "LICENSE"
+_PYPROJECT = _ROOT / "pyproject.toml"
 _README = _ROOT / "README.md"
+# Assembled from fragments so this file does not contain the literal marker.
+_STALE_LICENSE_MARKER = "Propri" + "etary"
 
 
 def test_walkthrough_file_exists():
@@ -91,6 +94,14 @@ def test_readme_links_to_publication_policy():
 )
 def test_publication_policy_contains_key_phrase(phrase):
     assert phrase in _PUBLICATION_POLICY.read_text(encoding="utf-8")
+
+
+def test_pyproject_license_is_not_proprietary():
+    assert _STALE_LICENSE_MARKER not in _PYPROJECT.read_text(encoding="utf-8")
+
+
+def test_pyproject_license_points_to_license_file():
+    assert 'license = { file = "LICENSE" }' in _PYPROJECT.read_text(encoding="utf-8")
 
 
 def test_examples_guide_has_no_mojibake():
