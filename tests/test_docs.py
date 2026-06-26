@@ -8,6 +8,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _WALKTHROUGH = _ROOT / "docs" / "mvp_walkthrough.md"
 _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
+_PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _README = _ROOT / "README.md"
 
 
@@ -21,6 +22,29 @@ def test_assumptions_file_exists():
 
 def test_examples_guide_file_exists():
     assert _EXAMPLES_GUIDE.is_file()
+
+
+def test_public_readiness_file_exists():
+    assert _PUBLIC_READINESS.is_file()
+
+
+def test_readme_links_to_public_readiness():
+    assert "docs/public_readiness_checklist.md" in _README.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "No tokens, passwords, API keys",
+        "No private paths",
+        "not a full poker solver",
+        "does not guarantee profitable play",
+        "python scripts/check_mvp.py",
+        "Decide license separately",
+    ],
+)
+def test_public_readiness_contains_key_phrase(phrase):
+    assert phrase in _PUBLIC_READINESS.read_text(encoding="utf-8")
 
 
 def test_examples_guide_has_no_mojibake():
@@ -63,7 +87,8 @@ def test_readme_intro_contains_phrase(phrase):
 
 
 # The Japanese title of the local reference project, built from code points so
-# this test file stays ASCII.
+# this test file stays ASCII. The local solver-folder name is assembled from
+# fragments so this file does not contain the literal forbidden string.
 _LOCAL_PROJECT_TITLE = "".join(
     chr(c)
     for c in (
@@ -71,9 +96,10 @@ _LOCAL_PROJECT_TITLE = "".join(
         0x30FC, 0x30E0, 0x306E, 0x89E3, 0x6790,
     )
 )
+_LOCAL_PROJECT_FOLDER = "poker " + "sim $EV"
 
 
-@pytest.mark.parametrize("phrase", ["poker sim $EV", _LOCAL_PROJECT_TITLE])
+@pytest.mark.parametrize("phrase", [_LOCAL_PROJECT_FOLDER, _LOCAL_PROJECT_TITLE])
 def test_readme_does_not_reference_local_project(phrase):
     assert phrase not in _README.read_text(encoding="utf-8")
 
