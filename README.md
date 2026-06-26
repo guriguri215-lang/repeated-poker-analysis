@@ -186,6 +186,12 @@ scripts and the recommended order for running them.
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
 before changing repository visibility from private to public.
 
+### License and publication policy
+
+This project is released under the MIT License. See [LICENSE](LICENSE) and
+[docs/publication_policy.md](docs/publication_policy.md) for the publication
+posture and wording guidelines.
+
 ### MVP check script
 
 Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It runs

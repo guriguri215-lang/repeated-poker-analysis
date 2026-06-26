@@ -53,4 +53,6 @@ python -m pytest -q
 
 - Review README, MVP walkthrough, examples guide, assumptions document.
 - Review GitHub repository settings before switching visibility.
-- Decide license separately before public release.
+- Confirm the MIT License file exists and README links to it.
+- Confirm README links to the publication policy
+  (`docs/publication_policy.md`).

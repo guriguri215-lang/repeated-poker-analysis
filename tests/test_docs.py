@@ -9,6 +9,8 @@ _WALKTHROUGH = _ROOT / "docs" / "mvp_walkthrough.md"
 _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
+_PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
+_LICENSE = _ROOT / "LICENSE"
 _README = _ROOT / "README.md"
 
 
@@ -40,11 +42,55 @@ def test_readme_links_to_public_readiness():
         "not a full poker solver",
         "does not guarantee profitable play",
         "python scripts/check_mvp.py",
-        "Decide license separately",
+        "the MIT License file exists",
     ],
 )
 def test_public_readiness_contains_key_phrase(phrase):
     assert phrase in _PUBLIC_READINESS.read_text(encoding="utf-8")
+
+
+def test_public_readiness_no_longer_defers_license_decision():
+    assert "Decide license separately" not in _PUBLIC_READINESS.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_license_file_exists():
+    assert _LICENSE.is_file()
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["MIT License", "Copyright (c) 2026 guriguri215-lang"],
+)
+def test_license_contains_phrase(phrase):
+    assert phrase in _LICENSE.read_text(encoding="utf-8")
+
+
+def test_publication_policy_file_exists():
+    assert _PUBLICATION_POLICY.is_file()
+
+
+def test_readme_links_to_license():
+    assert "(LICENSE)" in _README.read_text(encoding="utf-8")
+
+
+def test_readme_links_to_publication_policy():
+    assert "docs/publication_policy.md" in _README.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "MIT License",
+        "experimental research / learning project",
+        "not a full poker solver",
+        "without warranty",
+        "assumptions_and_limitations.md",
+    ],
+)
+def test_publication_policy_contains_key_phrase(phrase):
+    assert phrase in _PUBLICATION_POLICY.read_text(encoding="utf-8")
 
 
 def test_examples_guide_has_no_mojibake():
