@@ -52,6 +52,58 @@ def test_walkthrough_links_to_examples_guide():
 @pytest.mark.parametrize(
     "phrase",
     [
+        "python scripts/check_mvp.py",
+        "What this project is",
+        "What this project is not",
+        "Fastest way to run the MVP",
+    ],
+)
+def test_readme_intro_contains_phrase(phrase):
+    assert phrase in _README.read_text(encoding="utf-8")
+
+
+# The Japanese title of the local reference project, built from code points so
+# this test file stays ASCII.
+_LOCAL_PROJECT_TITLE = "".join(
+    chr(c)
+    for c in (
+        0x7E70, 0x308A, 0x8FD4, 0x3057, 0x30B2,
+        0x30FC, 0x30E0, 0x306E, 0x89E3, 0x6790,
+    )
+)
+
+
+@pytest.mark.parametrize("phrase", ["poker sim $EV", _LOCAL_PROJECT_TITLE])
+def test_readme_does_not_reference_local_project(phrase):
+    assert phrase not in _README.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "before a GitHub repository is created",
+        "No Git repository",
+        "first commit",
+    ],
+)
+def test_readme_has_no_stale_bootstrap_text(phrase):
+    assert phrase not in _README.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "run_candidate_analysis_pipeline",
+        "python scripts/check_mvp.py",
+    ],
+)
+def test_readme_describes_current_state(phrase):
+    assert phrase in _README.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
         "T_deadline",
         "T_detect",
         "run_candidate_analysis_pipeline",

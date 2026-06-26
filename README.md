@@ -1,8 +1,35 @@
 # Repeated Poker Analysis
 
-This directory contains the design documents for a new Claude Code project. Its purpose is to analyse poker as a repeated game: commitment, opponent adaptation, and the difference between a one-hand solution and a strategy used repeatedly in comparable spots.
+This is an experimental research / learning project for analyzing small abstract
+poker subgames as repeated-game commitment problems. It focuses on candidate
+Hero commitment strategies, exact Villain responses in small finite trees,
+`T_deadline`, local `T_detect`, and readable summaries.
 
-The existing project at `poker sim $EV\繰り返しゲームの解析` is reference material only. Nothing in that project is changed by this work.
+## What this project is
+
+- A small Python toolkit for abstract repeated-poker analysis.
+- A way to generate and evaluate candidate Hero commitment strategies.
+- A tool for exact-response diagnostics on small finite trees.
+- A project with explicit assumptions, limitations, examples, and MVP checks.
+
+## What this project is not
+
+- Not a full poker solver.
+- Not a real-money strategy recommendation tool.
+- Not gambling, bankroll, financial, or legal advice.
+- Not a guarantee of profitable play.
+- Not yet connected to real solver ranges or large-scale range solving.
+
+## Fastest way to run the MVP
+
+```powershell
+python scripts/check_mvp.py
+```
+
+- This runs the test suite and key examples.
+- For a guided explanation, see `docs/mvp_walkthrough.md`.
+- For example order, see `docs/examples_guide.md`.
+- For assumptions and limitations, see `docs/assumptions_and_limitations.md`.
 
 ## Current design decisions
 
@@ -26,12 +53,11 @@ The original idea—find Hero strategies that lower Villain’s EV while Villain
 
 ## Current working state
 
-- GitHub registration, Git for Windows installation, and Git author configuration are complete.
-- The local project root is this `repeated-poker-analysis` directory.
-- The first program and its tests will be created locally before a GitHub repository is created.
-- No Git repository, remote, or GitHub repository is created by these documents.
-
-The GitHub and Claude Code operating procedure is intentionally kept outside this initial repository content. The first commit will contain only this README, the implementation plan, and the initial program with its tests.
+- The project is tracked in Git and developed through small pull requests.
+- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, local `T_detect`, analysis reports, Markdown summaries, and a high-level pipeline API.
+- The main end-to-end entry point is `run_candidate_analysis_pipeline`.
+- The quickest local sanity check is `python scripts/check_mvp.py`.
+- The project remains experimental and intended for small abstract games; see the assumptions and limitations document before interpreting outputs.
 
 ## Decisions to fix before implementation expands
 
