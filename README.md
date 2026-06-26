@@ -170,6 +170,9 @@ See [docs/mvp_walkthrough.md](docs/mvp_walkthrough.md) for an end-to-end
 explanation of the current minimum viable workflow and how to read the pipeline
 output.
 
+The original nuts-chop steal example is covered by a regression test and
+summarized in the MVP walkthrough.
+
 ### Assumptions and limitations
 
 See [docs/assumptions_and_limitations.md](docs/assumptions_and_limitations.md)
