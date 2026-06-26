@@ -88,6 +88,17 @@ from .pipeline import (
     CandidateGenerationConfig,
     run_candidate_analysis_pipeline,
 )
+from .ranking import (
+    RANK_BY_DETECTED_ADAPTATION_DELTA,
+    RANK_BY_FIXED_VILLAIN_EV,
+    RANK_BY_L1_DISTANCE,
+    RANK_BY_POST_RESPONSE_HERO_EV_WORST_DIFF,
+    RANK_BY_T_DEADLINE,
+    RANK_BY_T_DETECT,
+    CandidateRankingResult,
+    RankedCandidateRow,
+    rank_candidate_rows,
+)
 from .summary import (
     format_candidate_analysis_markdown,
     validate_markdown_max_rows,
@@ -134,6 +145,15 @@ __all__ = [
     "CandidateFilterConfig",
     "CandidateGenerationConfig",
     "run_candidate_analysis_pipeline",
+    "RANK_BY_DETECTED_ADAPTATION_DELTA",
+    "RANK_BY_FIXED_VILLAIN_EV",
+    "RANK_BY_L1_DISTANCE",
+    "RANK_BY_POST_RESPONSE_HERO_EV_WORST_DIFF",
+    "RANK_BY_T_DEADLINE",
+    "RANK_BY_T_DETECT",
+    "CandidateRankingResult",
+    "RankedCandidateRow",
+    "rank_candidate_rows",
     "DetectionConfiguration",
     "DetectionResult",
     "calculate_candidate_local_detection",
