@@ -170,8 +170,17 @@ An abstract river spot can be described in a JSON file and turned into a
 `GameTree` plus pipeline inputs with `load_river_scenario_json` and
 `build_river_steal_game_from_scenario` (see
 `examples/scenarios/nuts_chop_steal_bet98.json` and
-`python scripts/run_river_scenario.py <scenario.json>`). The input has three
-mutually exclusive modes:
+`python scripts/run_river_scenario.py <scenario.json>`).
+
+The scenario JSON format is currently version `"1"`. New files should declare it
+with a top-level `"format_version": "1"`; the field is optional for backward
+compatibility, so a file without it is treated as `"1"`. Unknown versions (and a
+numeric `1`, `null`, a bool, or an empty string) are rejected. The format is
+still experimental and may get a v2 before any template-generation or GUI input
+tooling, so the version is recorded in the build metadata and in the analysis /
+validation / batch outputs.
+
+The input has three mutually exclusive modes:
 
 - **single-hand mode**: a top-level `showdown` and `baseline_hero_strategy`.
 - **abstract Hero range mode**: a `hero_range` of weighted hands, each with its
