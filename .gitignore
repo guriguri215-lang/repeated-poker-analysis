@@ -26,6 +26,7 @@ dist/
 
 # Generated results and run manifests
 results/
+reports/
 run_manifest.json
 
 # Local Claude Code settings (kept locally, never committed)
