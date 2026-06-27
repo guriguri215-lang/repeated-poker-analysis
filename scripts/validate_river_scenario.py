@@ -43,6 +43,7 @@ _STDOUT_COLUMNS = [
     "source_path",
     "ok",
     "scenario_id",
+    "format_version",
     "model_kind",
     "hero_info_set_count",
     "villain_info_set_count",

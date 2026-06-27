@@ -36,6 +36,7 @@ from repeated_poker import (  # noqa: E402  (path is set up above)
 
 _STDOUT_COLUMNS = [
     "scenario_id",
+    "format_version",
     "model_kind",
     "horizon",
     "generated_candidates",

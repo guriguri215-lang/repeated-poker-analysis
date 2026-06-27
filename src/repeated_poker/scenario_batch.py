@@ -61,6 +61,7 @@ class BatchScenarioRow:
 
     scenario_id: Optional[str]
     source_path: str
+    format_version: Optional[str]
     model_kind: Optional[str]
     horizon: Optional[int]
     discount: Optional[float]
@@ -81,6 +82,7 @@ class BatchScenarioRow:
         return {
             "scenario_id": self.scenario_id,
             "source_path": self.source_path,
+            "format_version": self.format_version,
             "model_kind": self.model_kind,
             "horizon": self.horizon,
             "discount": self.discount,
@@ -108,6 +110,7 @@ BATCH_ROW_COLUMNS: List[str] = list(
     BatchScenarioRow(
         scenario_id=None,
         source_path="",
+        format_version=None,
         model_kind=None,
         horizon=None,
         discount=None,
@@ -211,6 +214,7 @@ def _success_row(display_path: str, result: RiverScenarioAnalysisResult) -> Batc
     return BatchScenarioRow(
         scenario_id=result.scenario_id,
         source_path=display_path,
+        format_version=result.scenario.format_version,
         model_kind=model_kind_from_metadata(result.build.metadata),
         horizon=result.horizon,
         discount=result.discount,
@@ -237,6 +241,7 @@ def _error_row(display_path: str, exc: BaseException) -> BatchScenarioRow:
     return BatchScenarioRow(
         scenario_id=None,
         source_path=display_path,
+        format_version=None,
         model_kind=None,
         horizon=None,
         discount=None,
