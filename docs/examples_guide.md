@@ -145,25 +145,37 @@ The input has three mutually exclusive modes:
   set across all buckets (it does not see Hero's hand), while Hero gets a
   per-hand `IP_vs_bet::<hand_id>` information set.
 - **abstract Hero/Villain range matrix mode**: a `hero_range` (without per-hand
-  `showdown`), a `villain_range`, and a `showdown_matrix` keyed by
-  `[hero_id][villain_id]`. See `examples/scenarios/range_matrix_steal_bet98.json`.
-  A chance node draws the `(hero, villain)` pair with probability
+  `showdown`), a `villain_range`, and exactly one matchup matrix keyed by
+  `[hero_id][villain_id]`. See `examples/scenarios/range_matrix_steal_bet98.json`
+  (a `showdown_matrix` of discrete results) and
+  `examples/scenarios/range_equity_steal_bet98.json` (an `equity_matrix`). A
+  chance node draws the `(hero, villain)` pair with probability
   `hero_weight * villain_weight`; the outcome of each pair comes from the matrix.
 
 The difference between the two range modes is the showdown source. Hero-range-only
 mode fixes one `showdown` per Hero bucket, so Villain has no private hand and
 shares a single `OOP_river` information set. Matrix mode gives Villain its own
-weighted buckets and resolves each Hero/Villain matchup through `showdown_matrix`;
-Villain then knows its own bucket (a per-bucket `OOP_river::<villain_id>`
-information set, shared across Hero buckets), while Hero still knows only its own
-bucket (`IP_vs_bet::<hero_id>`, shared across Villain buckets). These are
-*abstract* ranges given directly as weights and showdown results; they are **not**
-a real card or hand-range parser, and there is no equity matrix.
+weighted buckets and resolves each Hero/Villain matchup through a matrix; Villain
+then knows its own bucket (a per-bucket `OOP_river::<villain_id>` information set,
+shared across Hero buckets), while Hero still knows only its own bucket
+(`IP_vs_bet::<hero_id>`, shared across Villain buckets).
+
+Matrix mode accepts either matrix, but not both:
+
+- `showdown_matrix`: each cell is a discrete `chop`/`hero`/`villain` result.
+- `equity_matrix`: each cell is Hero's **pot share before rake** in `[0, 1]`,
+  where `1.0` awards Hero the whole raked pot, `0.5` is a chop, and `0.0` awards
+  it all to Villain. This lets you feed an equity precomputed by an external tool
+  directly into the game; the rake is still taken from the awarded pot first, so
+  `hero_ev + villain_ev + house_rake == 0` holds at every terminal.
+
+These are *abstract* ranges given directly as weights and matchup outcomes; they
+are **not** a real card or hand-range parser.
 
 What the abstract range modes do **not** do in v1:
 
-- There is no equity matrix; matrix mode resolves matchups only to a fixed
-  `chop`/`hero`/`villain` showdown result, not to equities.
+- The `equity_matrix` is a directly supplied Hero pot share, not a computed
+  equity: there is no card or hand evaluation behind it.
 - The action tree is fixed to OOP `check`/`bet` and IP `call`/`fold`, and an OOP
   `check` resolves immediately to a check-check showdown. IP betting after an OOP
   check, raises, and arbitrary betting trees are not generated from JSON, even

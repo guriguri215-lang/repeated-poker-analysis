@@ -162,13 +162,15 @@ and run end-to-end through the candidate-analysis pipeline with
 `python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal_bet98.json`.
 The scenario input also accepts an abstract weighted Hero range
 (`examples/scenarios/abstract_range_steal_bet98.json`) and an abstract
-Hero/Villain range with a matchup showdown matrix
-(`examples/scenarios/range_matrix_steal_bet98.json`). Both build a chance node
-(over Hero buckets, or over `(hero, villain)` matchup pairs) and run through the
-same pipeline. These range modes are abstract in v1: matrix mode resolves each
-matchup only to a fixed `showdown` result (no equity matrix), and the JSON action
-tree treats an OOP check as an immediate check-check showdown with no IP betting
-after an OOP check, raises, or arbitrary betting trees.
+Hero/Villain range with a matchup matrix, which can be either a discrete
+`showdown_matrix` (`examples/scenarios/range_matrix_steal_bet98.json`) or an
+`equity_matrix` of Hero pot shares (`examples/scenarios/range_equity_steal_bet98.json`).
+All build a chance node (over Hero buckets, or over `(hero, villain)` matchup
+pairs) and run through the same pipeline. These range modes are abstract in v1:
+matrix outcomes are supplied directly (the `equity_matrix` is a given Hero pot
+share, not a computed equity), and the JSON action tree treats an OOP check as an
+immediate check-check showdown with no IP betting after an OOP check, raises, or
+arbitrary betting trees.
 
 Parameters:
 
