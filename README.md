@@ -201,6 +201,12 @@ single-scenario analysis on each input (a directory's `*.json` in filename order
 or the given files in order) and prints one comparison row per scenario. It also
 takes `--output-json`, `--output-csv`, `--output-markdown`, and `--strict-json`,
 plus `--continue-on-error` to record failing scenarios instead of stopping. The
+batch CSV and Markdown are meant for comparing scenarios side by side: the
+Markdown report has an overview (total / ok / error counts), a comparison table
+(model kind, horizon, candidate counts, and the top-ranked candidate columns),
+and a short notes section, while the CSV stays machine-friendly. The
+`top_candidate_*` columns are only populated when ranking is enabled (for example
+`--rank-by t_deadline`), and `--strict-json` affects only the JSON export. The
 batch runner is an analysis/reporting helper over the existing pipeline, not a
 new solver model.
 
