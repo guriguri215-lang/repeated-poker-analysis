@@ -192,6 +192,15 @@ also save the result to files with `--output-json`, `--output-markdown`, and
 `--output-csv` (each creates missing parent directories and overwrites an
 existing file); without them it prints to stdout only.
 
+To compare several scenarios at once, use `run_batch_scenario_analysis` or
+`python scripts/run_scenario_batch.py <dir-or-files>`, which runs the same
+single-scenario analysis on each input (a directory's `*.json` in filename order,
+or the given files in order) and prints one comparison row per scenario. It also
+takes `--output-json`, `--output-csv`, and `--output-markdown`, plus
+`--continue-on-error` to record failing scenarios instead of stopping. The batch
+runner is an analysis/reporting helper over the existing pipeline, not a new
+solver model.
+
 Scope of the abstract range modes in v1:
 
 - Matchup outcomes are given directly as abstract inputs: a discrete

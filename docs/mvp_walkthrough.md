@@ -175,7 +175,9 @@ check and one IP raise versus the OOP bet
 (`examples/scenarios/range_equity_betting_tree_bet98.json`). Re-raises and
 arbitrary betting trees remain out of scope. The analysis runner can also save
 its result with `--output-json`, `--output-markdown`, and `--output-csv` (these
-go under the git-ignored `reports/` by convention).
+go under the git-ignored `reports/` by convention). To compare several scenarios
+at once, `python scripts/run_scenario_batch.py <dir-or-files>` runs the same
+per-scenario analysis on each and emits one comparison row per scenario.
 
 Parameters:
 
