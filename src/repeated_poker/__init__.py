@@ -98,6 +98,11 @@ from .scenario_io import (
     load_river_scenario_json,
     river_scenario_from_dict,
 )
+from .scenario_pipeline import (
+    RiverScenarioAnalysisConfig,
+    RiverScenarioAnalysisResult,
+    run_river_scenario_analysis,
+)
 from .ranking import (
     RANK_BY_DETECTED_ADAPTATION_DELTA,
     RANK_BY_FIXED_VILLAIN_EV,
@@ -163,6 +168,9 @@ __all__ = [
     "build_river_steal_game_from_scenario",
     "load_river_scenario_json",
     "river_scenario_from_dict",
+    "RiverScenarioAnalysisConfig",
+    "RiverScenarioAnalysisResult",
+    "run_river_scenario_analysis",
     "RANK_BY_DETECTED_ADAPTATION_DELTA",
     "RANK_BY_FIXED_VILLAIN_EV",
     "RANK_BY_L1_DISTANCE",
