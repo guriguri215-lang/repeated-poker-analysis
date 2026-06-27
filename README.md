@@ -170,8 +170,11 @@ An abstract river spot can be described in a JSON file and turned into a
 `GameTree` plus pipeline inputs with `load_river_scenario_json` and
 `build_river_steal_game_from_scenario` (see
 `examples/scenarios/nuts_chop_steal_bet98.json` and
-`python scripts/run_river_scenario.py <scenario.json>`). This v1 input is an
-abstract spot only; it does not parse real cards, hand ranges, or solver
+`python scripts/run_river_scenario.py <scenario.json>`). To run a scenario all
+the way through the candidate-analysis pipeline and print the Markdown summary,
+use `run_river_scenario_analysis` or
+`python scripts/run_river_scenario_analysis.py <scenario.json>`. This v1 input is
+an abstract spot only; it does not parse real cards, hand ranges, or solver
 exports.
 
 ### MVP walkthrough

@@ -132,14 +132,35 @@ Instead of a hand-written Python example, an abstract river spot can be loaded
 from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
 BET=98 nuts-chop steal case.
 
-Run it with the helper script (it prints terminal EVs, the baseline profile EV,
-the candidate count, and the `T_deadline` table):
+There are two helper scripts for a scenario file:
+
+- `scripts/run_river_scenario.py` is a quick sanity check: it prints the terminal
+  EVs, the baseline and locked-call responses, the candidate count, and the
+  `T_deadline` table, without running the candidate-analysis pipeline.
+- `scripts/run_river_scenario_analysis.py` runs the full candidate-analysis
+  pipeline (generation, comparison, reporting) and prints the Markdown summary,
+  plus an optional ranking section.
 
 ```powershell
 python scripts/run_river_scenario.py examples/scenarios/nuts_chop_steal_bet98.json
+python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal_bet98.json
 ```
 
-From Python, build the game and feed it into the pipeline:
+The analysis script accepts `--horizon`, `--discount`, `--rank-by`, `--top-k`,
+and `--no-markdown`. From Python the same run is available as
+`run_river_scenario_analysis`:
+
+```python
+from repeated_poker import run_river_scenario_analysis
+
+result = run_river_scenario_analysis(
+    "examples/scenarios/nuts_chop_steal_bet98.json"
+)
+print(result.markdown_summary)
+```
+
+To stop at the building blocks instead, build the game and feed it into the
+pipeline yourself:
 
 ```python
 from repeated_poker import (
