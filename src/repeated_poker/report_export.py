@@ -28,6 +28,7 @@ from .scenario_batch import BATCH_ROW_COLUMNS
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .scenario_batch import BatchScenarioAnalysisResult
     from .scenario_pipeline import RiverScenarioAnalysisResult
+    from .scenario_validation import ScenarioValidationResult
 
 PathLike = Union[str, Path]
 
@@ -255,6 +256,22 @@ def write_batch_csv(batch: "BatchScenarioAnalysisResult", path: PathLike) -> Non
         for row in batch.rows:
             row_dict = row.to_dict()
             writer.writerow([_csv_cell(row_dict.get(column)) for column in BATCH_ROW_COLUMNS])
+
+
+def write_validation_json(
+    validation: "ScenarioValidationResult", path: PathLike, strict: bool = False
+) -> None:
+    """Write the scenario validation rows as JSON to ``path``.
+
+    Reuses :func:`ScenarioValidationResult.to_dict` and the shared
+    :func:`_dump_json` writer, so ``strict=True`` maps non-finite floats to
+    ``null`` and emits RFC 8259-compatible JSON, while the default ``strict=False``
+    keeps the lenient behaviour.
+    """
+
+    target = Path(path)
+    _ensure_parent(target)
+    target.write_text(_dump_json(validation.to_dict(), strict), encoding="utf-8")
 
 
 def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:

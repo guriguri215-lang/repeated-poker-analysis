@@ -114,7 +114,16 @@ from .scenario_batch import (
     BatchScenarioAnalysisConfig,
     BatchScenarioAnalysisResult,
     BatchScenarioRow,
+    display_scenario_path,
+    expand_scenario_inputs,
+    model_kind_from_metadata,
     run_batch_scenario_analysis,
+)
+from .scenario_validation import (
+    ScenarioValidationConfig,
+    ScenarioValidationResult,
+    ScenarioValidationRow,
+    validate_river_scenario_inputs,
 )
 from .report_export import (
     analysis_result_to_dict,
@@ -125,6 +134,7 @@ from .report_export import (
     write_batch_csv,
     write_batch_json,
     write_batch_markdown,
+    write_validation_json,
 )
 from .ranking import (
     RANK_BY_DETECTED_ADAPTATION_DELTA,
@@ -207,11 +217,19 @@ __all__ = [
     "BatchScenarioAnalysisConfig",
     "BatchScenarioAnalysisResult",
     "BatchScenarioRow",
+    "display_scenario_path",
+    "expand_scenario_inputs",
+    "model_kind_from_metadata",
     "run_batch_scenario_analysis",
+    "ScenarioValidationConfig",
+    "ScenarioValidationResult",
+    "ScenarioValidationRow",
+    "validate_river_scenario_inputs",
     "batch_result_to_dict",
     "write_batch_csv",
     "write_batch_json",
     "write_batch_markdown",
+    "write_validation_json",
     "RANK_BY_DETECTED_ADAPTATION_DELTA",
     "RANK_BY_FIXED_VILLAIN_EV",
     "RANK_BY_L1_DISTANCE",
