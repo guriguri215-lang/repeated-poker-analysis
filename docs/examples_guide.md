@@ -132,6 +132,38 @@ Instead of a hand-written Python example, an abstract river spot can be loaded
 from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
 BET=98 nuts-chop steal case.
 
+The input has two modes:
+
+- **single-hand mode**: a top-level `showdown` result and a single
+  `baseline_hero_strategy` at the `IP_vs_bet` information set (the nuts-chop
+  sample above).
+- **abstract weighted range mode**: a `hero_range` list of weighted hands, each
+  with its own `hand_id`, `weight`, `showdown`, and `baseline_strategy`. See
+  `examples/scenarios/abstract_range_steal_bet98.json` for a two-hand range (one
+  hand chops and folds at baseline, one hand wins at showdown and calls). A
+  chance node draws the hand bucket; Villain shares one `OOP_river` information
+  set across all buckets (it does not see Hero's hand), while Hero gets a
+  per-hand `IP_vs_bet::<hand_id>` information set. This is an *abstract* range:
+  the weights and per-hand showdown results are given directly. It is **not** a
+  real card or hand-range parser. The two modes are mutually exclusive.
+
+What the abstract range mode does **not** do in v1:
+
+- It is Hero-range-only. It does not model Villain private hand buckets yet, so
+  Villain cannot have its own range or matchup-dependent decisions.
+- Each hand's `showdown` is a fixed abstract outcome for that Hero bucket. There
+  is no showdown matrix or equity matrix that resolves Hero vs Villain holdings.
+- The action tree is fixed to OOP `check`/`bet` and IP `call`/`fold`. Raises and
+  arbitrary betting trees are not generated from JSON, even though the core
+  `GameTree` supports arbitrary action labels.
+
+When Villain hand buckets are added later, Villain will know its own bucket, so
+each Villain bucket needs its own information set; but because Villain still does
+not see Hero's bucket, that information set must be shared across Hero buckets
+within the same Villain bucket.
+
+Both modes work with the same helper scripts and runner below.
+
 There are two helper scripts for a scenario file:
 
 - `scripts/run_river_scenario.py` is a quick sanity check: it prints the terminal

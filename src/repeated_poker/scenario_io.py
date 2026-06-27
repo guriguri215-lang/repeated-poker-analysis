@@ -17,8 +17,34 @@ inputs):
 * a baseline Hero strategy at the ``IP_vs_bet`` information set;
 * optional candidate shift amounts and optional repeated-game horizons/discount.
 
-It does not parse real cards, hand ranges, or external solver exports; those are
-future extensions. The core ``game`` / ``payoffs`` / ``exact_response`` /
+Two Hero-side input modes are supported:
+
+* *single-hand mode* (the original v1 form): a single ``showdown`` result and a
+  single ``baseline_hero_strategy`` at the ``IP_vs_bet`` information set;
+* *abstract weighted range mode*: a ``hero_range`` list of abstract weighted
+  hands, each with its own ``showdown`` result and ``baseline_strategy``. A
+  chance node draws the hand bucket; Villain shares one ``OOP_river``
+  information set across all buckets (it does not observe Hero's hand), while
+  Hero gets a per-hand information set ``IP_vs_bet::<hand_id>``.
+
+The two modes are mutually exclusive: supplying ``hero_range`` together with a
+top-level ``showdown`` or ``baseline_hero_strategy`` raises ``ValueError``.
+
+``hero_range`` is not a real card range parser. The v1 range mode is
+*Hero-range-only*: it samples Hero hand buckets, and each hand's ``showdown`` is
+a fixed abstract outcome for that Hero bucket. It does **not** model Villain
+private hand buckets, and there is no showdown matrix or equity matrix that
+resolves Hero versus Villain holdings. Because Villain has no private bucket
+here, every Hero bucket shares the single ``OOP_river`` Villain information set.
+Villain private buckets and matchup-dependent showdown results are future
+extensions; when added, each Villain bucket would get its own information set
+(shared across Hero buckets, since Villain still does not observe Hero's hand).
+
+This is still an *abstract* range: weights and per-hand showdown results are
+given directly. It does not parse real cards, hand ranges, or external solver
+exports, and the JSON action tree is limited to OOP ``check``/``bet`` and IP
+``call``/``fold`` (no raises), even though the core ``GameTree`` itself allows
+arbitrary action labels. The core ``game`` / ``payoffs`` / ``exact_response`` /
 ``repeated`` modules are reused unchanged.
 """
 
@@ -31,6 +57,7 @@ from typing import Dict, List, Optional, Union
 
 from .exact_response import solve_exact_response
 from .game import (
+    ChanceNode,
     GameTree,
     HeroNode,
     HeroStrategy,
@@ -38,6 +65,7 @@ from .game import (
     VillainStrategy,
     require_finite,
     validate_hero_strategy,
+    validate_tree,
 )
 from .payoffs import CHOP, HERO, VILLAIN, make_fold_terminal, make_showdown_terminal
 
@@ -79,18 +107,50 @@ class RiverScenarioRepeatedConfig:
 
 
 @dataclass(frozen=True)
+class RiverScenarioHeroRangeHand:
+    """One abstract weighted hand in a Hero range.
+
+    ``baseline_strategy`` is the Hero ``call`` / ``fold`` distribution at this
+    hand's own ``IP_vs_bet::<hand_id>`` information set.
+    """
+
+    hand_id: str
+    weight: float
+    showdown: str
+    baseline_strategy: Dict[str, float]
+
+
+@dataclass(frozen=True)
+class RiverScenarioHeroRange:
+    """An abstract weighted Hero range whose weights sum to one."""
+
+    hands: List[RiverScenarioHeroRangeHand]
+
+
+@dataclass(frozen=True)
 class RiverScenario:
-    """A validated abstract river steal scenario."""
+    """A validated abstract river steal scenario.
+
+    In single-hand mode ``showdown`` and ``baseline_hero_strategy`` are set and
+    ``hero_range`` is ``None``. In abstract weighted range mode ``hero_range`` is
+    set and the two single-hand fields are ``None``. The two modes are mutually
+    exclusive; :meth:`is_range_mode` reports which one applies.
+    """
 
     scenario_id: str
     description: str
     rake: RiverScenarioRake
     initial_commitment: RiverScenarioInitialCommitment
     bet_size: float
-    showdown: str
-    baseline_hero_strategy: Dict[str, Dict[str, float]]
+    showdown: Optional[str]
+    baseline_hero_strategy: Optional[Dict[str, Dict[str, float]]]
     shift_amounts: Optional[List[float]]
     repeated: Optional[RiverScenarioRepeatedConfig]
+    hero_range: Optional[RiverScenarioHeroRange] = None
+
+    @property
+    def is_range_mode(self) -> bool:
+        return self.hero_range is not None
 
 
 @dataclass(frozen=True)
@@ -201,6 +261,58 @@ def _parse_shift_amounts(data) -> Optional[List[float]]:
     return shift_amounts
 
 
+def _parse_hero_range(data) -> RiverScenarioHeroRange:
+    # Abstract Hero-range parsing only: this validates weighted Hero hand
+    # buckets with per-bucket fixed showdown outcomes. It is not a real card
+    # range parser, and it models no Villain private buckets or matchup-dependent
+    # showdowns (see the module docstring for the v1 scope).
+    if not isinstance(data, list):
+        raise ValueError("hero_range must be a list of hand objects")
+    if not data:
+        raise ValueError("hero_range must contain at least one hand")
+    hands: List[RiverScenarioHeroRangeHand] = []
+    seen_ids: set = set()
+    weight_total = 0.0
+    for index, raw in enumerate(data):
+        if not isinstance(raw, dict):
+            raise ValueError(f"hero_range[{index}] must be an object")
+        hand_id = raw.get("hand_id")
+        if not isinstance(hand_id, str) or not hand_id:
+            raise ValueError(f"hero_range[{index}].hand_id must be a non-empty string")
+        if hand_id in seen_ids:
+            raise ValueError(f"hero_range has duplicate hand_id {hand_id!r}")
+        seen_ids.add(hand_id)
+        weight = _require_positive(
+            _as_number(raw.get("weight"), f"hero_range[{index}].weight"),
+            f"hero_range[{index}].weight",
+        )
+        showdown = raw.get("showdown")
+        if showdown not in _SHOWDOWN_RESULTS:
+            raise ValueError(
+                f"hero_range[{index}].showdown must be one of "
+                f"{list(_SHOWDOWN_RESULTS)}, got {showdown!r}"
+            )
+        baseline = _validate_action_distribution(
+            raw.get("baseline_strategy"),
+            _IP_ACTIONS,
+            f"hero_range[{index}].baseline_strategy",
+        )
+        hands.append(
+            RiverScenarioHeroRangeHand(
+                hand_id=hand_id,
+                weight=weight,
+                showdown=showdown,
+                baseline_strategy=baseline,
+            )
+        )
+        weight_total += weight
+    if abs(weight_total - 1.0) > _TOLERANCE:
+        raise ValueError(
+            f"hero_range weights sum to {weight_total}, expected 1"
+        )
+    return RiverScenarioHeroRange(hands=hands)
+
+
 def _parse_repeated(data) -> Optional[RiverScenarioRepeatedConfig]:
     if data is None:
         return None
@@ -249,26 +361,43 @@ def river_scenario_from_dict(data) -> RiverScenario:
     initial_commitment = _parse_initial_commitment(data.get("initial_commitment"))
     bet_size = _require_positive(_as_number(data.get("bet_size"), "bet_size"), "bet_size")
 
-    showdown = data.get("showdown")
-    if showdown not in _SHOWDOWN_RESULTS:
+    has_range = "hero_range" in data
+    has_single = "showdown" in data or "baseline_hero_strategy" in data
+    if has_range and has_single:
         raise ValueError(
-            f"showdown must be one of {list(_SHOWDOWN_RESULTS)}, got {showdown!r}"
+            "hero_range cannot be combined with a top-level showdown or "
+            "baseline_hero_strategy; use either single-hand mode or range mode"
         )
 
-    baseline = data.get("baseline_hero_strategy")
-    if not isinstance(baseline, dict):
-        raise ValueError("baseline_hero_strategy must be an object")
-    if _IP_INFO_SET not in baseline:
-        raise ValueError(f"baseline_hero_strategy must contain {_IP_INFO_SET!r}")
-    extra_info_sets = set(baseline) - {_IP_INFO_SET}
-    if extra_info_sets:
-        raise ValueError(
-            f"baseline_hero_strategy has unknown information sets {sorted(extra_info_sets)}"
+    showdown: Optional[str]
+    baseline_hero_strategy: Optional[Dict[str, Dict[str, float]]]
+    hero_range: Optional[RiverScenarioHeroRange]
+    if has_range:
+        showdown = None
+        baseline_hero_strategy = None
+        hero_range = _parse_hero_range(data.get("hero_range"))
+    else:
+        showdown = data.get("showdown")
+        if showdown not in _SHOWDOWN_RESULTS:
+            raise ValueError(
+                f"showdown must be one of {list(_SHOWDOWN_RESULTS)}, got {showdown!r}"
+            )
+
+        baseline = data.get("baseline_hero_strategy")
+        if not isinstance(baseline, dict):
+            raise ValueError("baseline_hero_strategy must be an object")
+        if _IP_INFO_SET not in baseline:
+            raise ValueError(f"baseline_hero_strategy must contain {_IP_INFO_SET!r}")
+        extra_info_sets = set(baseline) - {_IP_INFO_SET}
+        if extra_info_sets:
+            raise ValueError(
+                f"baseline_hero_strategy has unknown information sets {sorted(extra_info_sets)}"
+            )
+        ip_distribution = _validate_action_distribution(
+            baseline[_IP_INFO_SET], _IP_ACTIONS, f"baseline_hero_strategy[{_IP_INFO_SET!r}]"
         )
-    ip_distribution = _validate_action_distribution(
-        baseline[_IP_INFO_SET], _IP_ACTIONS, f"baseline_hero_strategy[{_IP_INFO_SET!r}]"
-    )
-    baseline_hero_strategy = {_IP_INFO_SET: ip_distribution}
+        baseline_hero_strategy = {_IP_INFO_SET: ip_distribution}
+        hero_range = None
 
     shift_amounts = _parse_shift_amounts(data.get("candidate_generation"))
     repeated = _parse_repeated(data.get("repeated"))
@@ -283,6 +412,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         baseline_hero_strategy=baseline_hero_strategy,
         shift_amounts=shift_amounts,
         repeated=repeated,
+        hero_range=hero_range,
     )
 
 
@@ -301,69 +431,19 @@ def load_river_scenario_json(path: Union[str, Path]) -> RiverScenario:
 def build_river_steal_game_from_scenario(
     scenario: RiverScenario,
 ) -> RiverScenarioBuildResult:
-    """Build the game tree and pipeline inputs from a validated scenario."""
+    """Build the game tree and pipeline inputs from a validated scenario.
 
-    hero_initial = scenario.initial_commitment.hero
-    villain_initial = scenario.initial_commitment.villain
-    bet_size = scenario.bet_size
-    rate = scenario.rake.rate
-    cap = scenario.rake.cap
-    result = scenario.showdown
+    Dispatches on the scenario mode: a single ``VillainNode`` root in single-hand
+    mode, or a ``ChanceNode`` over weighted hand buckets in range mode.
+    """
 
-    check_terminal = make_showdown_terminal(
-        "T_check_check",
-        hero_initial + villain_initial,
-        hero_initial,
-        villain_initial,
-        result,
-        rate,
-        cap,
-    )
-    bet_call_terminal = make_showdown_terminal(
-        "T_bet_call",
-        hero_initial + villain_initial + 2.0 * bet_size,
-        hero_initial + bet_size,
-        villain_initial + bet_size,
-        result,
-        rate,
-        cap,
-    )
-    # IP folds to the bet: the uncalled bet is returned and OOP (Villain) wins
-    # IP's committed chips.
-    bet_fold_terminal = make_fold_terminal("T_bet_fold", VILLAIN, hero_initial)
+    if scenario.is_range_mode:
+        tree, baseline_hero_strategy, metadata = _build_range_tree(scenario)
+    else:
+        tree, baseline_hero_strategy, metadata = _build_single_hand_tree(scenario)
 
-    ip_node = HeroNode(
-        node_id="ip",
-        info_set=_IP_INFO_SET,
-        actions=(("call", bet_call_terminal), ("fold", bet_fold_terminal)),
-    )
-    oop_node = VillainNode(
-        node_id="oop",
-        info_set=_OOP_INFO_SET,
-        actions=(("check", check_terminal), ("bet", ip_node)),
-    )
-    tree = GameTree(root=oop_node)
-
-    baseline_hero_strategy = HeroStrategy(
-        probabilities={
-            _IP_INFO_SET: dict(scenario.baseline_hero_strategy[_IP_INFO_SET])
-        }
-    )
     validate_hero_strategy(tree, baseline_hero_strategy)
-
     baseline_villain_strategy = _single_hand_villain_baseline(tree, baseline_hero_strategy)
-
-    metadata = {
-        "scenario_id": scenario.scenario_id,
-        "description": scenario.description,
-        "bet_size": scenario.bet_size,
-        "showdown": scenario.showdown,
-        "rake": {"rate": scenario.rake.rate, "cap": scenario.rake.cap},
-        "initial_commitment": {
-            "hero": scenario.initial_commitment.hero,
-            "villain": scenario.initial_commitment.villain,
-        },
-    }
 
     return RiverScenarioBuildResult(
         scenario_id=scenario.scenario_id,
@@ -375,6 +455,113 @@ def build_river_steal_game_from_scenario(
         repeated=scenario.repeated,
         metadata=metadata,
     )
+
+
+def _hand_subtree(
+    scenario: RiverScenario, showdown: str, suffix: str, ip_info_set: str
+):
+    """Build the OOP/IP subtree for one showdown result, with unique node ids."""
+
+    hero_initial = scenario.initial_commitment.hero
+    villain_initial = scenario.initial_commitment.villain
+    bet_size = scenario.bet_size
+    rate = scenario.rake.rate
+    cap = scenario.rake.cap
+
+    check_terminal = make_showdown_terminal(
+        f"T_check_check{suffix}",
+        hero_initial + villain_initial,
+        hero_initial,
+        villain_initial,
+        showdown,
+        rate,
+        cap,
+    )
+    bet_call_terminal = make_showdown_terminal(
+        f"T_bet_call{suffix}",
+        hero_initial + villain_initial + 2.0 * bet_size,
+        hero_initial + bet_size,
+        villain_initial + bet_size,
+        showdown,
+        rate,
+        cap,
+    )
+    # IP folds to the bet: the uncalled bet is returned and OOP (Villain) wins
+    # IP's committed chips.
+    bet_fold_terminal = make_fold_terminal(f"T_bet_fold{suffix}", VILLAIN, hero_initial)
+
+    ip_node = HeroNode(
+        node_id=f"ip{suffix}",
+        info_set=ip_info_set,
+        actions=(("call", bet_call_terminal), ("fold", bet_fold_terminal)),
+    )
+    oop_node = VillainNode(
+        node_id=f"oop{suffix}",
+        info_set=_OOP_INFO_SET,
+        actions=(("check", check_terminal), ("bet", ip_node)),
+    )
+    return oop_node
+
+
+def _base_metadata(scenario: RiverScenario) -> dict:
+    return {
+        "scenario_id": scenario.scenario_id,
+        "description": scenario.description,
+        "bet_size": scenario.bet_size,
+        "rake": {"rate": scenario.rake.rate, "cap": scenario.rake.cap},
+        "initial_commitment": {
+            "hero": scenario.initial_commitment.hero,
+            "villain": scenario.initial_commitment.villain,
+        },
+    }
+
+
+def _build_single_hand_tree(scenario: RiverScenario):
+    oop_node = _hand_subtree(scenario, scenario.showdown, "", _IP_INFO_SET)
+    tree = GameTree(root=oop_node)
+    baseline_hero_strategy = HeroStrategy(
+        probabilities={
+            _IP_INFO_SET: dict(scenario.baseline_hero_strategy[_IP_INFO_SET])
+        }
+    )
+    metadata = _base_metadata(scenario)
+    metadata["mode"] = "single_hand"
+    metadata["showdown"] = scenario.showdown
+    return tree, baseline_hero_strategy, metadata
+
+
+def _build_range_tree(scenario: RiverScenario):
+    """Build a chance-node tree over the weighted Hero hand buckets.
+
+    Villain shares the single ``OOP_river`` information set across every bucket,
+    so it cannot condition on Hero's hidden hand. Hero gets a per-hand
+    information set ``IP_vs_bet::<hand_id>`` because Hero knows its own hand.
+    """
+
+    hands = scenario.hero_range.hands
+    children = []
+    hero_probabilities: Dict[str, Dict[str, float]] = {}
+    for hand in hands:
+        ip_info_set = f"{_IP_INFO_SET}::{hand.hand_id}"
+        suffix = f"::{hand.hand_id}"
+        oop_node = _hand_subtree(scenario, hand.showdown, suffix, ip_info_set)
+        children.append((hand.weight, oop_node))
+        hero_probabilities[ip_info_set] = dict(hand.baseline_strategy)
+
+    root = ChanceNode(node_id="hand_bucket", children=tuple(children))
+    tree = GameTree(root=root)
+    # Guard the chance probabilities, terminal invariants, and per-player
+    # information-set consistency before the tree leaves this module.
+    validate_tree(tree)
+
+    baseline_hero_strategy = HeroStrategy(probabilities=hero_probabilities)
+    metadata = _base_metadata(scenario)
+    metadata["mode"] = "range"
+    metadata["hand_buckets"] = [
+        {"hand_id": hand.hand_id, "weight": hand.weight, "showdown": hand.showdown}
+        for hand in hands
+    ]
+    return tree, baseline_hero_strategy, metadata
 
 
 def _single_hand_villain_baseline(
