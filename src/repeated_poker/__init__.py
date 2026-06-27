@@ -91,6 +91,7 @@ from .pipeline import (
 )
 from .scenario_io import (
     RiverScenario,
+    RiverScenarioBettingTree,
     RiverScenarioBuildResult,
     RiverScenarioHeroRange,
     RiverScenarioHeroRangeHand,
@@ -166,6 +167,7 @@ __all__ = [
     "CandidateGenerationConfig",
     "run_candidate_analysis_pipeline",
     "RiverScenario",
+    "RiverScenarioBettingTree",
     "RiverScenarioBuildResult",
     "RiverScenarioHeroRange",
     "RiverScenarioHeroRangeHand",

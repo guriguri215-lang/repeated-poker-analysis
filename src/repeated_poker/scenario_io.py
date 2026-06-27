@@ -74,10 +74,12 @@ from .game import (
     HeroStrategy,
     VillainNode,
     VillainStrategy,
+    collect_villain_info_sets,
     require_finite,
     validate_hero_strategy,
     validate_tree,
 )
+from .river_betting_tree import build_betting_tree_from_scenario
 from .payoffs import (
     CHOP,
     HERO,
@@ -93,6 +95,9 @@ _OOP_INFO_SET = "OOP_river"
 _IP_INFO_SET = "IP_vs_bet"
 _OOP_ACTIONS = ("check", "bet")
 _IP_ACTIONS = ("call", "fold")
+# Betting-tree mode (river one-street tree) Hero decision points.
+_IP_AFTER_CHECK_ACTIONS = ("check", "bet")
+_IP_VS_BET_ACTIONS = ("call", "fold", "raise")
 
 
 # ---------------------------------------------------------------------------
@@ -129,15 +134,21 @@ class RiverScenarioHeroRangeHand:
     """One abstract weighted hand in a Hero range.
 
     ``baseline_strategy`` is the Hero ``call`` / ``fold`` distribution at this
-    hand's own ``IP_vs_bet::<hand_id>`` information set. ``showdown`` is the
-    per-hand fixed outcome in Hero-range-only mode and is ``None`` in matrix mode
-    (where the outcome comes from the showdown matrix instead).
+    hand's own ``IP_vs_bet::<hand_id>`` information set (simple action tree).
+    ``showdown`` is the per-hand fixed outcome in Hero-range-only mode and is
+    ``None`` in matrix mode (where the outcome comes from the matrix).
+
+    In betting-tree mode ``baseline_strategy`` is ``None`` and
+    ``baseline_strategies`` instead carries the Hero distributions at the two
+    betting-tree decision points: ``"after_oop_check"`` (``check`` / ``bet``) and
+    ``"vs_oop_bet"`` (``call`` / ``fold`` / ``raise``).
     """
 
     hand_id: str
     weight: float
     showdown: Optional[str]
-    baseline_strategy: Dict[str, float]
+    baseline_strategy: Optional[Dict[str, float]]
+    baseline_strategies: Optional[Dict[str, Dict[str, float]]] = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +171,21 @@ class RiverScenarioVillainRange:
     """An abstract weighted Villain range whose weights sum to one."""
 
     hands: List[RiverScenarioVillainRangeHand]
+
+
+@dataclass(frozen=True)
+class RiverScenarioBettingTree:
+    """River one-street betting-tree sizes (betting-tree mode only).
+
+    ``ip_raise_size`` is the *total* chips each player commits once IP's raise is
+    called (not the raise increment): if OOP bets ``oop_bet_size`` and IP raises
+    to ``ip_raise_size`` total, a called raise leaves both players invested at
+    ``initial_commitment + ip_raise_size``. It must exceed ``oop_bet_size``.
+    """
+
+    oop_bet_size: float
+    ip_bet_after_check_size: float
+    ip_raise_size: float
 
 
 @dataclass(frozen=True)
@@ -194,6 +220,7 @@ class RiverScenario:
     villain_range: Optional[RiverScenarioVillainRange] = None
     showdown_matrix: Optional[Dict[str, Dict[str, str]]] = None
     equity_matrix: Optional[Dict[str, Dict[str, float]]] = None
+    betting_tree: Optional[RiverScenarioBettingTree] = None
 
     @property
     def is_range_mode(self) -> bool:
@@ -202,6 +229,10 @@ class RiverScenario:
     @property
     def is_matrix_mode(self) -> bool:
         return self.villain_range is not None
+
+    @property
+    def is_betting_tree_mode(self) -> bool:
+        return self.betting_tree is not None
 
 
 @dataclass(frozen=True)
@@ -312,13 +343,16 @@ def _parse_shift_amounts(data) -> Optional[List[float]]:
     return shift_amounts
 
 
-def _parse_hero_range(data, require_showdown: bool) -> RiverScenarioHeroRange:
+def _parse_hero_range(
+    data, require_showdown: bool, betting_tree: bool = False
+) -> RiverScenarioHeroRange:
     # Abstract Hero-range parsing only: this validates weighted Hero hand
     # buckets. It is not a real card range parser (see the module docstring for
     # the v1 scope). ``require_showdown`` is true in Hero-range-only mode (each
     # hand carries its own fixed ``showdown``) and false in matrix mode (the
-    # outcome comes from the showdown matrix, so a per-hand ``showdown`` is
-    # rejected here).
+    # outcome comes from the matrix, so a per-hand ``showdown`` is rejected here).
+    # In ``betting_tree`` mode each hand carries ``baseline_strategies`` (two
+    # decision points) instead of the simple ``baseline_strategy``.
     if not isinstance(data, list):
         raise ValueError("hero_range must be a list of hand objects")
     if not data:
@@ -350,20 +384,32 @@ def _parse_hero_range(data, require_showdown: bool) -> RiverScenarioHeroRange:
             if "showdown" in raw:
                 raise ValueError(
                     f"hero_range[{index}].showdown must not be set in matrix mode; "
-                    "the outcome comes from showdown_matrix"
+                    "the outcome comes from the matrix"
                 )
             showdown = None
-        baseline = _validate_action_distribution(
-            raw.get("baseline_strategy"),
-            _IP_ACTIONS,
-            f"hero_range[{index}].baseline_strategy",
-        )
+
+        baseline_strategy: Optional[Dict[str, float]] = None
+        baseline_strategies: Optional[Dict[str, Dict[str, float]]] = None
+        if betting_tree:
+            if "baseline_strategy" in raw:
+                raise ValueError(
+                    f"hero_range[{index}] uses betting_tree mode and must provide "
+                    "baseline_strategies, not the old baseline_strategy"
+                )
+            baseline_strategies = _parse_betting_tree_baseline(raw, index)
+        else:
+            baseline_strategy = _validate_action_distribution(
+                raw.get("baseline_strategy"),
+                _IP_ACTIONS,
+                f"hero_range[{index}].baseline_strategy",
+            )
         hands.append(
             RiverScenarioHeroRangeHand(
                 hand_id=hand_id,
                 weight=weight,
                 showdown=showdown,
-                baseline_strategy=baseline,
+                baseline_strategy=baseline_strategy,
+                baseline_strategies=baseline_strategies,
             )
         )
         weight_total += weight
@@ -372,6 +418,69 @@ def _parse_hero_range(data, require_showdown: bool) -> RiverScenarioHeroRange:
             f"hero_range weights sum to {weight_total}, expected 1"
         )
     return RiverScenarioHeroRange(hands=hands)
+
+
+def _parse_betting_tree_baseline(raw, index: int) -> Dict[str, Dict[str, float]]:
+    strategies = raw.get("baseline_strategies")
+    if not isinstance(strategies, dict):
+        raise ValueError(
+            f"hero_range[{index}].baseline_strategies must be an object with "
+            "'after_oop_check' and 'vs_oop_bet'"
+        )
+    if "after_oop_check" not in strategies:
+        raise ValueError(
+            f"hero_range[{index}].baseline_strategies must contain 'after_oop_check'"
+        )
+    if "vs_oop_bet" not in strategies:
+        raise ValueError(
+            f"hero_range[{index}].baseline_strategies must contain 'vs_oop_bet'"
+        )
+    extra = set(strategies) - {"after_oop_check", "vs_oop_bet"}
+    if extra:
+        raise ValueError(
+            f"hero_range[{index}].baseline_strategies has unknown keys {sorted(extra)}"
+        )
+    after_check = _validate_action_distribution(
+        strategies["after_oop_check"],
+        _IP_AFTER_CHECK_ACTIONS,
+        f"hero_range[{index}].baseline_strategies['after_oop_check']",
+    )
+    vs_bet = _validate_action_distribution(
+        strategies["vs_oop_bet"],
+        _IP_VS_BET_ACTIONS,
+        f"hero_range[{index}].baseline_strategies['vs_oop_bet']",
+    )
+    return {"after_oop_check": after_check, "vs_oop_bet": vs_bet}
+
+
+def _parse_betting_tree(data) -> RiverScenarioBettingTree:
+    if not isinstance(data, dict):
+        raise ValueError("betting_tree must be an object")
+    oop_bet_size = _require_positive(
+        _as_number(data.get("oop_bet_size"), "betting_tree.oop_bet_size"),
+        "betting_tree.oop_bet_size",
+    )
+    ip_bet_after_check_size = _require_positive(
+        _as_number(
+            data.get("ip_bet_after_check_size"), "betting_tree.ip_bet_after_check_size"
+        ),
+        "betting_tree.ip_bet_after_check_size",
+    )
+    ip_raise_size = _require_positive(
+        _as_number(data.get("ip_raise_size"), "betting_tree.ip_raise_size"),
+        "betting_tree.ip_raise_size",
+    )
+    if ip_raise_size <= oop_bet_size:
+        raise ValueError(
+            "betting_tree.ip_raise_size must be greater than oop_bet_size "
+            f"({ip_raise_size} <= {oop_bet_size}); it is the total committed after "
+            "the raise is called, not the raise increment"
+        )
+    return RiverScenarioBettingTree(
+        oop_bet_size=oop_bet_size,
+        ip_bet_after_check_size=ip_bet_after_check_size,
+        ip_raise_size=ip_raise_size,
+    )
 
 
 def _parse_villain_range(data) -> RiverScenarioVillainRange:
@@ -539,7 +648,6 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     rake = _parse_rake(data.get("rake"))
     initial_commitment = _parse_initial_commitment(data.get("initial_commitment"))
-    bet_size = _require_positive(_as_number(data.get("bet_size"), "bet_size"), "bet_size")
 
     has_hero_range = "hero_range" in data
     has_villain_range = "villain_range" in data
@@ -547,6 +655,19 @@ def river_scenario_from_dict(data) -> RiverScenario:
     has_equity_matrix = "equity_matrix" in data
     has_matrix = has_showdown_matrix or has_equity_matrix
     has_single = "showdown" in data or "baseline_hero_strategy" in data
+    has_betting_tree = "betting_tree" in data
+
+    betting_tree = _parse_betting_tree(data.get("betting_tree")) if has_betting_tree else None
+
+    # ``bet_size`` is the simple-tree bet. Betting-tree mode carries its sizes in
+    # ``betting_tree`` instead, so the top-level ``bet_size`` is optional there
+    # and defaults to the OOP bet size.
+    if "bet_size" in data:
+        bet_size = _require_positive(_as_number(data.get("bet_size"), "bet_size"), "bet_size")
+    elif betting_tree is not None:
+        bet_size = betting_tree.oop_bet_size
+    else:
+        bet_size = _require_positive(_as_number(data.get("bet_size"), "bet_size"), "bet_size")
 
     showdown: Optional[str] = None
     baseline_hero_strategy: Optional[Dict[str, Dict[str, float]]] = None
@@ -578,7 +699,9 @@ def river_scenario_from_dict(data) -> RiverScenario:
                 "villain_range / showdown_matrix / equity_matrix cannot be "
                 "combined with a top-level showdown or baseline_hero_strategy"
             )
-        hero_range = _parse_hero_range(data.get("hero_range"), require_showdown=False)
+        hero_range = _parse_hero_range(
+            data.get("hero_range"), require_showdown=False, betting_tree=has_betting_tree
+        )
         villain_range = _parse_villain_range(data.get("villain_range"))
         if has_showdown_matrix:
             showdown_matrix = _parse_showdown_matrix(
@@ -603,8 +726,20 @@ def river_scenario_from_dict(data) -> RiverScenario:
                 "hero_range cannot be combined with a top-level showdown or "
                 "baseline_hero_strategy; use either single-hand mode or range mode"
             )
+        if has_betting_tree:
+            raise ValueError(
+                "betting_tree requires matrix mode (hero_range + villain_range + "
+                "showdown_matrix or equity_matrix); it is not supported in "
+                "Hero-range-only mode in v1"
+            )
         hero_range = _parse_hero_range(data.get("hero_range"), require_showdown=True)
     else:
+        if has_betting_tree:
+            raise ValueError(
+                "betting_tree requires matrix mode (hero_range + villain_range + "
+                "showdown_matrix or equity_matrix); it is not supported in "
+                "single-hand mode in v1"
+            )
         # Single-hand mode.
         showdown = data.get("showdown")
         if showdown not in _SHOWDOWN_RESULTS:
@@ -644,6 +779,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         villain_range=villain_range,
         showdown_matrix=showdown_matrix,
         equity_matrix=equity_matrix,
+        betting_tree=betting_tree,
     )
 
 
@@ -665,11 +801,14 @@ def build_river_steal_game_from_scenario(
     """Build the game tree and pipeline inputs from a validated scenario.
 
     Dispatches on the scenario mode: a single ``VillainNode`` root in single-hand
-    mode, a ``ChanceNode`` over weighted Hero buckets in Hero-range-only mode, or
-    a ``ChanceNode`` over ``(hero, villain)`` matchup pairs in matrix mode.
+    mode, a ``ChanceNode`` over weighted Hero buckets in Hero-range-only mode, a
+    ``ChanceNode`` over ``(hero, villain)`` matchup pairs in matrix mode, or the
+    fuller one-street tree in betting-tree mode.
     """
 
-    if scenario.is_matrix_mode:
+    if scenario.is_betting_tree_mode:
+        tree, baseline_hero_strategy, metadata = _build_betting_tree(scenario)
+    elif scenario.is_matrix_mode:
         tree, baseline_hero_strategy, metadata = _build_matrix_tree(scenario)
     elif scenario.is_range_mode:
         tree, baseline_hero_strategy, metadata = _build_range_tree(scenario)
@@ -899,12 +1038,46 @@ def _villain_baseline_best_response(
 
     response = solve_exact_response(tree, baseline_hero_strategy)
     chosen = response.best_response_strategies[0]
+    # Use each information set's own legal actions so this also covers
+    # betting-tree mode, where Villain information sets have different action
+    # sets (check/bet vs call/fold).
+    villain_info_sets = collect_villain_info_sets(tree)
     return VillainStrategy(
         probabilities={
             info_set: {
-                action: (1.0 if action == chosen_action else 0.0)
-                for action in _OOP_ACTIONS
+                action: (1.0 if action == chosen[info_set] else 0.0)
+                for action in actions
             }
-            for info_set, chosen_action in chosen.items()
+            for info_set, actions in villain_info_sets.items()
         }
     )
+
+
+def _build_betting_tree(scenario: RiverScenario):
+    """Build the river one-street betting tree (betting-tree mode).
+
+    Delegates the tree and Hero-strategy construction to
+    :mod:`repeated_poker.river_betting_tree` and assembles the metadata here so
+    the heavier accounting stays out of this module.
+    """
+
+    tree, baseline_hero_strategy = build_betting_tree_from_scenario(scenario)
+    use_equity = scenario.equity_matrix is not None
+    betting = scenario.betting_tree
+    metadata = _base_metadata(scenario)
+    metadata["mode"] = "range_matrix"
+    metadata["matrix_type"] = "equity" if use_equity else "showdown"
+    metadata["betting_tree"] = {
+        "oop_bet_size": betting.oop_bet_size,
+        "ip_bet_after_check_size": betting.ip_bet_after_check_size,
+        "ip_raise_size": betting.ip_raise_size,
+    }
+    metadata["hero_buckets"] = [
+        {"hand_id": hand.hand_id, "weight": hand.weight}
+        for hand in scenario.hero_range.hands
+    ]
+    metadata["villain_buckets"] = [
+        {"hand_id": hand.hand_id, "weight": hand.weight}
+        for hand in scenario.villain_range.hands
+    ]
+    return tree, baseline_hero_strategy, metadata

@@ -29,6 +29,7 @@ from repeated_poker import (  # noqa: E402  (path is set up above)
     build_river_steal_game_from_scenario,
     calculate_adaptation_deadline,
     collect_hero_info_sets,
+    collect_villain_info_sets,
     evaluate_fixed_profile,
     generate_shift_candidates,
     iter_terminals,
@@ -71,11 +72,23 @@ def _print_mode(build) -> None:
         hero_buckets = build.metadata.get("hero_buckets", [])
         villain_buckets = build.metadata.get("villain_buckets", [])
         matrix_type = build.metadata.get("matrix_type", "showdown")
+        betting_tree = build.metadata.get("betting_tree")
         print(
             f"mode: range_matrix (matrix_type {matrix_type}, "
             f"{len(hero_buckets)} hero buckets, "
-            f"{len(villain_buckets)} villain buckets)"
+            f"{len(villain_buckets)} villain buckets, "
+            f"betting_tree {'enabled' if betting_tree else 'disabled'})"
         )
+        if betting_tree:
+            print(
+                f"  betting_tree: oop_bet_size={betting_tree['oop_bet_size']} "
+                f"ip_bet_after_check_size={betting_tree['ip_bet_after_check_size']} "
+                f"ip_raise_size={betting_tree['ip_raise_size']}"
+            )
+            print(
+                f"  Hero info sets: {len(collect_hero_info_sets(build.tree))} / "
+                f"Villain info sets: {len(collect_villain_info_sets(build.tree))}"
+            )
         for bucket in hero_buckets:
             print(f"  hero {bucket['hand_id']}: weight={bucket['weight']}")
         for bucket in villain_buckets:
@@ -120,6 +133,15 @@ def _print_one_shot_baseline(build, baseline_value) -> None:
 
 
 def _print_locked_call_response(build) -> None:
+    if build.metadata.get("betting_tree"):
+        # The locked-call commitment is a simple-tree notion (a single IP_vs_bet
+        # call/fold decision). Betting-tree mode has multiple Hero decision
+        # points, so use the candidate-analysis runner for its deadlines instead.
+        print(
+            "Locked-call response: not computed in betting-tree mode "
+            "(use run_river_scenario_analysis.py)"
+        )
+        return
     locked_call = _locked_call_strategy(build.tree)
     response = solve_exact_response(build.tree, locked_call)
     chosen = response.best_response_strategies[0]
@@ -136,6 +158,14 @@ def _print_locked_call_response(build) -> None:
 def _print_deadlines(build, baseline_hero_ev: float) -> None:
     repeated = build.repeated
     if repeated is None or not repeated.horizons:
+        return
+    if build.metadata.get("betting_tree"):
+        # The single locked-call commitment is not defined for the betting tree;
+        # per-candidate deadlines are available via the analysis runner.
+        print(
+            "T_deadline: not computed in betting-tree mode "
+            "(per-candidate deadlines are in run_river_scenario_analysis.py)"
+        )
         return
     locked_call = _locked_call_strategy(build.tree)
     pre_adaptation = evaluate_fixed_profile(
