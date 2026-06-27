@@ -75,6 +75,15 @@ def _parse_args(argv):
     parser.add_argument("--output-json", dest="output_json", default=None)
     parser.add_argument("--output-csv", dest="output_csv", default=None)
     parser.add_argument("--output-markdown", dest="output_markdown", default=None)
+    parser.add_argument(
+        "--strict-json",
+        dest="strict_json",
+        action="store_true",
+        help=(
+            "emit RFC 8259-compatible JSON, mapping non-finite floats to null "
+            "(applies to --output-json)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -95,7 +104,7 @@ def _print_summary(batch) -> None:
 
 def _write_outputs(batch, args) -> None:
     if args.output_json is not None:
-        write_batch_json(batch, args.output_json)
+        write_batch_json(batch, args.output_json, strict=args.strict_json)
         print(f"saved JSON to {args.output_json}")
     if args.output_csv is not None:
         write_batch_csv(batch, args.output_csv)
