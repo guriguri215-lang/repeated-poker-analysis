@@ -21,7 +21,10 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Union
 
+from .scenario_batch import BATCH_ROW_COLUMNS
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .scenario_batch import BatchScenarioAnalysisResult
     from .scenario_pipeline import RiverScenarioAnalysisResult
 
 PathLike = Union[str, Path]
@@ -135,3 +138,86 @@ def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) ->
         writer.writerow(_CSV_COLUMNS)
         for row in rows:
             writer.writerow([_csv_cell(row.get(column)) for column in _CSV_COLUMNS])
+
+
+# ---------------------------------------------------------------------------
+# Batch exporters
+# ---------------------------------------------------------------------------
+
+# Subset of the batch row columns rendered in the compact Markdown table.
+_BATCH_MARKDOWN_COLUMNS: List[str] = [
+    "scenario_id",
+    "model_kind",
+    "horizon",
+    "generated_candidates",
+    "kept_candidates",
+    "eligible_candidates",
+    "pareto_frontier_candidates",
+    "top_candidate_id",
+    "top_candidate_t_deadline",
+    "error",
+]
+
+
+def batch_result_to_dict(batch: "BatchScenarioAnalysisResult") -> dict:
+    """Return the JSON payload for a batch run.
+
+    The payload keeps the comparison ``summary_rows`` plus the full per-scenario
+    ``scenario_results`` (each via :func:`analysis_result_to_dict`, keyed by
+    display path) so a batch file is self-contained for later comparison. Failed
+    scenarios appear only in ``summary_rows`` (with an ``error``).
+    """
+
+    return {
+        "summary_rows": [row.to_dict() for row in batch.rows],
+        "scenario_results": {
+            path: analysis_result_to_dict(result)
+            for path, result in batch.results.items()
+        },
+    }
+
+
+def write_batch_json(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
+    """Write the batch summary rows and per-scenario results as JSON to ``path``."""
+
+    target = Path(path)
+    _ensure_parent(target)
+    target.write_text(json.dumps(batch_result_to_dict(batch), indent=2), encoding="utf-8")
+
+
+def write_batch_csv(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
+    """Write one CSV row per scenario (summary rows only) to ``path``."""
+
+    target = Path(path)
+    _ensure_parent(target)
+    with target.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(BATCH_ROW_COLUMNS)
+        for row in batch.rows:
+            row_dict = row.to_dict()
+            writer.writerow([_csv_cell(row_dict.get(column)) for column in BATCH_ROW_COLUMNS])
+
+
+def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
+    """Write a compact GitHub-flavoured Markdown comparison table to ``path``.
+
+    This is an analysis/reporting helper, not a new solver model: it only renders
+    the existing per-scenario summary rows side by side.
+    """
+
+    target = Path(path)
+    _ensure_parent(target)
+    lines = [
+        "## Batch Scenario Analysis Summary",
+        "",
+        f"- scenarios: {len(batch.rows)} (ok: {batch.ok_count}, errors: {batch.error_count})",
+        "",
+        "| " + " | ".join(_BATCH_MARKDOWN_COLUMNS) + " |",
+        "| " + " | ".join("---" for _ in _BATCH_MARKDOWN_COLUMNS) + " |",
+    ]
+    for row in batch.rows:
+        row_dict = row.to_dict()
+        cells = [_csv_cell(row_dict.get(column)) for column in _BATCH_MARKDOWN_COLUMNS]
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.append("")
+    target.write_text("\n".join(lines), encoding="utf-8")
