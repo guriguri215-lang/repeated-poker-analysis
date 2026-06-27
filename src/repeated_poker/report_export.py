@@ -170,13 +170,32 @@ def _csv_cell(value) -> str:
 
 
 def _markdown_cell(value) -> str:
-    """Render a value as a Markdown table cell.
+    """Render a value as a human-readable Markdown table cell.
 
-    Escapes ``|`` (which would otherwise split the cell) and flattens newlines to
-    spaces so a multi-line or pipe-containing value cannot break the table.
+    Formatting, aimed at side-by-side scenario comparison rather than at machine
+    parsing (the CSV/JSON exports stay machine-friendly):
+
+    * ``None`` becomes ``-``;
+    * ``bool`` becomes ``yes`` / ``no``;
+    * ``float`` is shown with 6 decimals;
+    * a list / tuple is comma-separated;
+    * everything else uses ``str``.
+
+    The result then escapes ``|`` (which would otherwise split the cell) and
+    flattens carriage returns / newlines to spaces, so a multi-line or
+    pipe-containing value cannot break the table.
     """
 
-    text = _csv_cell(value)
+    if value is None:
+        text = "-"
+    elif isinstance(value, bool):
+        text = "yes" if value else "no"
+    elif isinstance(value, float):
+        text = f"{value:.6f}"
+    elif isinstance(value, (list, tuple)):
+        text = ", ".join(str(item) for item in value)
+    else:
+        text = str(value)
     return text.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
@@ -197,17 +216,23 @@ def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) ->
 # Batch exporters
 # ---------------------------------------------------------------------------
 
-# Subset of the batch row columns rendered in the compact Markdown table.
+# Batch row columns rendered in the Markdown comparison table, in display order.
+# A wider set than the compact stdout table so a Markdown report is self-contained
+# for side-by-side scenario comparison.
 _BATCH_MARKDOWN_COLUMNS: List[str] = [
     "scenario_id",
     "model_kind",
     "horizon",
+    "discount",
     "generated_candidates",
     "kept_candidates",
     "eligible_candidates",
     "pareto_frontier_candidates",
+    "minimum_villain_ev_candidates",
     "top_candidate_id",
     "top_candidate_t_deadline",
+    "top_candidate_post_response_hero_ev_worst_diff",
+    "top_candidate_detected_adaptation_is_at_least_baseline",
     "error",
 ]
 
@@ -274,11 +299,25 @@ def write_validation_json(
     target.write_text(_dump_json(validation.to_dict(), strict), encoding="utf-8")
 
 
-def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
-    """Write a compact GitHub-flavoured Markdown comparison table to ``path``.
+_BATCH_MARKDOWN_NOTES: List[str] = [
+    "This batch summary is a reporting helper, not a new solver model; it only "
+    "renders the existing per-scenario summary rows side by side.",
+    "The `top_candidate_*` columns are only populated when ranking is enabled "
+    "(for example `--rank-by t_deadline`); otherwise they show `-`.",
+    "`top_candidate_detected_adaptation_is_at_least_baseline` is only available "
+    "when detection output exists; otherwise it shows `-`.",
+    "Strict JSON output is separate from this Markdown (and from the CSV); it "
+    "only affects the JSON export.",
+]
 
-    This is an analysis/reporting helper, not a new solver model: it only renders
-    the existing per-scenario summary rows side by side.
+
+def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
+    """Write a GitHub-flavoured Markdown comparison report to ``path``.
+
+    The report has an overview (total / ok / error counts), a comparison table of
+    the per-scenario summary rows, and a short notes section. This is an
+    analysis/reporting helper, not a new solver model: it only renders the
+    existing rows side by side.
     """
 
     target = Path(path)
@@ -286,7 +325,13 @@ def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -
     lines = [
         "## Batch Scenario Analysis Summary",
         "",
-        f"- scenarios: {len(batch.rows)} (ok: {batch.ok_count}, errors: {batch.error_count})",
+        "### Overview",
+        "",
+        f"- total scenarios: {len(batch.rows)}",
+        f"- ok: {batch.ok_count}",
+        f"- errors: {batch.error_count}",
+        "",
+        "### Comparison",
         "",
         "| " + " | ".join(_BATCH_MARKDOWN_COLUMNS) + " |",
         "| " + " | ".join("---" for _ in _BATCH_MARKDOWN_COLUMNS) + " |",
@@ -295,5 +340,7 @@ def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -
         row_dict = row.to_dict()
         cells = [_markdown_cell(row_dict.get(column)) for column in _BATCH_MARKDOWN_COLUMNS]
         lines.append("| " + " | ".join(cells) + " |")
+    lines.extend(["", "### Notes", ""])
+    lines.extend(f"- {note}" for note in _BATCH_MARKDOWN_NOTES)
     lines.append("")
     target.write_text("\n".join(lines), encoding="utf-8")
