@@ -127,6 +127,17 @@ def _csv_cell(value) -> str:
     return str(value)
 
 
+def _markdown_cell(value) -> str:
+    """Render a value as a Markdown table cell.
+
+    Escapes ``|`` (which would otherwise split the cell) and flattens newlines to
+    spaces so a multi-line or pipe-containing value cannot break the table.
+    """
+
+    text = _csv_cell(value)
+    return text.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
 def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) -> None:
     """Write one CSV row per candidate (in report order) to ``path``."""
 
@@ -217,7 +228,7 @@ def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -
     ]
     for row in batch.rows:
         row_dict = row.to_dict()
-        cells = [_csv_cell(row_dict.get(column)) for column in _BATCH_MARKDOWN_COLUMNS]
+        cells = [_markdown_cell(row_dict.get(column)) for column in _BATCH_MARKDOWN_COLUMNS]
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     target.write_text("\n".join(lines), encoding="utf-8")

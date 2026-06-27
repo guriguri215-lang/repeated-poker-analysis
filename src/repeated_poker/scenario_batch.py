@@ -9,9 +9,10 @@ side.
 
 Inputs may be a single path (a directory, whose ``*.json`` files are read in
 filename order, or a single scenario file) or a sequence of paths (each a
-directory or a file, expanded in the given order). Display paths are kept in the
-caller's relative form (POSIX separators) so summary output and error messages do
-not leak absolute local paths.
+directory or a file, expanded in the given order). A scenario's ``source_path``
+is shown as a cwd-relative POSIX path when it is inside the current working
+directory, and as just its file name otherwise, so summary output and error
+messages never leak an absolute local path (see ``_display_path``).
 
 Errors are handled per the ``continue_on_error`` flag: fail-fast (the default)
 re-raises the first failure with the offending display path, while
@@ -149,9 +150,20 @@ class BatchScenarioAnalysisResult:
 
 
 def _display_path(path: Path) -> str:
-    """Return a stable, relative-ish display string (POSIX separators)."""
+    """Return a stable, non-leaking display string for ``path``.
 
-    return path.as_posix()
+    A path inside the current working directory is shown as a cwd-relative POSIX
+    path (so a directory input given as an absolute path still yields a
+    repo-relative ``source_path``). A path outside the cwd is shown as just its
+    file name, so summary output and error messages do not leak an absolute local
+    path such as ``C:/Users/<name>/...``.
+    """
+
+    try:
+        resolved = path.resolve()
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except (ValueError, OSError):
+        return path.name
 
 
 def _expand_inputs(inputs: BatchInput) -> List[Path]:

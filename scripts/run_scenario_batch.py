@@ -117,7 +117,14 @@ def main(argv) -> int:
     config = BatchScenarioAnalysisConfig(
         analysis=analysis, continue_on_error=args.continue_on_error
     )
-    batch = run_batch_scenario_analysis(args.inputs, config)
+    try:
+        batch = run_batch_scenario_analysis(args.inputs, config)
+    except Exception as exc:  # noqa: BLE001 - report fail-fast errors cleanly
+        # Without --continue-on-error a failing scenario aborts the batch; print a
+        # short message to stderr and exit non-zero rather than dumping a
+        # traceback. --continue-on-error never reaches here.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     _print_summary(batch)
     _write_outputs(batch, args)

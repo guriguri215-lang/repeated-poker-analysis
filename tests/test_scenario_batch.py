@@ -11,6 +11,7 @@ import pytest
 from repeated_poker import (
     BatchScenarioAnalysisConfig,
     BatchScenarioAnalysisResult,
+    BatchScenarioRow,
     RiverScenarioAnalysisConfig,
     batch_result_to_dict,
     run_batch_scenario_analysis,
@@ -50,6 +51,15 @@ def test_source_path_is_relative_form_not_absolute():
     rel = "examples/scenarios/nuts_chop_steal_bet98.json"
     batch = run_batch_scenario_analysis([rel])
     assert batch.rows[0].source_path == rel
+
+
+def test_absolute_directory_input_yields_relative_source_paths():
+    # An absolute directory inside the cwd should still produce cwd-relative
+    # source paths (no absolute local path leaks into the summary).
+    batch = run_batch_scenario_analysis(str(_SCENARIOS.resolve()))
+    for row in batch.rows:
+        assert not Path(row.source_path).is_absolute()
+        assert row.source_path.startswith("examples/scenarios/")
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +136,10 @@ def test_continue_on_error_records_error_row(tmp_path):
     ok_row = batch.rows[1]
     assert ok_row.scenario_id == "nuts_chop_steal_bet98"
     assert ok_row.source_path in batch.results
+    # A bad file in a temp dir outside the cwd must not leak its absolute path.
+    assert bad_row.source_path == "bad.json"
+    assert str(tmp_path) not in (bad_row.error or "")
+    assert str(tmp_path) not in bad_row.source_path
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +260,63 @@ def test_cli_continue_on_error(tmp_path):
         check=True,
     )
     assert "errors: 1" in completed.stdout
+
+
+def test_cli_fail_fast_reports_error_without_traceback(tmp_path):
+    bad = _write_bad_scenario(tmp_path)
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(bad)],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+# ---------------------------------------------------------------------------
+# Markdown escaping
+# ---------------------------------------------------------------------------
+
+
+def _row_with(**overrides) -> BatchScenarioRow:
+    base = dict(
+        scenario_id=None,
+        source_path="x.json",
+        model_kind="single_hand",
+        horizon=10,
+        discount=1.0,
+        generated_candidates=1,
+        kept_candidates=1,
+        excluded_candidates=0,
+        eligible_candidates=1,
+        pareto_frontier_candidates=1,
+        minimum_villain_ev_candidates=1,
+        top_candidate_id=None,
+        top_candidate_sort_key=None,
+        top_candidate_t_deadline=None,
+        top_candidate_post_response_hero_ev_worst_diff=None,
+        top_candidate_detected_adaptation_is_at_least_baseline=None,
+        error=None,
+    )
+    base.update(overrides)
+    return BatchScenarioRow(**base)
+
+
+def test_batch_markdown_escapes_pipe_and_newline(tmp_path):
+    row = _row_with(scenario_id="bad|id", error="oops | pipe\nand newline")
+    batch = BatchScenarioAnalysisResult(rows=[row], results={})
+    path = tmp_path / "esc.md"
+    write_batch_markdown(batch, path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    data_lines = [line for line in lines if line.startswith("| bad")]
+    assert len(data_lines) == 1
+    data = data_lines[0]
+    # Pipes from the values are escaped, and the newline is flattened to a space.
+    assert "bad\\|id" in data
+    assert "oops \\| pipe and newline" in data
+    # The header row and this data row have the same number of cell separators,
+    # so the literal pipes did not add extra columns.
+    header = next(line for line in lines if line.startswith("| scenario_id"))
+    assert data.count(" | ") == header.count(" | ")
