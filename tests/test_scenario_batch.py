@@ -1,0 +1,248 @@
+"""Tests for the batch scenario runner and its exporters."""
+
+import csv
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from repeated_poker import (
+    BatchScenarioAnalysisConfig,
+    BatchScenarioAnalysisResult,
+    RiverScenarioAnalysisConfig,
+    batch_result_to_dict,
+    run_batch_scenario_analysis,
+    write_batch_csv,
+    write_batch_json,
+    write_batch_markdown,
+)
+
+_ROOT = Path(__file__).resolve().parents[1]
+_SCENARIOS = _ROOT / "examples" / "scenarios"
+_SCRIPT = _ROOT / "scripts" / "run_scenario_batch.py"
+_NUTS = _SCENARIOS / "nuts_chop_steal_bet98.json"
+_RANGE = _SCENARIOS / "abstract_range_steal_bet98.json"
+
+
+# ---------------------------------------------------------------------------
+# Input expansion
+# ---------------------------------------------------------------------------
+
+
+def test_directory_input_reads_json_in_name_order():
+    batch = run_batch_scenario_analysis(_SCENARIOS)
+    expected = sorted(p.name for p in _SCENARIOS.glob("*.json"))
+    got = [Path(row.source_path).name for row in batch.rows]
+    assert got == expected
+    assert isinstance(batch, BatchScenarioAnalysisResult)
+
+
+def test_explicit_file_list_preserves_order():
+    batch = run_batch_scenario_analysis([_RANGE, _NUTS])
+    ids = [row.scenario_id for row in batch.rows]
+    assert ids == ["abstract_range_steal_bet98", "nuts_chop_steal_bet98"]
+
+
+def test_source_path_is_relative_form_not_absolute():
+    # Pass a relative path; the recorded source_path should stay relative.
+    rel = "examples/scenarios/nuts_chop_steal_bet98.json"
+    batch = run_batch_scenario_analysis([rel])
+    assert batch.rows[0].source_path == rel
+
+
+# ---------------------------------------------------------------------------
+# Summary rows
+# ---------------------------------------------------------------------------
+
+
+def test_summary_row_contains_required_fields():
+    batch = run_batch_scenario_analysis([_NUTS])
+    row = batch.rows[0]
+    assert row.scenario_id == "nuts_chop_steal_bet98"
+    assert row.model_kind == "single_hand"
+    assert row.horizon == 100
+    assert row.discount == 1.0
+    assert row.generated_candidates == 1
+    assert row.kept_candidates == 1
+    assert row.excluded_candidates == 0
+    assert row.eligible_candidates == 1
+    assert row.pareto_frontier_candidates >= 0
+    assert row.minimum_villain_ev_candidates >= 0
+    assert row.error is None
+
+
+def test_model_kind_reflects_betting_tree_and_matrix_type():
+    batch = run_batch_scenario_analysis(
+        [_SCENARIOS / "range_equity_betting_tree_bet98.json"]
+    )
+    assert batch.rows[0].model_kind == "range_matrix:equity+betting_tree"
+
+
+def test_ranking_populates_top_candidate_fields():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(ranking_criterion="t_deadline", ranking_top_k=1)
+    )
+    batch = run_batch_scenario_analysis([_NUTS], config)
+    row = batch.rows[0]
+    assert row.top_candidate_id is not None
+    assert row.top_candidate_sort_key is not None
+    assert row.top_candidate_t_deadline is not None
+
+
+def test_no_ranking_leaves_top_candidate_none():
+    batch = run_batch_scenario_analysis([_NUTS])
+    assert batch.rows[0].top_candidate_id is None
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+
+def _write_bad_scenario(tmp_path) -> Path:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not valid json", encoding="utf-8")
+    return bad
+
+
+def test_fail_fast_raises_on_bad_scenario(tmp_path):
+    bad = _write_bad_scenario(tmp_path)
+    with pytest.raises(ValueError, match="failed to analyse scenario"):
+        run_batch_scenario_analysis([bad])
+
+
+def test_continue_on_error_records_error_row(tmp_path):
+    bad = _write_bad_scenario(tmp_path)
+    config = BatchScenarioAnalysisConfig(continue_on_error=True)
+    batch = run_batch_scenario_analysis([bad, _NUTS], config)
+    assert batch.error_count == 1
+    assert batch.ok_count == 1
+    bad_row = batch.rows[0]
+    assert bad_row.error is not None
+    assert bad_row.scenario_id is None
+    # The successful scenario keeps its detailed result.
+    ok_row = batch.rows[1]
+    assert ok_row.scenario_id == "nuts_chop_steal_bet98"
+    assert ok_row.source_path in batch.results
+
+
+# ---------------------------------------------------------------------------
+# Exporters
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def batch():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(ranking_criterion="t_deadline", ranking_top_k=1)
+    )
+    return run_batch_scenario_analysis([_NUTS, _RANGE], config)
+
+
+def test_batch_json_contains_rows_and_results(tmp_path, batch):
+    path = tmp_path / "batch.json"
+    write_batch_json(batch, path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert len(payload["summary_rows"]) == 2
+    assert payload["summary_rows"][0]["scenario_id"] == "nuts_chop_steal_bet98"
+    assert set(payload["scenario_results"]) == set(batch.results)
+
+
+def test_batch_to_dict_matches_writer(batch):
+    payload = batch_result_to_dict(batch)
+    assert "summary_rows" in payload
+    assert "scenario_results" in payload
+
+
+def test_batch_csv_header_and_rows(tmp_path, batch):
+    path = tmp_path / "batch.csv"
+    write_batch_csv(batch, path)
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    assert "scenario_id" in rows[0]
+    assert "top_candidate_t_deadline" in rows[0]
+    assert len(rows) - 1 == len(batch.rows)
+
+
+def test_batch_markdown_contains_table(tmp_path, batch):
+    path = tmp_path / "batch.md"
+    write_batch_markdown(batch, path)
+    text = path.read_text(encoding="utf-8")
+    assert "Batch Scenario Analysis Summary" in text
+    assert "| scenario_id |" in text
+
+
+def test_parent_directory_auto_created(tmp_path, batch):
+    path = tmp_path / "nested" / "deep" / "batch.json"
+    write_batch_json(batch, path)
+    assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def test_cli_directory_input(tmp_path):
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(_SCENARIOS)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "scenarios:" in completed.stdout
+    assert "nuts_chop_steal_bet98" in completed.stdout
+
+
+def test_cli_writes_outputs(tmp_path):
+    json_path = tmp_path / "b.json"
+    csv_path = tmp_path / "b.csv"
+    md_path = tmp_path / "b.md"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_NUTS),
+            str(_RANGE),
+            "--rank-by",
+            "t_deadline",
+            "--output-json",
+            str(json_path),
+            "--output-csv",
+            str(csv_path),
+            "--output-markdown",
+            str(md_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "saved JSON to" in completed.stdout
+    assert "saved CSV to" in completed.stdout
+    assert "saved Markdown to" in completed.stdout
+    assert json_path.exists()
+    assert csv_path.exists()
+    assert md_path.exists()
+
+
+def test_cli_no_markdown_runs(tmp_path):
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(_NUTS), "--no-markdown"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "nuts_chop_steal_bet98" in completed.stdout
+
+
+def test_cli_continue_on_error(tmp_path):
+    bad = _write_bad_scenario(tmp_path)
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(bad), str(_NUTS), "--continue-on-error"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "errors: 1" in completed.stdout
