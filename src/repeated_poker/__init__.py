@@ -109,6 +109,12 @@ from .scenario_pipeline import (
     RiverScenarioAnalysisResult,
     run_river_scenario_analysis,
 )
+from .report_export import (
+    analysis_result_to_dict,
+    write_analysis_csv,
+    write_analysis_json,
+    write_analysis_markdown,
+)
 from .ranking import (
     RANK_BY_DETECTED_ADAPTATION_DELTA,
     RANK_BY_FIXED_VILLAIN_EV,
@@ -182,6 +188,10 @@ __all__ = [
     "RiverScenarioAnalysisConfig",
     "RiverScenarioAnalysisResult",
     "run_river_scenario_analysis",
+    "analysis_result_to_dict",
+    "write_analysis_csv",
+    "write_analysis_json",
+    "write_analysis_markdown",
     "RANK_BY_DETECTED_ADAPTATION_DELTA",
     "RANK_BY_FIXED_VILLAIN_EV",
     "RANK_BY_L1_DISTANCE",
