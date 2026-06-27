@@ -67,6 +67,17 @@ def _print_mode(build) -> None:
                 f"  hand {bucket['hand_id']}: weight={bucket['weight']} "
                 f"showdown={bucket['showdown']}"
             )
+    elif mode == "range_matrix":
+        hero_buckets = build.metadata.get("hero_buckets", [])
+        villain_buckets = build.metadata.get("villain_buckets", [])
+        print(
+            f"mode: range_matrix ({len(hero_buckets)} hero buckets, "
+            f"{len(villain_buckets)} villain buckets)"
+        )
+        for bucket in hero_buckets:
+            print(f"  hero {bucket['hand_id']}: weight={bucket['weight']}")
+        for bucket in villain_buckets:
+            print(f"  villain {bucket['hand_id']}: weight={bucket['weight']}")
     else:
         print(f"mode: single_hand (showdown {build.metadata.get('showdown')})")
 
@@ -81,12 +92,15 @@ def _print_terminal_evs(tree) -> None:
 
 
 def _print_one_shot_baseline(build, baseline_value) -> None:
-    oop_action = _pure_action(
-        build.baseline_villain_strategy.probabilities[_OOP_INFO_SET]
-    )
+    villain_probabilities = build.baseline_villain_strategy.probabilities
     hero_probabilities = build.baseline_hero_strategy.probabilities
-    if build.metadata.get("mode") != "range" and "IP_vs_bet" in hero_probabilities:
+    if (
+        build.metadata.get("mode") == "single_hand"
+        and _OOP_INFO_SET in villain_probabilities
+        and "IP_vs_bet" in hero_probabilities
+    ):
         # Single-hand mode keeps the original compact one-line format.
+        oop_action = _pure_action(villain_probabilities[_OOP_INFO_SET])
         ip_action = _pure_action(hero_probabilities["IP_vs_bet"])
         print(
             f"One-shot baseline: OOP {oop_action} / IP {ip_action} "
@@ -94,9 +108,11 @@ def _print_one_shot_baseline(build, baseline_value) -> None:
         )
         return
     print(
-        f"One-shot baseline: OOP {oop_action} "
-        f"(Hero {baseline_value.hero_ev:+.4f} / Villain {baseline_value.villain_ev:+.4f})"
+        f"One-shot baseline "
+        f"(Hero {baseline_value.hero_ev:+.4f} / Villain {baseline_value.villain_ev:+.4f}):"
     )
+    for info_set, distribution in sorted(villain_probabilities.items()):
+        print(f"  OOP {info_set}: {_pure_action(distribution)}")
     for info_set, distribution in sorted(hero_probabilities.items()):
         print(f"  IP {info_set}: {_pure_action(distribution)}")
 
@@ -104,8 +120,15 @@ def _print_one_shot_baseline(build, baseline_value) -> None:
 def _print_locked_call_response(build) -> None:
     locked_call = _locked_call_strategy(build.tree)
     response = solve_exact_response(build.tree, locked_call)
-    oop_action = response.best_response_strategies[0][_OOP_INFO_SET]
-    print(f"Locked-call response: OOP {oop_action}")
+    chosen = response.best_response_strategies[0]
+    if list(chosen) == [_OOP_INFO_SET]:
+        # Single-hand mode keeps the original compact "OOP <action>" format.
+        print(f"Locked-call response: OOP {chosen[_OOP_INFO_SET]}")
+        return
+    actions = ", ".join(
+        f"{info_set}={chosen[info_set]}" for info_set in sorted(chosen)
+    )
+    print(f"Locked-call response: OOP {actions}")
 
 
 def _print_deadlines(build, baseline_hero_ev: float) -> None:
