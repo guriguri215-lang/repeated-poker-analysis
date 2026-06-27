@@ -5,11 +5,15 @@ Usage:
 
     python scripts/run_river_scenario.py examples/scenarios/nuts_chop_steal_bet98.json
 
-It prints the scenario id, the terminal EVs, the single-hand baseline profile
-(OOP/IP pure actions and Hero/Villain EVs), the locked-call response, the
-generated candidate count, and (when repeated horizons are given) the
-``T_deadline`` table for the locked-call commitment. It uses only the package
-and the standard library, and it does not write any file.
+It prints the scenario id, the mode (single-hand or weighted range), the terminal
+EVs, the baseline profile (OOP/IP baseline actions and Hero/Villain EVs), the
+locked-call response, the generated candidate count, and (when repeated horizons
+are given) the ``T_deadline`` table for the locked-call commitment. It works for
+both single-hand and abstract weighted range scenarios, and it does not write any
+file.
+
+For the full candidate-analysis pipeline and the Markdown summary, use
+``scripts/run_river_scenario_analysis.py`` instead.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from repeated_poker import (  # noqa: E402  (path is set up above)
     HeroStrategy,
     build_river_steal_game_from_scenario,
     calculate_adaptation_deadline,
+    collect_hero_info_sets,
     evaluate_fixed_profile,
     generate_shift_candidates,
     iter_terminals,
@@ -31,9 +36,7 @@ from repeated_poker import (  # noqa: E402  (path is set up above)
     solve_exact_response,
 )
 
-_LOCKED_CALL = HeroStrategy({"IP_vs_bet": {"call": 1.0, "fold": 0.0}})
 _OOP_INFO_SET = "OOP_river"
-_IP_INFO_SET = "IP_vs_bet"
 
 
 def _pure_action(distribution) -> str:
@@ -44,6 +47,28 @@ def _pure_action(distribution) -> str:
             return action
     # Fall back to the highest-probability action for non-pure inputs.
     return max(distribution, key=distribution.get)
+
+
+def _locked_call_strategy(tree) -> HeroStrategy:
+    """A Hero strategy that calls at every Hero information set in the tree."""
+
+    return HeroStrategy(
+        {info_set: {"call": 1.0, "fold": 0.0} for info_set in collect_hero_info_sets(tree)}
+    )
+
+
+def _print_mode(build) -> None:
+    mode = build.metadata.get("mode", "single_hand")
+    if mode == "range":
+        buckets = build.metadata.get("hand_buckets", [])
+        print(f"mode: range ({len(buckets)} hand buckets)")
+        for bucket in buckets:
+            print(
+                f"  hand {bucket['hand_id']}: weight={bucket['weight']} "
+                f"showdown={bucket['showdown']}"
+            )
+    else:
+        print(f"mode: single_hand (showdown {build.metadata.get('showdown')})")
 
 
 def _print_terminal_evs(tree) -> None:
@@ -59,17 +84,26 @@ def _print_one_shot_baseline(build, baseline_value) -> None:
     oop_action = _pure_action(
         build.baseline_villain_strategy.probabilities[_OOP_INFO_SET]
     )
-    ip_action = _pure_action(
-        build.baseline_hero_strategy.probabilities[_IP_INFO_SET]
-    )
+    hero_probabilities = build.baseline_hero_strategy.probabilities
+    if build.metadata.get("mode") != "range" and "IP_vs_bet" in hero_probabilities:
+        # Single-hand mode keeps the original compact one-line format.
+        ip_action = _pure_action(hero_probabilities["IP_vs_bet"])
+        print(
+            f"One-shot baseline: OOP {oop_action} / IP {ip_action} "
+            f"(Hero {baseline_value.hero_ev:+.4f} / Villain {baseline_value.villain_ev:+.4f})"
+        )
+        return
     print(
-        f"One-shot baseline: OOP {oop_action} / IP {ip_action} "
+        f"One-shot baseline: OOP {oop_action} "
         f"(Hero {baseline_value.hero_ev:+.4f} / Villain {baseline_value.villain_ev:+.4f})"
     )
+    for info_set, distribution in sorted(hero_probabilities.items()):
+        print(f"  IP {info_set}: {_pure_action(distribution)}")
 
 
 def _print_locked_call_response(build) -> None:
-    response = solve_exact_response(build.tree, _LOCKED_CALL)
+    locked_call = _locked_call_strategy(build.tree)
+    response = solve_exact_response(build.tree, locked_call)
     oop_action = response.best_response_strategies[0][_OOP_INFO_SET]
     print(f"Locked-call response: OOP {oop_action}")
 
@@ -78,10 +112,11 @@ def _print_deadlines(build, baseline_hero_ev: float) -> None:
     repeated = build.repeated
     if repeated is None or not repeated.horizons:
         return
+    locked_call = _locked_call_strategy(build.tree)
     pre_adaptation = evaluate_fixed_profile(
-        build.tree, _LOCKED_CALL, build.baseline_villain_strategy
+        build.tree, locked_call, build.baseline_villain_strategy
     ).hero_ev
-    post_adaptation = solve_exact_response(build.tree, _LOCKED_CALL).ev_h_worst
+    post_adaptation = solve_exact_response(build.tree, locked_call).ev_h_worst
     print(
         "T_deadline for the locked-call commitment "
         f"(baseline Hero EV {baseline_hero_ev:+.4f}, "
@@ -115,6 +150,7 @@ def main(argv) -> int:
     print(f"scenario_id: {build.scenario_id}")
     if build.description:
         print(f"description: {build.description}")
+    _print_mode(build)
     _print_terminal_evs(build.tree)
 
     baseline_value = evaluate_fixed_profile(

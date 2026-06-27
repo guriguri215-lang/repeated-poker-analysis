@@ -1,0 +1,40 @@
+{
+  "scenario_id": "abstract_range_steal_bet98",
+  "description": "Abstract weighted Hero range for a river steal spot.",
+  "rake": {
+    "rate": 0.05,
+    "cap": 4.0
+  },
+  "initial_commitment": {
+    "hero": 1.0,
+    "villain": 1.0
+  },
+  "bet_size": 98.0,
+  "hero_range": [
+    {
+      "hand_id": "chop_fold_candidate",
+      "weight": 0.8,
+      "showdown": "chop",
+      "baseline_strategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "hand_id": "hero_winner",
+      "weight": 0.2,
+      "showdown": "hero",
+      "baseline_strategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    }
+  ],
+  "candidate_generation": {
+    "shift_amounts": [0.25, 0.5, 1.0]
+  },
+  "repeated": {
+    "horizons": [10, 20, 50, 100],
+    "discount": 1.0
+  }
+}

@@ -91,6 +91,8 @@ from .pipeline import (
 from .scenario_io import (
     RiverScenario,
     RiverScenarioBuildResult,
+    RiverScenarioHeroRange,
+    RiverScenarioHeroRangeHand,
     RiverScenarioInitialCommitment,
     RiverScenarioRake,
     RiverScenarioRepeatedConfig,
@@ -162,6 +164,8 @@ __all__ = [
     "run_candidate_analysis_pipeline",
     "RiverScenario",
     "RiverScenarioBuildResult",
+    "RiverScenarioHeroRange",
+    "RiverScenarioHeroRangeHand",
     "RiverScenarioInitialCommitment",
     "RiverScenarioRake",
     "RiverScenarioRepeatedConfig",

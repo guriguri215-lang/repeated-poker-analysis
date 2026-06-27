@@ -160,6 +160,13 @@ nuts-chop steal spot. The same spot can now also be loaded from JSON
 (`examples/scenarios/nuts_chop_steal_bet98.json`) via the river scenario input,
 and run end-to-end through the candidate-analysis pipeline with
 `python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal_bet98.json`.
+The scenario input also accepts an abstract weighted Hero range
+(`examples/scenarios/abstract_range_steal_bet98.json`), which builds a chance
+node over weighted hand buckets and runs through the same pipeline. This range
+mode is Hero-range-only in v1: it does not model Villain private hand buckets,
+includes no showdown or equity matrix (each hand's `showdown` is a fixed abstract
+outcome for that Hero bucket), and supports no raises or arbitrary betting trees
+in JSON.
 
 Parameters:
 

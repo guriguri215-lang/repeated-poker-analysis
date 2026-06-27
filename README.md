@@ -170,12 +170,27 @@ An abstract river spot can be described in a JSON file and turned into a
 `GameTree` plus pipeline inputs with `load_river_scenario_json` and
 `build_river_steal_game_from_scenario` (see
 `examples/scenarios/nuts_chop_steal_bet98.json` and
-`python scripts/run_river_scenario.py <scenario.json>`). To run a scenario all
-the way through the candidate-analysis pipeline and print the Markdown summary,
-use `run_river_scenario_analysis` or
+`python scripts/run_river_scenario.py <scenario.json>`). The input has two modes:
+single-hand mode (a top-level `showdown` and `baseline_hero_strategy`) and
+abstract weighted range mode (a `hero_range` of weighted hands, each with its own
+`showdown` and `baseline_strategy`; see
+`examples/scenarios/abstract_range_steal_bet98.json`). To run a scenario all the
+way through the candidate-analysis pipeline and print the Markdown summary, use
+`run_river_scenario_analysis` or
 `python scripts/run_river_scenario_analysis.py <scenario.json>`. This v1 input is
-an abstract spot only; it does not parse real cards, hand ranges, or solver
-exports.
+an abstract spot only; the range weights and per-hand showdown results are given
+directly, so it does not parse real cards, hand ranges, or solver exports.
+
+Scope of the abstract range mode in v1:
+
+- It is **Hero-range-only**: it samples Hero hand buckets and does not model
+  Villain private hand buckets yet.
+- Each hand's `showdown` is a fixed abstract outcome for that Hero bucket, not a
+  matchup result against a Villain range. There is no showdown matrix or equity
+  matrix.
+- The JSON action tree is limited to OOP `check`/`bet` and IP `call`/`fold`. It
+  does not support raises or arbitrary betting trees, even though the core
+  `GameTree` itself allows arbitrary action labels.
 
 ### MVP walkthrough
 
