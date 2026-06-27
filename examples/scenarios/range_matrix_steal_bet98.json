@@ -1,0 +1,58 @@
+{
+  "scenario_id": "range_matrix_steal_bet98",
+  "description": "Abstract Hero/Villain range with matchup showdown matrix.",
+  "rake": {
+    "rate": 0.05,
+    "cap": 4.0
+  },
+  "initial_commitment": {
+    "hero": 1.0,
+    "villain": 1.0
+  },
+  "bet_size": 98.0,
+  "hero_range": [
+    {
+      "hand_id": "hero_chop",
+      "weight": 0.8,
+      "baseline_strategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "hand_id": "hero_strong",
+      "weight": 0.2,
+      "baseline_strategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    }
+  ],
+  "villain_range": [
+    {
+      "hand_id": "villain_chop",
+      "weight": 0.7
+    },
+    {
+      "hand_id": "villain_strong",
+      "weight": 0.3
+    }
+  ],
+  "showdown_matrix": {
+    "hero_chop": {
+      "villain_chop": "chop",
+      "villain_strong": "villain"
+    },
+    "hero_strong": {
+      "villain_chop": "hero",
+      "villain_strong": "chop"
+    }
+  },
+  "candidate_generation": {
+    "shift_amounts": [0.25, 0.5, 1.0]
+  },
+  "repeated": {
+    "horizons": [10, 20, 50, 100],
+    "discount": 1.0
+  }
+}
