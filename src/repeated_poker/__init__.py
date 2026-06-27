@@ -88,6 +88,16 @@ from .pipeline import (
     CandidateGenerationConfig,
     run_candidate_analysis_pipeline,
 )
+from .scenario_io import (
+    RiverScenario,
+    RiverScenarioBuildResult,
+    RiverScenarioInitialCommitment,
+    RiverScenarioRake,
+    RiverScenarioRepeatedConfig,
+    build_river_steal_game_from_scenario,
+    load_river_scenario_json,
+    river_scenario_from_dict,
+)
 from .ranking import (
     RANK_BY_DETECTED_ADAPTATION_DELTA,
     RANK_BY_FIXED_VILLAIN_EV,
@@ -145,6 +155,14 @@ __all__ = [
     "CandidateFilterConfig",
     "CandidateGenerationConfig",
     "run_candidate_analysis_pipeline",
+    "RiverScenario",
+    "RiverScenarioBuildResult",
+    "RiverScenarioInitialCommitment",
+    "RiverScenarioRake",
+    "RiverScenarioRepeatedConfig",
+    "build_river_steal_game_from_scenario",
+    "load_river_scenario_json",
+    "river_scenario_from_dict",
     "RANK_BY_DETECTED_ADAPTATION_DELTA",
     "RANK_BY_FIXED_VILLAIN_EV",
     "RANK_BY_L1_DISTANCE",

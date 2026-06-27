@@ -164,6 +164,16 @@ Markdown rendering into a single call for a small abstract game. It is an
 orchestration helper, not a new solver; it does not write files and adds no
 CLI.
 
+### JSON scenario input
+
+An abstract river spot can be described in a JSON file and turned into a
+`GameTree` plus pipeline inputs with `load_river_scenario_json` and
+`build_river_steal_game_from_scenario` (see
+`examples/scenarios/nuts_chop_steal_bet98.json` and
+`python scripts/run_river_scenario.py <scenario.json>`). This v1 input is an
+abstract spot only; it does not parse real cards, hand ranges, or solver
+exports.
+
 ### MVP walkthrough
 
 See [docs/mvp_walkthrough.md](docs/mvp_walkthrough.md) for an end-to-end

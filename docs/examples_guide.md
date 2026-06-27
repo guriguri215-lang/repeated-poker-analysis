@@ -126,6 +126,41 @@ python examples/value_bluff_river.py
 - They do not import real ranges.
 - They do not model full opponent adaptation.
 
+## JSON scenario input
+
+Instead of a hand-written Python example, an abstract river spot can be loaded
+from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
+BET=98 nuts-chop steal case.
+
+Run it with the helper script (it prints terminal EVs, the baseline profile EV,
+the candidate count, and the `T_deadline` table):
+
+```powershell
+python scripts/run_river_scenario.py examples/scenarios/nuts_chop_steal_bet98.json
+```
+
+From Python, build the game and feed it into the pipeline:
+
+```python
+from repeated_poker import (
+    build_river_steal_game_from_scenario,
+    generate_shift_candidates,
+    load_river_scenario_json,
+)
+
+build = build_river_steal_game_from_scenario(
+    load_river_scenario_json("examples/scenarios/nuts_chop_steal_bet98.json")
+)
+candidates = generate_shift_candidates(
+    build.tree, build.baseline_hero_strategy, build.shift_amounts
+)
+```
+
+`build.tree`, `build.baseline_hero_strategy`, and `build.baseline_villain_strategy`
+are also ready to pass into `run_candidate_analysis_pipeline`. This v1 input is
+an abstract spot only; it does not parse real cards, hand ranges, or solver
+exports.
+
 ## Related docs
 
 - [MVP Walkthrough](mvp_walkthrough.md)
