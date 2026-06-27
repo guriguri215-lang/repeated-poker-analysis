@@ -50,11 +50,14 @@ mode: although the ``IP_vs_bet::`` / ``OOP_river::`` prefixes would namespace
 them, v1 rejects an id shared between the two ranges to keep the matrix keys and
 any future cross-references unambiguous.
 
-For the river action tree, JSON scenario v1 treats an OOP ``check`` as an
-immediate check-check showdown: there is no IP action after OOP checks, so no
-``IP_vs_check::<hero_id>`` information set is created. A fuller betting-tree
-model (IP betting after OOP checks, raises, or arbitrary river trees) is a future
-extension, even though the core ``GameTree`` itself allows arbitrary action
+For the river action tree, the simple-tree modes (single-hand, Hero-range-only,
+and matrix mode without ``betting_tree``) treat an OOP ``check`` as an immediate
+check-check showdown, with no IP action after the check. Matrix mode may instead
+add an optional ``betting_tree`` (see :mod:`repeated_poker.river_betting_tree`),
+under which an OOP ``check`` leads to an IP ``check`` / ``bet`` and an OOP ``bet``
+allows an IP ``call`` / ``fold`` / ``raise``. Re-raises, arbitrary nested betting
+trees, multiple bet sizes per node, and street transitions remain future
+extensions, even though the core ``GameTree`` itself allows arbitrary action
 labels. The core ``game`` / ``payoffs`` / ``exact_response`` / ``repeated``
 modules are reused unchanged.
 """
@@ -661,9 +664,15 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     # ``bet_size`` is the simple-tree bet. Betting-tree mode carries its sizes in
     # ``betting_tree`` instead, so the top-level ``bet_size`` is optional there
-    # and defaults to the OOP bet size.
+    # and defaults to ``betting_tree.oop_bet_size``. If both are given they must
+    # agree, so the recorded ``bet_size`` cannot contradict the built tree.
     if "bet_size" in data:
         bet_size = _require_positive(_as_number(data.get("bet_size"), "bet_size"), "bet_size")
+        if betting_tree is not None and abs(bet_size - betting_tree.oop_bet_size) > _TOLERANCE:
+            raise ValueError(
+                f"bet_size ({bet_size}) must match betting_tree.oop_bet_size "
+                f"({betting_tree.oop_bet_size}) in betting-tree mode, or be omitted"
+            )
     elif betting_tree is not None:
         bet_size = betting_tree.oop_bet_size
     else:

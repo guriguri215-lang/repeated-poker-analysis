@@ -256,6 +256,21 @@ def test_betting_tree_requires_matrix_mode():
         river_scenario_from_dict(data)
 
 
+def test_mismatched_top_level_bet_size_is_rejected():
+    data = _sample_dict()
+    data["bet_size"] = 50.0  # != betting_tree.oop_bet_size (98.0)
+    with pytest.raises(ValueError, match="must match betting_tree.oop_bet_size"):
+        river_scenario_from_dict(data)
+
+
+def test_matching_top_level_bet_size_is_accepted():
+    data = _sample_dict()
+    data["bet_size"] = 98.0  # == betting_tree.oop_bet_size
+    scenario = river_scenario_from_dict(data)
+    assert scenario.bet_size == 98.0
+    assert scenario.betting_tree.oop_bet_size == 98.0
+
+
 # ---------------------------------------------------------------------------
 # CLI script
 # ---------------------------------------------------------------------------

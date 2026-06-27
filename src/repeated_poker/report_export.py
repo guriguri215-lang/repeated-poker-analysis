@@ -65,6 +65,7 @@ def analysis_result_to_dict(result: "RiverScenarioAnalysisResult") -> dict:
             "kept": counts.kept,
             "excluded": counts.excluded,
         },
+        "filter_result": result.pipeline_result.filter_result.to_dict(),
         "analysis_report": result.pipeline_result.analysis_report.to_dict(),
         "markdown_summary": result.markdown_summary,
         "ranking": None,

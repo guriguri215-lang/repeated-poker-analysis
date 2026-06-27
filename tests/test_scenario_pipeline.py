@@ -110,6 +110,30 @@ def test_no_markdown_disables_summary():
     assert result.markdown_summary is None
 
 
+def test_bare_string_filter_allowed_info_sets_is_rejected():
+    with pytest.raises(ValueError, match="not a bare string"):
+        run_river_scenario_analysis(
+            _SAMPLE,
+            RiverScenarioAnalysisConfig(filter_allowed_info_sets="IP_vs_bet"),
+        )
+
+
+def test_list_filter_allowed_info_sets_is_accepted():
+    result = run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(filter_allowed_info_sets=["IP_vs_bet"]),
+    )
+    assert isinstance(result, RiverScenarioAnalysisResult)
+
+
+def test_set_filter_allowed_info_sets_is_accepted():
+    result = run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(filter_allowed_info_sets={"IP_vs_bet"}),
+    )
+    assert isinstance(result, RiverScenarioAnalysisResult)
+
+
 def test_to_dict_contains_core_fields():
     result = run_river_scenario_analysis(_SAMPLE)
     payload = result.to_dict()

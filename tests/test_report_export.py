@@ -56,6 +56,16 @@ def test_write_json_contains_report_and_ranking(tmp_path, result):
     assert payload["ranking"]["ranked_rows"]
 
 
+def test_write_json_contains_filter_result(tmp_path, result):
+    path = tmp_path / "out.json"
+    write_analysis_json(result, path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    filter_result = payload["filter_result"]
+    assert "summary_counts" in filter_result
+    assert "kept_candidate_ids" in filter_result
+    assert "excluded" in filter_result
+
+
 def test_write_json_creates_parent_directory(tmp_path, result):
     path = tmp_path / "nested" / "deep" / "out.json"
     write_analysis_json(result, path)

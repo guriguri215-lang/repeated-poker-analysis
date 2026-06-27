@@ -243,8 +243,9 @@ python scripts/run_river_scenario_analysis.py examples/scenarios/range_equity_be
 Each output flag creates missing parent directories and overwrites an existing
 file, and the script prints a short `saved ... to <path>` line per file. The JSON
 payload contains the scenario id, the selected horizon/discount, the build
-metadata, the candidate counts, the full `analysis_report.to_dict()`, the
-Markdown summary, and the ranking (when `--rank-by` is given); it is written with
+metadata, the candidate counts, the filter result (kept ids and excluded
+candidates with reasons), the full `analysis_report.to_dict()`, the Markdown
+summary, and the ranking (when `--rank-by` is given); it is written with
 `json.dumps(indent=2)`. Python's standard `json` module may serialise a
 non-finite KL divergence as `Infinity` by default. This is not strict RFC 8259
 JSON, and JavaScript `JSON.parse` will reject it; strict JSON output is out of
