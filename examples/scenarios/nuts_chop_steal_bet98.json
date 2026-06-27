@@ -1,0 +1,27 @@
+{
+  "scenario_id": "nuts_chop_steal_bet98",
+  "description": "Nuts-chop steal commitment toy river spot.",
+  "rake": {
+    "rate": 0.05,
+    "cap": 4.0
+  },
+  "initial_commitment": {
+    "hero": 1.0,
+    "villain": 1.0
+  },
+  "bet_size": 98.0,
+  "showdown": "chop",
+  "baseline_hero_strategy": {
+    "IP_vs_bet": {
+      "call": 0.0,
+      "fold": 1.0
+    }
+  },
+  "candidate_generation": {
+    "shift_amounts": [1.0]
+  },
+  "repeated": {
+    "horizons": [10, 20, 50, 100],
+    "discount": 1.0
+  }
+}

@@ -156,7 +156,8 @@ opponent learning.
 
 The repository now includes a regression test
 (`tests/test_nuts_chop_steal_commitment.py`) for the original motivating
-nuts-chop steal spot.
+nuts-chop steal spot. The same spot can now also be loaded from JSON
+(`examples/scenarios/nuts_chop_steal_bet98.json`) via the river scenario input.
 
 Parameters:
 
