@@ -70,8 +70,10 @@ def _print_mode(build) -> None:
     elif mode == "range_matrix":
         hero_buckets = build.metadata.get("hero_buckets", [])
         villain_buckets = build.metadata.get("villain_buckets", [])
+        matrix_type = build.metadata.get("matrix_type", "showdown")
         print(
-            f"mode: range_matrix ({len(hero_buckets)} hero buckets, "
+            f"mode: range_matrix (matrix_type {matrix_type}, "
+            f"{len(hero_buckets)} hero buckets, "
             f"{len(villain_buckets)} villain buckets)"
         )
         for bucket in hero_buckets:
