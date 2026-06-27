@@ -246,13 +246,16 @@ payload contains the scenario id, the selected horizon/discount, the build
 metadata, the candidate counts, the filter result (kept ids and excluded
 candidates with reasons), the full `analysis_report.to_dict()`, the Markdown
 summary, and the ranking (when `--rank-by` is given); it is written with
-`json.dumps(indent=2)`. Python's standard `json` module may serialise a
-non-finite KL divergence as `Infinity` by default. This is not strict RFC 8259
-JSON, and JavaScript `JSON.parse` will reject it; strict JSON output is out of
-scope for v1. The CSV has one row per candidate with the main
-selection/deadline/detection columns. By convention these go under `reports/`,
-which is git-ignored. `--output-markdown` forces Markdown generation, so it
-overrides `--no-markdown` for the saved file (`--no-markdown` then only
+`json.dumps(indent=2)`. By default Python's standard `json` module may serialise
+a non-finite KL divergence as `Infinity`, which is not strict RFC 8259 JSON and
+which JavaScript `JSON.parse` rejects. Pass `--strict-json` (or `strict=True` to
+`write_analysis_json` / `write_batch_json`) to emit RFC 8259-compatible JSON
+instead, which maps every non-finite float (`inf` / `-inf` / `nan`) to `null`;
+prefer it when the output is consumed by `JSON.parse`. `--strict-json` affects
+only the JSON output, not Markdown or CSV. The CSV has one row per candidate with
+the main selection/deadline/detection columns. By convention these go under
+`reports/`, which is git-ignored. `--output-markdown` forces Markdown generation,
+so it overrides `--no-markdown` for the saved file (`--no-markdown` then only
 suppresses the stdout summary).
 
 From Python the same run is available as `run_river_scenario_analysis`, and the
