@@ -233,16 +233,40 @@ python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal
 ```
 
 The analysis script accepts `--horizon`, `--discount`, `--rank-by`, `--top-k`,
-and `--no-markdown`. From Python the same run is available as
-`run_river_scenario_analysis`:
+and `--no-markdown`. It can also save the result to files with `--output-json`,
+`--output-markdown`, and `--output-csv`:
+
+```powershell
+python scripts/run_river_scenario_analysis.py examples/scenarios/range_equity_betting_tree_bet98.json --output-json reports/result.json --output-markdown reports/result.md --output-csv reports/result.csv
+```
+
+Each output flag creates missing parent directories and overwrites an existing
+file, and the script prints a short `saved ... to <path>` line per file. The JSON
+payload contains the scenario id, the selected horizon/discount, the build
+metadata, the candidate counts, the filter result (kept ids and excluded
+candidates with reasons), the full `analysis_report.to_dict()`, the Markdown
+summary, and the ranking (when `--rank-by` is given); it is written with
+`json.dumps(indent=2)`. Python's standard `json` module may serialise a
+non-finite KL divergence as `Infinity` by default. This is not strict RFC 8259
+JSON, and JavaScript `JSON.parse` will reject it; strict JSON output is out of
+scope for v1. The CSV has one row per candidate with the main
+selection/deadline/detection columns. By convention these go under `reports/`,
+which is git-ignored. `--output-markdown` forces Markdown generation, so it
+overrides `--no-markdown` for the saved file (`--no-markdown` then only
+suppresses the stdout summary).
+
+From Python the same run is available as `run_river_scenario_analysis`, and the
+exporters are `write_analysis_json` / `write_analysis_markdown` /
+`write_analysis_csv`:
 
 ```python
-from repeated_poker import run_river_scenario_analysis
+from repeated_poker import run_river_scenario_analysis, write_analysis_json
 
 result = run_river_scenario_analysis(
     "examples/scenarios/nuts_chop_steal_bet98.json"
 )
 print(result.markdown_summary)
+write_analysis_json(result, "reports/result.json")
 ```
 
 To stop at the building blocks instead, build the game and feed it into the

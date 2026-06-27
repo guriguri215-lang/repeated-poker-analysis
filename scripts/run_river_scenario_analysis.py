@@ -9,8 +9,14 @@ It loads and validates the scenario, builds the game, runs
 ``run_river_scenario_analysis`` (candidate generation, comparison, reporting, and
 Markdown rendering), and prints the scenario id, the resolved horizon/discount,
 the candidate counts, the Markdown summary (unless disabled), and an optional
-ranking section. It uses only the package and the standard library, and it does
-not write any file.
+ranking section.
+
+By default it writes no file. The optional ``--output-json``, ``--output-markdown``,
+and ``--output-csv`` flags save the result to the given paths, creating missing
+parent directories and overwriting existing files. ``--output-markdown`` forces
+Markdown generation even with ``--no-markdown`` (``--no-markdown`` then only
+suppresses the stdout summary, not the saved file). It uses only the package and
+the standard library, and it does no network or version-control work.
 
 For a quick terminal-EV / baseline / ``T_deadline`` sanity check of a scenario
 without the full pipeline, use ``scripts/run_river_scenario.py`` instead.
@@ -28,6 +34,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from repeated_poker import (  # noqa: E402  (path is set up above)
     RiverScenarioAnalysisConfig,
     run_river_scenario_analysis,
+    write_analysis_csv,
+    write_analysis_json,
+    write_analysis_markdown,
 )
 
 
@@ -65,7 +74,25 @@ def _parse_args(argv):
         "--no-markdown",
         dest="markdown",
         action="store_false",
-        help="do not render the Markdown summary",
+        help="do not print the Markdown summary to stdout",
+    )
+    parser.add_argument(
+        "--output-json",
+        dest="output_json",
+        default=None,
+        help="save the full analysis result as JSON to this path",
+    )
+    parser.add_argument(
+        "--output-markdown",
+        dest="output_markdown",
+        default=None,
+        help="save the Markdown summary to this path (forces Markdown generation)",
+    )
+    parser.add_argument(
+        "--output-csv",
+        dest="output_csv",
+        default=None,
+        help="save one CSV row per candidate to this path",
     )
     return parser.parse_args(argv)
 
@@ -83,12 +110,27 @@ def _print_ranking(result) -> None:
         )
 
 
+def _write_outputs(result, args) -> None:
+    if args.output_json is not None:
+        write_analysis_json(result, args.output_json)
+        print(f"saved JSON to {args.output_json}")
+    if args.output_markdown is not None:
+        write_analysis_markdown(result, args.output_markdown)
+        print(f"saved Markdown to {args.output_markdown}")
+    if args.output_csv is not None:
+        write_analysis_csv(result, args.output_csv)
+        print(f"saved CSV to {args.output_csv}")
+
+
 def main(argv) -> int:
     args = _parse_args(argv)
+    # ``--output-markdown`` needs a Markdown summary even with ``--no-markdown``,
+    # which then only suppresses the stdout summary, not the saved file.
+    generate_markdown = args.markdown or args.output_markdown is not None
     config = RiverScenarioAnalysisConfig(
         horizon=args.horizon,
         discount=args.discount,
-        markdown=args.markdown,
+        markdown=generate_markdown,
         ranking_criterion=args.rank_by,
         ranking_top_k=args.top_k,
     )
@@ -102,11 +144,12 @@ def main(argv) -> int:
         f"kept={counts.kept} excluded={counts.excluded}"
     )
 
-    if result.markdown_summary is not None:
+    if args.markdown and result.markdown_summary is not None:
         print()
         print(result.markdown_summary)
 
     _print_ranking(result)
+    _write_outputs(result, args)
     return 0
 
 

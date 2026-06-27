@@ -151,11 +151,19 @@ def _build_filter_config(
         and config.filter_min_required_observations is None
     ):
         return None
-    allowed = (
-        set(config.filter_allowed_info_sets)
-        if config.filter_allowed_info_sets is not None
-        else None
-    )
+    allowed: Optional[set]
+    if config.filter_allowed_info_sets is None:
+        allowed = None
+    elif isinstance(config.filter_allowed_info_sets, (str, bytes)):
+        # A bare string is iterable but would be split into characters; reject it
+        # here rather than silently building a character set that bypasses the
+        # filter's own bare-string guard.
+        raise ValueError(
+            "filter_allowed_info_sets must be a collection of strings, not a "
+            f"bare string; got {config.filter_allowed_info_sets!r}"
+        )
+    else:
+        allowed = set(config.filter_allowed_info_sets)
     return CandidateFilterConfig(
         allowed_info_sets=allowed,
         max_l1_distance=config.filter_max_l1_distance,
