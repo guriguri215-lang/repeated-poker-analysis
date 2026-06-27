@@ -12,7 +12,7 @@ filename order, or a single scenario file) or a sequence of paths (each a
 directory or a file, expanded in the given order). A scenario's ``source_path``
 is shown as a cwd-relative POSIX path when it is inside the current working
 directory, and as just its file name otherwise, so summary output and error
-messages never leak an absolute local path (see ``_display_path``).
+messages never leak an absolute local path (see ``display_scenario_path``).
 
 Errors are handled per the ``continue_on_error`` flag: fail-fast (the default)
 re-raises the first failure with the offending display path, while
@@ -149,7 +149,7 @@ class BatchScenarioAnalysisResult:
         return sum(1 for row in self.rows if row.error is not None)
 
 
-def _display_path(path: Path) -> str:
+def display_scenario_path(path: Path) -> str:
     """Return a stable, non-leaking display string for ``path``.
 
     A path inside the current working directory is shown as a cwd-relative POSIX
@@ -166,7 +166,7 @@ def _display_path(path: Path) -> str:
         return path.name
 
 
-def _expand_inputs(inputs: BatchInput) -> List[Path]:
+def expand_scenario_inputs(inputs: BatchInput) -> List[Path]:
     if isinstance(inputs, (str, Path)):
         items: Sequence[PathLike] = [inputs]
     else:
@@ -186,7 +186,15 @@ def _expand_inputs(inputs: BatchInput) -> List[Path]:
     return expanded
 
 
-def _model_kind(metadata: dict) -> Optional[str]:
+def model_kind_from_metadata(metadata: dict) -> Optional[str]:
+    """Derive a compact model-kind label from a scenario build's ``metadata``.
+
+    Returns the ``mode`` directly for single-hand and Hero-range-only scenarios
+    (``"single_hand"`` / ``"range"``), and a ``range_matrix:<matrix_type>`` label
+    for matrix scenarios, with a ``+betting_tree`` suffix when a betting tree is
+    present (for example ``"range_matrix:equity+betting_tree"``).
+    """
+
     mode = metadata.get("mode")
     if mode != "range_matrix":
         return mode
@@ -203,7 +211,7 @@ def _success_row(display_path: str, result: RiverScenarioAnalysisResult) -> Batc
     return BatchScenarioRow(
         scenario_id=result.scenario_id,
         source_path=display_path,
-        model_kind=_model_kind(result.build.metadata),
+        model_kind=model_kind_from_metadata(result.build.metadata),
         horizon=result.horizon,
         discount=result.discount,
         generated_candidates=len(result.pipeline_result.generated_candidates),
@@ -258,12 +266,12 @@ def run_batch_scenario_analysis(
     """
 
     config = config or BatchScenarioAnalysisConfig()
-    paths = _expand_inputs(inputs)
+    paths = expand_scenario_inputs(inputs)
 
     rows: List[BatchScenarioRow] = []
     results: Dict[str, RiverScenarioAnalysisResult] = {}
     for path in paths:
-        display = _display_path(path)
+        display = display_scenario_path(path)
         try:
             result = run_river_scenario_analysis(path, config.analysis)
         except Exception as exc:  # noqa: BLE001 - surfaced via row or re-raised

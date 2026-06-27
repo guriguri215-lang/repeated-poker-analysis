@@ -204,6 +204,18 @@ plus `--continue-on-error` to record failing scenarios instead of stopping. The
 batch runner is an analysis/reporting helper over the existing pipeline, not a
 new solver model.
 
+To check that a scenario JSON is well formed *before* running any analysis, use
+`validate_river_scenario_inputs` or
+`python scripts/validate_river_scenario.py <dir-or-files>`. It loads, parses, and
+builds the game for each input (a directory's `*.json` in filename order, or the
+given files in order) and prints one row per scenario with its `scenario_id`,
+derived `model_kind`, information-set / terminal counts, and an `ok`/error flag.
+Unlike the analysis and batch runners it stops at the parser/build level: it does
+*not* generate candidates, run the exact-response solver, or run the analysis
+pipeline. A bad file reports a short `error: ...` line instead of a Python
+traceback; pass `--continue-on-error` to record failing files and keep going,
+and `--output-json` (optionally with `--strict-json`) to save the rows as JSON.
+
 Scope of the abstract range modes in v1:
 
 - Matchup outcomes are given directly as abstract inputs: a discrete

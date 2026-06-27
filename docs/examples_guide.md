@@ -294,6 +294,32 @@ scenario's error on its row instead of stopping. From Python this is
 is an analysis/reporting helper over the existing pipeline, not a new solver
 model.
 
+### Validating scenarios before analysis
+
+When a scenario JSON grows complex it helps to confirm it is well formed *before*
+running any analysis. The validation runner loads, parses, and builds the game
+for each input but stops there -- it does **not** generate candidates, run the
+exact-response solver, or run the analysis pipeline, so it is fast and never
+prints a Python traceback:
+
+```powershell
+python scripts/validate_river_scenario.py examples/scenarios
+python scripts/validate_river_scenario.py examples/scenarios/nuts_chop_steal_bet98.json examples/scenarios/range_equity_betting_tree_bet98.json
+python scripts/validate_river_scenario.py examples/scenarios --output-json reports/validation.json --strict-json
+```
+
+A single directory argument reads its `*.json` in filename order; multiple
+arguments are read in the given order. Each row reports the `source_path`, an
+`ok` flag, the `scenario_id`, the derived `model_kind` (for example `single_hand`,
+`range`, or `range_matrix:equity+betting_tree`), the Hero/Villain information-set
+counts, the terminal count, and the chance-outcome count. A bad file prints a
+short `error: <type>: <message>` line instead of a traceback; `--continue-on-error`
+records the failing file and keeps going, and `--output-json` (optionally with
+`--strict-json`) saves the rows as JSON. From Python this is
+`validate_river_scenario_inputs` with `write_validation_json`. Use this to catch
+input mistakes; use `run_river_scenario_analysis` / `run_scenario_batch.py` once
+the inputs validate to actually analyse and compare candidates.
+
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:
 
