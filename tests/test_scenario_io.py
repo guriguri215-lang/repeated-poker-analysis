@@ -10,6 +10,7 @@ import pytest
 
 from repeated_poker import (
     HeroStrategy,
+    RiverScenario,
     build_river_steal_game_from_scenario,
     calculate_adaptation_deadline,
     iter_terminals,
@@ -250,6 +251,27 @@ def test_empty_format_version_is_rejected():
 def test_build_metadata_includes_format_version():
     build = _build_sample()
     assert build.metadata["format_version"] == "1"
+
+
+def test_river_scenario_positional_construction_is_backward_compatible():
+    # format_version is appended after betting_tree, so the original positional
+    # field order is preserved: the 10th positional arg is still hero_range and
+    # must not be captured by format_version.
+    sentinel_hero_range = object()
+    scenario = RiverScenario(
+        "sid",  # scenario_id
+        "desc",  # description
+        None,  # rake
+        None,  # initial_commitment
+        1.0,  # bet_size
+        "chop",  # showdown
+        None,  # baseline_hero_strategy
+        None,  # shift_amounts
+        None,  # repeated
+        sentinel_hero_range,  # hero_range
+    )
+    assert scenario.hero_range is sentinel_hero_range
+    assert scenario.format_version == "1"
 
 
 # ---------------------------------------------------------------------------

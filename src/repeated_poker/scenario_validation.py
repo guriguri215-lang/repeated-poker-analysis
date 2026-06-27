@@ -77,7 +77,6 @@ class ScenarioValidationRow:
     source_path: str
     ok: bool
     scenario_id: Optional[str] = None
-    format_version: Optional[str] = None
     model_kind: Optional[str] = None
     horizons: Optional[List[int]] = None
     discount: Optional[float] = None
@@ -89,6 +88,9 @@ class ScenarioValidationRow:
     chance_outcome_count: Optional[int] = None
     error_type: Optional[str] = None
     error_message: Optional[str] = None
+    # Appended last for positional-constructor compatibility; ``to_dict`` still
+    # emits ``format_version`` near ``scenario_id`` for readable output.
+    format_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {

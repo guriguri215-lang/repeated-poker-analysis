@@ -230,12 +230,14 @@ class RiverScenario:
     baseline_hero_strategy: Optional[Dict[str, Dict[str, float]]]
     shift_amounts: Optional[List[float]]
     repeated: Optional[RiverScenarioRepeatedConfig]
-    format_version: str = DEFAULT_FORMAT_VERSION
     hero_range: Optional[RiverScenarioHeroRange] = None
     villain_range: Optional[RiverScenarioVillainRange] = None
     showdown_matrix: Optional[Dict[str, Dict[str, str]]] = None
     equity_matrix: Optional[Dict[str, Dict[str, float]]] = None
     betting_tree: Optional[RiverScenarioBettingTree] = None
+    # Appended last for positional-constructor compatibility: a caller building a
+    # RiverScenario with the original positional field order is unaffected.
+    format_version: str = DEFAULT_FORMAT_VERSION
 
     @property
     def is_range_mode(self) -> bool:

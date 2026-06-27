@@ -61,7 +61,6 @@ class BatchScenarioRow:
 
     scenario_id: Optional[str]
     source_path: str
-    format_version: Optional[str]
     model_kind: Optional[str]
     horizon: Optional[int]
     discount: Optional[float]
@@ -77,6 +76,10 @@ class BatchScenarioRow:
     top_candidate_post_response_hero_ev_worst_diff: Optional[float]
     top_candidate_detected_adaptation_is_at_least_baseline: Optional[bool]
     error: Optional[str]
+    # Appended last (with a default) for positional-constructor compatibility, so
+    # the original positional field order is preserved; ``to_dict`` still emits
+    # ``format_version`` near ``scenario_id`` for readable output.
+    format_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {

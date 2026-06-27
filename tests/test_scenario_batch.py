@@ -88,6 +88,33 @@ def test_summary_row_includes_format_version():
     assert batch.rows[0].format_version == "1"
 
 
+def test_batch_row_positional_construction_is_backward_compatible():
+    # format_version is appended last (default None), so the original positional
+    # field order is preserved: model_kind stays the 3rd positional field.
+    row = BatchScenarioRow(
+        "sid",  # scenario_id
+        "src.json",  # source_path
+        "single_hand",  # model_kind
+        10,  # horizon
+        1.0,  # discount
+        1,  # generated_candidates
+        1,  # kept_candidates
+        0,  # excluded_candidates
+        1,  # eligible_candidates
+        1,  # pareto_frontier_candidates
+        1,  # minimum_villain_ev_candidates
+        "cand",  # top_candidate_id
+        None,  # top_candidate_sort_key
+        49,  # top_candidate_t_deadline
+        0.5,  # top_candidate_post_response_hero_ev_worst_diff
+        True,  # top_candidate_detected_adaptation_is_at_least_baseline
+        None,  # error
+    )
+    assert row.model_kind == "single_hand"
+    assert row.error is None
+    assert row.format_version is None
+
+
 def test_model_kind_reflects_betting_tree_and_matrix_type():
     batch = run_batch_scenario_analysis(
         [_SCENARIOS / "range_equity_betting_tree_bet98.json"]

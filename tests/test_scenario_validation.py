@@ -10,6 +10,7 @@ import pytest
 from repeated_poker import (
     ScenarioValidationConfig,
     ScenarioValidationResult,
+    ScenarioValidationRow,
     validate_river_scenario_inputs,
     write_validation_json,
 )
@@ -66,6 +67,14 @@ def test_success_row_includes_descriptive_fields():
     assert row.chance_outcome_count is None
     assert row.error_type is None
     assert row.error_message is None
+
+
+def test_validation_row_positional_construction_is_backward_compatible():
+    # format_version is appended last (default None), so the original positional
+    # field order is preserved: scenario_id stays the 3rd positional field.
+    row = ScenarioValidationRow("src.json", True, "sid")
+    assert row.scenario_id == "sid"
+    assert row.format_version is None
 
 
 def test_success_row_reports_chance_outcomes_and_horizons():
