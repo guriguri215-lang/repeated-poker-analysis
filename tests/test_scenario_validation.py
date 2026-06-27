@@ -125,6 +125,34 @@ def test_source_path_does_not_leak_absolute_user_path(tmp_path):
     assert str(tmp_path) not in (bad_row.error_message or "")
 
 
+def test_missing_file_continue_on_error_does_not_leak_absolute_path(tmp_path):
+    # A missing file is read by ``Path.read_text``, whose FileNotFoundError embeds
+    # the absolute path; the validation row must not leak it.
+    missing = tmp_path / "missing.json"
+    config = ScenarioValidationConfig(continue_on_error=True)
+    validation = validate_river_scenario_inputs([str(missing.resolve())], config)
+    row = validation.rows[0]
+    assert row.ok is False
+    assert row.source_path == "missing.json"
+    assert str(tmp_path) not in (row.error_message or "")
+    assert str(missing) not in (row.error_message or "")
+    assert missing.resolve().as_posix() not in (row.error_message or "")
+    # The friendly message still names the file by its short display name.
+    assert "missing.json" in (row.error_message or "")
+
+
+def test_missing_file_error_message_survives_json_export(tmp_path):
+    missing = tmp_path / "missing.json"
+    config = ScenarioValidationConfig(continue_on_error=True)
+    validation = validate_river_scenario_inputs([str(missing.resolve())], config)
+    out = tmp_path / "validation.json"
+    write_validation_json(validation, out)
+    text = out.read_text(encoding="utf-8")
+    assert str(tmp_path) not in text
+    assert missing.resolve().as_posix() not in text
+    json.loads(text)
+
+
 # ---------------------------------------------------------------------------
 # JSON export
 # ---------------------------------------------------------------------------
@@ -218,6 +246,24 @@ def test_cli_fail_fast_reports_error_without_traceback(tmp_path):
     assert "error:" in completed.stderr
     assert "Traceback" not in completed.stderr
     assert "Traceback" not in completed.stdout
+
+
+def test_cli_fail_fast_missing_file_does_not_leak_absolute_path(tmp_path):
+    # A missing absolute file aborts fail-fast; the short error must not contain a
+    # traceback or the absolute path.
+    missing = tmp_path / "missing.json"
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(missing.resolve())],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+    assert str(tmp_path) not in completed.stderr
+    assert str(tmp_path) not in completed.stdout
+    assert missing.resolve().as_posix() not in completed.stderr
 
 
 def test_cli_writes_output_json(tmp_path):

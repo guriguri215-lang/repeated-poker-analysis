@@ -165,12 +165,53 @@ def _success_row(display: str, scenario, build) -> ScenarioValidationRow:
     )
 
 
-def _error_row(display: str, exc: BaseException) -> ScenarioValidationRow:
+def _sanitize_message(message: str, path: Path, display: str) -> str:
+    """Replace any absolute spelling of ``path`` in ``message`` with ``display``.
+
+    Defends against an exception string that embeds the input path -- a file read
+    error such as ``FileNotFoundError`` includes the absolute path in ``str(exc)``
+    -- so neither a row's ``error_message`` nor a fail-fast error leaks an absolute
+    local path. Both the native (``str(path)``) and POSIX spellings of the raw and
+    resolved path are replaced. Parser/build errors do not contain the path, so
+    this is a no-op for them.
+    """
+
+    needles = [str(path), path.as_posix()]
+    try:
+        resolved = path.resolve()
+        needles.extend([str(resolved), resolved.as_posix()])
+    except OSError:  # pragma: no cover - resolve only fails in odd environments
+        pass
+    cleaned = message
+    for needle in needles:
+        if needle and needle != display:
+            cleaned = cleaned.replace(needle, display)
+    return cleaned
+
+
+def _error_message(exc: BaseException, path: Path, display: str) -> str:
+    """Return a short, path-safe error message for a failed scenario.
+
+    File read errors (``OSError`` / ``FileNotFoundError``) are reported with the
+    display name and the OS reason only (never the absolute path); parser/build
+    errors keep their own message, passed through :func:`_sanitize_message` as a
+    defensive measure.
+    """
+
+    if isinstance(exc, OSError):
+        reason = exc.strerror or "could not be read"
+        message = f"could not read scenario file {display!r}: {reason}"
+    else:
+        message = str(exc)
+    return _sanitize_message(message, path, display)
+
+
+def _error_row(display: str, exc: BaseException, message: str) -> ScenarioValidationRow:
     return ScenarioValidationRow(
         source_path=display,
         ok=False,
         error_type=type(exc).__name__,
-        error_message=str(exc),
+        error_message=message,
     )
 
 
@@ -195,11 +236,12 @@ def validate_river_scenario_inputs(
             scenario = river_scenario_from_dict(data)
             build = build_river_steal_game_from_scenario(scenario)
         except Exception as exc:  # noqa: BLE001 - surfaced via row or re-raised
+            message = _error_message(exc, Path(path), display)
             if not config.continue_on_error:
                 raise ValueError(
-                    f"failed to validate scenario {display!r}: {exc}"
+                    f"failed to validate scenario {display!r}: {message}"
                 ) from exc
-            rows.append(_error_row(display, exc))
+            rows.append(_error_row(display, exc, message))
             continue
         rows.append(_success_row(display, scenario, build))
 
