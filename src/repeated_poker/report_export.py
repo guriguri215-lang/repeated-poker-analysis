@@ -7,17 +7,19 @@ rather than recomputing anything, so the on-disk content matches what the
 pipeline already produces.
 
 Each writer creates missing parent directories and overwrites an existing file
-at ``path``. Output is UTF-8. The JSON writer uses the standard library ``json``
-module, which by default may serialise a non-finite
+at ``path``. Output is UTF-8. By default the JSON writers use the standard
+library ``json`` module, which may serialise a non-finite
 ``detection_kl_divergence_nats`` as ``Infinity``. This is not strict RFC 8259
-JSON, and JavaScript ``JSON.parse`` will reject it. Strict JSON output is out of
-scope for v1.
+JSON, and JavaScript ``JSON.parse`` will reject it. Passing ``strict=True`` to a
+JSON writer instead maps every non-finite float (``inf`` / ``-inf`` / ``nan``)
+to ``null`` and emits RFC 8259-compatible JSON (``json.dumps(..., allow_nan=False)``).
 """
 
 from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Union
 
@@ -52,6 +54,38 @@ _CSV_COLUMNS: List[str] = [
 
 def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _strict_json_safe(value):
+    """Recursively replace non-finite floats with ``None`` for strict JSON.
+
+    ``inf`` / ``-inf`` / ``nan`` floats become ``None`` (JSON ``null``); finite
+    floats, ints, bools, strings, and ``None`` pass through unchanged. Mappings
+    and sequences are processed recursively. ``bool`` is left intact (it is an
+    ``int`` subclass, not a float).
+    """
+
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _strict_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_strict_json_safe(item) for item in value]
+    return value
+
+
+def _dump_json(payload, strict: bool) -> str:
+    """Serialise ``payload`` as indented JSON.
+
+    With ``strict=True`` the payload is first passed through
+    :func:`_strict_json_safe` and dumped with ``allow_nan=False`` so the result
+    is RFC 8259-compatible. With ``strict=False`` the default (lenient) behaviour
+    is kept, which may emit ``Infinity`` / ``NaN``.
+    """
+
+    if strict:
+        return json.dumps(_strict_json_safe(payload), indent=2, allow_nan=False)
+    return json.dumps(payload, indent=2)
 
 
 def analysis_result_to_dict(result: "RiverScenarioAnalysisResult") -> dict:
@@ -90,13 +124,20 @@ def analysis_result_to_dict(result: "RiverScenarioAnalysisResult") -> dict:
     return payload
 
 
-def write_analysis_json(result: "RiverScenarioAnalysisResult", path: PathLike) -> None:
-    """Write the analysis result as indented JSON to ``path``."""
+def write_analysis_json(
+    result: "RiverScenarioAnalysisResult", path: PathLike, strict: bool = False
+) -> None:
+    """Write the analysis result as indented JSON to ``path``.
+
+    With ``strict=True`` non-finite floats are mapped to ``null`` and the output
+    is RFC 8259-compatible; the default ``strict=False`` keeps the lenient
+    behaviour (which may emit ``Infinity`` / ``NaN``).
+    """
 
     target = Path(path)
     _ensure_parent(target)
     payload = analysis_result_to_dict(result)
-    target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    target.write_text(_dump_json(payload, strict), encoding="utf-8")
 
 
 def write_analysis_markdown(result: "RiverScenarioAnalysisResult", path: PathLike) -> None:
@@ -188,12 +229,19 @@ def batch_result_to_dict(batch: "BatchScenarioAnalysisResult") -> dict:
     }
 
 
-def write_batch_json(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
-    """Write the batch summary rows and per-scenario results as JSON to ``path``."""
+def write_batch_json(
+    batch: "BatchScenarioAnalysisResult", path: PathLike, strict: bool = False
+) -> None:
+    """Write the batch summary rows and per-scenario results as JSON to ``path``.
+
+    With ``strict=True`` non-finite floats are mapped to ``null`` and the output
+    is RFC 8259-compatible; the default ``strict=False`` keeps the lenient
+    behaviour (which may emit ``Infinity`` / ``NaN``).
+    """
 
     target = Path(path)
     _ensure_parent(target)
-    target.write_text(json.dumps(batch_result_to_dict(batch), indent=2), encoding="utf-8")
+    target.write_text(_dump_json(batch_result_to_dict(batch), strict), encoding="utf-8")
 
 
 def write_batch_csv(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:

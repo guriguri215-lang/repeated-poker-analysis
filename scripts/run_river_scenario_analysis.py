@@ -94,6 +94,15 @@ def _parse_args(argv):
         default=None,
         help="save one CSV row per candidate to this path",
     )
+    parser.add_argument(
+        "--strict-json",
+        dest="strict_json",
+        action="store_true",
+        help=(
+            "emit RFC 8259-compatible JSON, mapping non-finite floats to null "
+            "(applies to --output-json)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -112,7 +121,7 @@ def _print_ranking(result) -> None:
 
 def _write_outputs(result, args) -> None:
     if args.output_json is not None:
-        write_analysis_json(result, args.output_json)
+        write_analysis_json(result, args.output_json, strict=args.strict_json)
         print(f"saved JSON to {args.output_json}")
     if args.output_markdown is not None:
         write_analysis_markdown(result, args.output_markdown)

@@ -28,6 +28,19 @@ def result():
     )
 
 
+@pytest.fixture(scope="module")
+def detection_result():
+    # Detection makes the KL divergence non-finite for candidates that put weight
+    # on an action the baseline never plays, exercising the strict-JSON path.
+    return run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # JSON
 # ---------------------------------------------------------------------------
@@ -70,6 +83,28 @@ def test_write_json_creates_parent_directory(tmp_path, result):
     path = tmp_path / "nested" / "deep" / "out.json"
     write_analysis_json(result, path)
     assert path.exists()
+
+
+def test_lenient_json_keeps_infinity(tmp_path, detection_result):
+    path = tmp_path / "lenient.json"
+    write_analysis_json(detection_result, path)  # default strict=False
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" in text  # the non-finite KL divergence is preserved
+
+
+def test_strict_json_has_no_non_finite_and_maps_to_null(tmp_path, detection_result):
+    path = tmp_path / "strict.json"
+    write_analysis_json(detection_result, path, strict=True)
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" not in text
+    assert "NaN" not in text
+    payload = json.loads(text)  # strict JSON parses fine
+    kls = [
+        row["detection_kl_divergence_nats"]
+        for row in payload["analysis_report"]["candidate_rows"]
+    ]
+    # At least one KL was non-finite and is now null.
+    assert any(value is None for value in kls)
 
 
 # ---------------------------------------------------------------------------
@@ -188,3 +223,36 @@ def test_cli_without_outputs_writes_no_file(tmp_path):
     )
     assert "saved " not in completed.stdout
     assert "scenario_id: range_equity_betting_tree_bet98" in completed.stdout
+
+
+def test_cli_strict_json_flag_writes_rfc_json(tmp_path):
+    json_path = tmp_path / "strict.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_SAMPLE),
+            "--output-json",
+            str(json_path),
+            "--strict-json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "saved JSON to" in completed.stdout
+    text = json_path.read_text(encoding="utf-8")
+    assert "Infinity" not in text
+    assert "NaN" not in text
+    json.loads(text)  # parses as strict JSON
+
+
+def test_cli_strict_json_without_output_json_succeeds(tmp_path):
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(_SAMPLE), "--strict-json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "scenario_id: range_equity_betting_tree_bet98" in completed.stdout
+    assert "saved " not in completed.stdout
