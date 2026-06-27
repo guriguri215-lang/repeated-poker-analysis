@@ -7,10 +7,11 @@ rather than recomputing anything, so the on-disk content matches what the
 pipeline already produces.
 
 Each writer creates missing parent directories and overwrites an existing file
-at ``path``. Output is UTF-8. The JSON writer uses the standard library
-``json`` module, which serialises a non-finite ``detection_kl_divergence_nats``
-as ``Infinity`` (valid for Python/JS ``JSON.parse`` but not strict RFC 8259
-JSON); strict-JSON output is out of scope for v1.
+at ``path``. Output is UTF-8. The JSON writer uses the standard library ``json``
+module, which by default may serialise a non-finite
+``detection_kl_divergence_nats`` as ``Infinity``. This is not strict RFC 8259
+JSON, and JavaScript ``JSON.parse`` will reject it. Strict JSON output is out of
+scope for v1.
 """
 
 from __future__ import annotations

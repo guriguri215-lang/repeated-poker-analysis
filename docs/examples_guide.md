@@ -245,12 +245,14 @@ file, and the script prints a short `saved ... to <path>` line per file. The JSO
 payload contains the scenario id, the selected horizon/discount, the build
 metadata, the candidate counts, the full `analysis_report.to_dict()`, the
 Markdown summary, and the ranking (when `--rank-by` is given); it is written with
-`json.dumps(indent=2)`, so a non-finite KL divergence is serialised as
-`Infinity` (valid for Python/JS `JSON.parse`, not strict RFC 8259). The CSV has
-one row per candidate with the main selection/deadline/detection columns. By
-convention these go under `reports/`, which is git-ignored. `--output-markdown`
-forces Markdown generation, so it overrides `--no-markdown` for the saved file
-(`--no-markdown` then only suppresses the stdout summary).
+`json.dumps(indent=2)`. Python's standard `json` module may serialise a
+non-finite KL divergence as `Infinity` by default. This is not strict RFC 8259
+JSON, and JavaScript `JSON.parse` will reject it; strict JSON output is out of
+scope for v1. The CSV has one row per candidate with the main
+selection/deadline/detection columns. By convention these go under `reports/`,
+which is git-ignored. `--output-markdown` forces Markdown generation, so it
+overrides `--no-markdown` for the saved file (`--no-markdown` then only
+suppresses the stdout summary).
 
 From Python the same run is available as `run_river_scenario_analysis`, and the
 exporters are `write_analysis_json` / `write_analysis_markdown` /
