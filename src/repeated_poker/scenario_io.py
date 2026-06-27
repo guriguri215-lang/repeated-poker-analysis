@@ -26,25 +26,29 @@ Three input modes are supported and are mutually exclusive:
   draws the Hero bucket; Villain shares one ``OOP_river`` information set across
   all buckets (it does not observe Hero's hand), while Hero gets a per-hand
   information set ``IP_vs_bet::<hand_id>``;
-* *matrix mode* (this hand range model v1): a ``hero_range`` (without per-hand
-  ``showdown``), a ``villain_range``, and a ``showdown_matrix`` keyed by
-  ``[hero_id][villain_id]``. A chance node draws the ``(hero, villain)`` pair
-  with probability ``hero_weight * villain_weight``; Villain gets a per-bucket
+* *matrix mode* (the hand range model): a ``hero_range`` (without per-hand
+  ``showdown``), a ``villain_range``, and exactly one matchup matrix keyed by
+  ``[hero_id][villain_id]`` -- either a ``showdown_matrix`` of discrete
+  ``chop`` / ``hero`` / ``villain`` outcomes, or an ``equity_matrix`` of Hero
+  pot shares before rake in ``[0, 1]`` (``1.0`` = Hero wins, ``0.5`` = chop,
+  ``0.0`` = Villain wins). A chance node draws the ``(hero, villain)`` pair with
+  probability ``hero_weight * villain_weight``; Villain gets a per-bucket
   information set ``OOP_river::<villain_id>`` (shared across Hero buckets,
   because Villain knows its own bucket but not Hero's), and Hero keeps a
   per-bucket information set ``IP_vs_bet::<hero_id>`` (shared across Villain
   buckets, because Hero knows its own bucket but not Villain's).
 
 Mixing modes raises ``ValueError`` (for example ``hero_range`` together with a
-top-level ``showdown`` / ``baseline_hero_strategy``, or ``villain_range``
-without ``showdown_matrix``).
+top-level ``showdown`` / ``baseline_hero_strategy``, ``villain_range`` without
+any matrix, or both ``showdown_matrix`` and ``equity_matrix`` at once).
 
-These ranges are not a real card range parser. The ``showdown`` outcomes (and
-the matrix entries) are given directly as abstract results; there is no equity
-matrix and no real card or hand evaluation. Hero and Villain hand ids must be
-disjoint in matrix mode: although the ``IP_vs_bet::`` / ``OOP_river::`` prefixes
-would namespace them, v1 rejects an id shared between the two ranges to keep the
-matrix keys and any future cross-references unambiguous.
+These ranges are not a real card range parser. The matchup outcomes (discrete
+results or equities) are given directly as abstract inputs -- for example an
+``equity_matrix`` precomputed by an external tool -- with no real card or hand
+evaluation in this module. Hero and Villain hand ids must be disjoint in matrix
+mode: although the ``IP_vs_bet::`` / ``OOP_river::`` prefixes would namespace
+them, v1 rejects an id shared between the two ranges to keep the matrix keys and
+any future cross-references unambiguous.
 
 For the river action tree, JSON scenario v1 treats an OOP ``check`` as an
 immediate check-check showdown: there is no IP action after OOP checks, so no
@@ -74,7 +78,14 @@ from .game import (
     validate_hero_strategy,
     validate_tree,
 )
-from .payoffs import CHOP, HERO, VILLAIN, make_fold_terminal, make_showdown_terminal
+from .payoffs import (
+    CHOP,
+    HERO,
+    VILLAIN,
+    make_equity_showdown_terminal,
+    make_fold_terminal,
+    make_showdown_terminal,
+)
 
 _TOLERANCE = 1e-9
 _SHOWDOWN_RESULTS = (CHOP, HERO, VILLAIN)
@@ -162,7 +173,9 @@ class RiverScenario:
     * *Hero-range-only mode*: ``hero_range`` is set with a per-hand ``showdown``,
       while ``villain_range`` / ``showdown_matrix`` are ``None``;
     * *matrix mode*: ``hero_range`` (without per-hand ``showdown``),
-      ``villain_range``, and ``showdown_matrix`` are all set.
+      ``villain_range``, and exactly one of ``showdown_matrix`` (discrete
+      ``chop`` / ``hero`` / ``villain`` outcomes) or ``equity_matrix`` (Hero pot
+      share before rake, in ``[0, 1]``) are set.
 
     :meth:`is_range_mode` is true in both range modes; :meth:`is_matrix_mode`
     distinguishes matrix mode.
@@ -180,6 +193,7 @@ class RiverScenario:
     hero_range: Optional[RiverScenarioHeroRange] = None
     villain_range: Optional[RiverScenarioVillainRange] = None
     showdown_matrix: Optional[Dict[str, Dict[str, str]]] = None
+    equity_matrix: Optional[Dict[str, Dict[str, float]]] = None
 
     @property
     def is_range_mode(self) -> bool:
@@ -395,51 +409,87 @@ def _parse_showdown_matrix(
     hero_range: RiverScenarioHeroRange,
     villain_range: RiverScenarioVillainRange,
 ) -> Dict[str, Dict[str, str]]:
+    _validate_matrix_keys(data, hero_range, villain_range, "showdown_matrix")
+    matrix: Dict[str, Dict[str, str]] = {}
+    for hero in hero_range.hands:
+        row = data[hero.hand_id]
+        parsed_row: Dict[str, str] = {}
+        for villain in villain_range.hands:
+            result = row[villain.hand_id]
+            if result not in _SHOWDOWN_RESULTS:
+                raise ValueError(
+                    f"showdown_matrix[{hero.hand_id!r}][{villain.hand_id!r}] must be "
+                    f"one of {list(_SHOWDOWN_RESULTS)}, got {result!r}"
+                )
+            parsed_row[villain.hand_id] = result
+        matrix[hero.hand_id] = parsed_row
+    return matrix
+
+
+def _validate_matrix_keys(
+    data,
+    hero_range: RiverScenarioHeroRange,
+    villain_range: RiverScenarioVillainRange,
+    name: str,
+) -> None:
+    """Check that a matchup matrix covers exactly the Hero/Villain id grid."""
+
     if not isinstance(data, dict):
-        raise ValueError("showdown_matrix must be an object keyed by hero hand id")
-    hero_ids = [hand.hand_id for hand in hero_range.hands]
-    villain_ids = [hand.hand_id for hand in villain_range.hands]
-    expected_hero = set(hero_ids)
-    expected_villain = set(villain_ids)
+        raise ValueError(f"{name} must be an object keyed by hero hand id")
+    expected_hero = {hand.hand_id for hand in hero_range.hands}
+    expected_villain = {hand.hand_id for hand in villain_range.hands}
 
     matrix_hero_ids = set(data)
     missing_hero = expected_hero - matrix_hero_ids
     if missing_hero:
-        raise ValueError(f"showdown_matrix is missing hero ids {sorted(missing_hero)}")
+        raise ValueError(f"{name} is missing hero ids {sorted(missing_hero)}")
     extra_hero = matrix_hero_ids - expected_hero
     if extra_hero:
-        raise ValueError(f"showdown_matrix has unknown hero ids {sorted(extra_hero)}")
+        raise ValueError(f"{name} has unknown hero ids {sorted(extra_hero)}")
 
-    matrix: Dict[str, Dict[str, str]] = {}
-    for hero_id in hero_ids:
-        row = data[hero_id]
+    for hand in hero_range.hands:
+        row = data[hand.hand_id]
         if not isinstance(row, dict):
             raise ValueError(
-                f"showdown_matrix[{hero_id!r}] must be an object keyed by villain hand id"
+                f"{name}[{hand.hand_id!r}] must be an object keyed by villain hand id"
             )
         row_villain_ids = set(row)
         missing_villain = expected_villain - row_villain_ids
         if missing_villain:
             raise ValueError(
-                f"showdown_matrix[{hero_id!r}] is missing villain ids "
+                f"{name}[{hand.hand_id!r}] is missing villain ids "
                 f"{sorted(missing_villain)}"
             )
         extra_villain = row_villain_ids - expected_villain
         if extra_villain:
             raise ValueError(
-                f"showdown_matrix[{hero_id!r}] has unknown villain ids "
+                f"{name}[{hand.hand_id!r}] has unknown villain ids "
                 f"{sorted(extra_villain)}"
             )
-        parsed_row: Dict[str, str] = {}
-        for villain_id in villain_ids:
-            result = row[villain_id]
-            if result not in _SHOWDOWN_RESULTS:
+
+
+def _parse_equity_matrix(
+    data,
+    hero_range: RiverScenarioHeroRange,
+    villain_range: RiverScenarioVillainRange,
+) -> Dict[str, Dict[str, float]]:
+    _validate_matrix_keys(data, hero_range, villain_range, "equity_matrix")
+    matrix: Dict[str, Dict[str, float]] = {}
+    for hero in hero_range.hands:
+        row = data[hero.hand_id]
+        parsed_row: Dict[str, float] = {}
+        for villain in villain_range.hands:
+            equity = _as_number(
+                row[villain.hand_id],
+                f"equity_matrix[{hero.hand_id!r}][{villain.hand_id!r}]",
+            )
+            if not 0.0 <= equity <= 1.0:
                 raise ValueError(
-                    f"showdown_matrix[{hero_id!r}][{villain_id!r}] must be one of "
-                    f"{list(_SHOWDOWN_RESULTS)}, got {result!r}"
+                    f"equity_matrix[{hero.hand_id!r}][{villain.hand_id!r}] must be "
+                    f"within [0, 1], got {equity!r}"
                 )
-            parsed_row[villain_id] = result
-        matrix[hero_id] = parsed_row
+            parsed_row[villain.hand_id] = equity
+        matrix[hero.hand_id] = parsed_row
     return matrix
 
 
@@ -493,7 +543,9 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     has_hero_range = "hero_range" in data
     has_villain_range = "villain_range" in data
-    has_matrix = "showdown_matrix" in data
+    has_showdown_matrix = "showdown_matrix" in data
+    has_equity_matrix = "equity_matrix" in data
+    has_matrix = has_showdown_matrix or has_equity_matrix
     has_single = "showdown" in data or "baseline_hero_strategy" in data
 
     showdown: Optional[str] = None
@@ -501,29 +553,41 @@ def river_scenario_from_dict(data) -> RiverScenario:
     hero_range: Optional[RiverScenarioHeroRange] = None
     villain_range: Optional[RiverScenarioVillainRange] = None
     showdown_matrix: Optional[Dict[str, Dict[str, str]]] = None
+    equity_matrix: Optional[Dict[str, Dict[str, float]]] = None
 
     if has_villain_range or has_matrix:
-        # Matrix mode: requires hero_range, villain_range, and showdown_matrix
-        # together, and forbids the single-hand fields.
+        # Matrix mode: requires hero_range, villain_range, and exactly one of
+        # showdown_matrix / equity_matrix, and forbids the single-hand fields.
         if not has_villain_range:
-            raise ValueError("showdown_matrix requires villain_range")
+            raise ValueError("showdown_matrix / equity_matrix requires villain_range")
         if not has_matrix:
-            raise ValueError("villain_range requires showdown_matrix")
+            raise ValueError(
+                "villain_range requires a showdown_matrix or an equity_matrix"
+            )
+        if has_showdown_matrix and has_equity_matrix:
+            raise ValueError(
+                "provide exactly one of showdown_matrix or equity_matrix, not both"
+            )
         if not has_hero_range:
             raise ValueError(
                 "matrix mode requires hero_range together with villain_range "
-                "and showdown_matrix"
+                "and a showdown_matrix or equity_matrix"
             )
         if has_single:
             raise ValueError(
-                "villain_range / showdown_matrix cannot be combined with a "
-                "top-level showdown or baseline_hero_strategy"
+                "villain_range / showdown_matrix / equity_matrix cannot be "
+                "combined with a top-level showdown or baseline_hero_strategy"
             )
         hero_range = _parse_hero_range(data.get("hero_range"), require_showdown=False)
         villain_range = _parse_villain_range(data.get("villain_range"))
-        showdown_matrix = _parse_showdown_matrix(
-            data.get("showdown_matrix"), hero_range, villain_range
-        )
+        if has_showdown_matrix:
+            showdown_matrix = _parse_showdown_matrix(
+                data.get("showdown_matrix"), hero_range, villain_range
+            )
+        else:
+            equity_matrix = _parse_equity_matrix(
+                data.get("equity_matrix"), hero_range, villain_range
+            )
         shared_ids = {hand.hand_id for hand in hero_range.hands} & {
             hand.hand_id for hand in villain_range.hands
         }
@@ -579,6 +643,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         hero_range=hero_range,
         villain_range=villain_range,
         showdown_matrix=showdown_matrix,
+        equity_matrix=equity_matrix,
     )
 
 
@@ -628,12 +693,16 @@ def build_river_steal_game_from_scenario(
 
 def _hand_subtree(
     scenario: RiverScenario,
-    showdown: str,
+    showdown: Optional[str],
     suffix: str,
     ip_info_set: str,
     oop_info_set: str = _OOP_INFO_SET,
+    hero_equity: Optional[float] = None,
 ):
-    """Build the OOP/IP subtree for one showdown result, with unique node ids.
+    """Build the OOP/IP subtree for one matchup, with unique node ids.
+
+    The showdown payoff is a discrete ``showdown`` result when ``hero_equity`` is
+    ``None``, or a fractional Hero pot share when ``hero_equity`` is given.
 
     OOP ``check`` leads straight to a check-check showdown terminal: JSON
     scenario v1 has no IP action after an OOP check, so no ``IP_vs_check``
@@ -646,23 +715,26 @@ def _hand_subtree(
     rate = scenario.rake.rate
     cap = scenario.rake.cap
 
-    check_terminal = make_showdown_terminal(
+    def _showdown_terminal(node_id, pot, hero_invested, villain_invested):
+        if hero_equity is None:
+            return make_showdown_terminal(
+                node_id, pot, hero_invested, villain_invested, showdown, rate, cap
+            )
+        return make_equity_showdown_terminal(
+            node_id, pot, hero_invested, villain_invested, hero_equity, rate, cap
+        )
+
+    check_terminal = _showdown_terminal(
         f"T_check_check{suffix}",
         hero_initial + villain_initial,
         hero_initial,
         villain_initial,
-        showdown,
-        rate,
-        cap,
     )
-    bet_call_terminal = make_showdown_terminal(
+    bet_call_terminal = _showdown_terminal(
         f"T_bet_call{suffix}",
         hero_initial + villain_initial + 2.0 * bet_size,
         hero_initial + bet_size,
         villain_initial + bet_size,
-        showdown,
-        rate,
-        cap,
     )
     # IP folds to the bet: the uncalled bet is returned and OOP (Villain) wins
     # IP's committed chips.
@@ -749,12 +821,14 @@ def _build_matrix_tree(scenario: RiverScenario):
     shared across Hero buckets because Villain knows its own bucket but not
     Hero's. Each Hero bucket keeps its own ``IP_vs_bet::<hero_id>`` information
     set, shared across Villain buckets because Hero knows its own bucket but not
-    Villain's. The showdown outcome of each pair comes from the showdown matrix.
+    Villain's. The outcome of each pair comes from the showdown matrix (discrete
+    result) or the equity matrix (fractional Hero pot share).
     """
 
     hero_hands = scenario.hero_range.hands
     villain_hands = scenario.villain_range.hands
-    matrix = scenario.showdown_matrix
+    use_equity = scenario.equity_matrix is not None
+    matrix = scenario.equity_matrix if use_equity else scenario.showdown_matrix
 
     children = []
     hero_probabilities: Dict[str, Dict[str, float]] = {}
@@ -767,10 +841,16 @@ def _build_matrix_tree(scenario: RiverScenario):
         for villain in villain_hands:
             oop_info_set = f"{_OOP_INFO_SET}::{villain.hand_id}"
             suffix = f"::{hero.hand_id}__{villain.hand_id}"
-            showdown = matrix[hero.hand_id][villain.hand_id]
-            oop_node = _hand_subtree(
-                scenario, showdown, suffix, ip_info_set, oop_info_set
-            )
+            cell = matrix[hero.hand_id][villain.hand_id]
+            if use_equity:
+                oop_node = _hand_subtree(
+                    scenario, None, suffix, ip_info_set, oop_info_set,
+                    hero_equity=cell,
+                )
+            else:
+                oop_node = _hand_subtree(
+                    scenario, cell, suffix, ip_info_set, oop_info_set
+                )
             children.append((hero.weight * villain.weight, oop_node))
 
     root = ChanceNode(node_id="hand_matchup", children=tuple(children))
@@ -782,15 +862,21 @@ def _build_matrix_tree(scenario: RiverScenario):
     baseline_hero_strategy = HeroStrategy(probabilities=hero_probabilities)
     metadata = _base_metadata(scenario)
     metadata["mode"] = "range_matrix"
+    metadata["matrix_type"] = "equity" if use_equity else "showdown"
     metadata["hero_buckets"] = [
         {"hand_id": hand.hand_id, "weight": hand.weight} for hand in hero_hands
     ]
     metadata["villain_buckets"] = [
         {"hand_id": hand.hand_id, "weight": hand.weight} for hand in villain_hands
     ]
-    metadata["showdown_matrix"] = {
-        hero_id: dict(row) for hero_id, row in matrix.items()
-    }
+    if use_equity:
+        metadata["equity_matrix"] = {
+            hero_id: dict(row) for hero_id, row in matrix.items()
+        }
+    else:
+        metadata["showdown_matrix"] = {
+            hero_id: dict(row) for hero_id, row in matrix.items()
+        }
     return tree, baseline_hero_strategy, metadata
 
 

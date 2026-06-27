@@ -178,9 +178,12 @@ mutually exclusive modes:
   own `showdown` and `baseline_strategy` (see
   `examples/scenarios/abstract_range_steal_bet98.json`).
 - **abstract Hero/Villain range matrix mode**: a `hero_range` (without per-hand
-  `showdown`), a `villain_range`, and a `showdown_matrix` keyed by
-  `[hero_id][villain_id]` (see
-  `examples/scenarios/range_matrix_steal_bet98.json`).
+  `showdown`), a `villain_range`, and exactly one matchup matrix keyed by
+  `[hero_id][villain_id]` -- either a `showdown_matrix` of discrete
+  `chop`/`hero`/`villain` results (see
+  `examples/scenarios/range_matrix_steal_bet98.json`) or an `equity_matrix` of
+  Hero pot shares before rake in `[0, 1]` (see
+  `examples/scenarios/range_equity_steal_bet98.json`).
 
 To run a scenario all the way through the candidate-analysis pipeline and print
 the Markdown summary, use `run_river_scenario_analysis` or
@@ -188,8 +191,9 @@ the Markdown summary, use `run_river_scenario_analysis` or
 
 Scope of the abstract range modes in v1:
 
-- Showdown outcomes (including matrix entries) are given directly as abstract
-  results. There is **no equity matrix** and no real card or hand evaluation, so
+- Matchup outcomes are given directly as abstract inputs: a discrete
+  `showdown_matrix`, or an `equity_matrix` of Hero pot shares (for example
+  precomputed by an external tool). There is no real card or hand evaluation, so
   it does not parse real cards, hand ranges, or solver exports.
 - The JSON action tree is limited to OOP `check`/`bet` and IP `call`/`fold`, and
   an OOP `check` resolves immediately to a check-check showdown. It does not

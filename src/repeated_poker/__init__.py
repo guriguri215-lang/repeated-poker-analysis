@@ -79,6 +79,7 @@ from .payoffs import (
     HERO,
     VILLAIN,
     compute_rake,
+    make_equity_showdown_terminal,
     make_fold_terminal,
     make_showdown_terminal,
 )
@@ -218,6 +219,7 @@ __all__ = [
     "HERO",
     "VILLAIN",
     "compute_rake",
+    "make_equity_showdown_terminal",
     "make_fold_terminal",
     "make_showdown_terminal",
 ]

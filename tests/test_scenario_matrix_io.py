@@ -183,14 +183,14 @@ def test_run_does_not_mutate_matrix_scenario_dict():
 def test_villain_range_without_matrix_is_rejected():
     data = _sample_dict()
     del data["showdown_matrix"]
-    with pytest.raises(ValueError, match="villain_range requires showdown_matrix"):
+    with pytest.raises(ValueError, match="villain_range requires a showdown_matrix"):
         river_scenario_from_dict(data)
 
 
 def test_matrix_without_villain_range_is_rejected():
     data = _sample_dict()
     del data["villain_range"]
-    with pytest.raises(ValueError, match="showdown_matrix requires villain_range"):
+    with pytest.raises(ValueError, match="requires villain_range"):
         river_scenario_from_dict(data)
 
 
