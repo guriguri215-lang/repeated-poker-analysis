@@ -284,15 +284,23 @@ python scripts/run_scenario_batch.py examples/scenarios/nuts_chop_steal_bet98.js
 ```
 
 A single directory argument reads its `*.json` in filename order; multiple
-arguments are read in the given order. The batch CSV/Markdown carry one row per
-scenario (scenario id, model kind, horizon, candidate counts, and the top ranked
-candidate when `--rank-by` is given), and the batch JSON also embeds each
-successful scenario's full result. `--continue-on-error` records a failing
-scenario's error on its row instead of stopping. From Python this is
-`run_batch_scenario_analysis` with `write_batch_json` / `write_batch_csv` /
-`write_batch_markdown`. Like the rest of the scenario tooling, the batch runner
-is an analysis/reporting helper over the existing pipeline, not a new solver
-model.
+arguments are read in the given order. The batch CSV/Markdown are meant for
+comparing scenarios side by side: they carry one row per scenario (scenario id,
+model kind, horizon, discount, candidate counts including
+`minimum_villain_ev_candidates`, the top-ranked candidate's id / `t_deadline` /
+worst-case post-response Hero-EV difference / detected-adaptation flag, and any
+`error`). The Markdown report adds an overview (total / ok / error counts) and a
+short notes section; the CSV stays machine-friendly (`true`/`false`, empty cells
+for missing values, raw float strings). The batch JSON also embeds each
+successful scenario's full result. The `top_candidate_*` columns are only
+populated when ranking is enabled (for example `--rank-by t_deadline`), and the
+detected-adaptation flag only when detection output exists; otherwise those cells
+show `-` in Markdown. `--continue-on-error` records a failing scenario's error on
+its row instead of stopping, and `--strict-json` affects only the JSON export
+(not the Markdown or CSV). From Python this is `run_batch_scenario_analysis` with
+`write_batch_json` / `write_batch_csv` / `write_batch_markdown`. Like the rest of
+the scenario tooling, the batch runner is an analysis/reporting helper over the
+existing pipeline, not a new solver model.
 
 ### Validating scenarios before analysis
 

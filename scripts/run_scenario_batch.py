@@ -41,8 +41,11 @@ _STDOUT_COLUMNS = [
     "generated_candidates",
     "kept_candidates",
     "eligible_candidates",
+    "minimum_villain_ev_candidates",
     "top_candidate_id",
     "top_candidate_t_deadline",
+    "top_candidate_post_response_hero_ev_worst_diff",
+    "top_candidate_detected_adaptation_is_at_least_baseline",
     "error",
 ]
 

@@ -180,12 +180,82 @@ def test_batch_csv_header_and_rows(tmp_path, batch):
     assert len(rows) - 1 == len(batch.rows)
 
 
+def test_batch_csv_includes_important_columns(tmp_path, batch):
+    path = tmp_path / "batch.csv"
+    write_batch_csv(batch, path)
+    with path.open(encoding="utf-8", newline="") as handle:
+        header = next(csv.reader(handle))
+    for column in (
+        "top_candidate_post_response_hero_ev_worst_diff",
+        "top_candidate_detected_adaptation_is_at_least_baseline",
+        "error",
+    ):
+        assert column in header
+
+
 def test_batch_markdown_contains_table(tmp_path, batch):
     path = tmp_path / "batch.md"
     write_batch_markdown(batch, path)
     text = path.read_text(encoding="utf-8")
     assert "Batch Scenario Analysis Summary" in text
     assert "| scenario_id |" in text
+
+
+def test_batch_markdown_has_overview_and_notes(tmp_path, batch):
+    path = tmp_path / "batch.md"
+    write_batch_markdown(batch, path)
+    text = path.read_text(encoding="utf-8")
+    assert "### Overview" in text
+    assert f"- total scenarios: {len(batch.rows)}" in text
+    assert f"- ok: {batch.ok_count}" in text
+    assert f"- errors: {batch.error_count}" in text
+    assert "### Notes" in text
+    assert "not a new solver model" in text
+
+
+def test_batch_markdown_includes_important_columns(tmp_path, batch):
+    path = tmp_path / "batch.md"
+    write_batch_markdown(batch, path)
+    header = next(
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| scenario_id")
+    )
+    for column in (
+        "minimum_villain_ev_candidates",
+        "top_candidate_post_response_hero_ev_worst_diff",
+        "top_candidate_detected_adaptation_is_at_least_baseline",
+    ):
+        assert column in header
+
+
+def test_batch_markdown_formats_none_bool_and_float(tmp_path):
+    # None -> "-", float -> 6 decimals, bool -> yes/no.
+    none_row = _row_with(scenario_id="none_row", top_candidate_id=None)
+    yes_row = _row_with(
+        scenario_id="yes_row",
+        top_candidate_post_response_hero_ev_worst_diff=0.123456789,
+        top_candidate_detected_adaptation_is_at_least_baseline=True,
+    )
+    no_row = _row_with(
+        scenario_id="no_row",
+        top_candidate_detected_adaptation_is_at_least_baseline=False,
+    )
+    result = BatchScenarioAnalysisResult(rows=[none_row, yes_row, no_row], results={})
+    path = tmp_path / "fmt.md"
+    write_batch_markdown(result, path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    none_line = next(line for line in lines if line.startswith("| none_row"))
+    yes_line = next(line for line in lines if line.startswith("| yes_row"))
+    no_line = next(line for line in lines if line.startswith("| no_row"))
+    # top_candidate_id is None on the none_row, rendered as "-".
+    assert " - " in none_line
+    # float rounded to 6 decimals.
+    assert "0.123457" in yes_line
+    # discount is 1.0 on every _row_with, so a float column always has 6 decimals.
+    assert "1.000000" in none_line
+    assert "yes" in yes_line
+    assert "no" in no_line
 
 
 def _detection_batch():
