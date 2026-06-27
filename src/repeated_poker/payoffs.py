@@ -93,6 +93,56 @@ def make_showdown_terminal(
     )
 
 
+def make_equity_showdown_terminal(
+    node_id: str,
+    pot: float,
+    hero_invested: float,
+    villain_invested: float,
+    hero_equity: float,
+    rate: float,
+    cap: Optional[float] = None,
+    tolerance: float = 1e-9,
+) -> TerminalNode:
+    """Build a showdown terminal where the pot is split by ``hero_equity``.
+
+    ``hero_equity`` is Hero's pot share *before* rake, in ``[0, 1]``: ``1.0``
+    awards Hero the whole raked pot, ``0.0`` awards it all to Villain, and
+    ``0.5`` is a chop. This generalises :func:`make_showdown_terminal`, whose
+    discrete ``HERO`` / ``VILLAIN`` / ``CHOP`` results correspond to equities
+    ``1.0`` / ``0.0`` / ``0.5``.
+
+    As with :func:`make_showdown_terminal`, every chip is called at a showdown,
+    so ``pot`` must equal ``hero_invested + villain_invested`` within
+    ``tolerance``. The rake is taken from the awarded pot first, so the terminal
+    still satisfies ``hero_ev + villain_ev + house_rake == 0``.
+    """
+
+    require_valid_tolerance(tolerance)
+    require_finite(hero_invested, "hero_invested")
+    require_finite(villain_invested, "villain_invested")
+    require_finite(hero_equity, "hero_equity")
+    if not 0.0 <= hero_equity <= 1.0:
+        raise ValueError(f"hero_equity must be within [0, 1], got {hero_equity!r}")
+    invested_total = hero_invested + villain_invested
+    if abs(pot - invested_total) > tolerance:
+        raise ValueError(
+            f"showdown pot {pot} does not equal total investment {invested_total} "
+            f"within tolerance {tolerance}"
+        )
+
+    rake = compute_rake(pot, rate, cap)
+    awarded = pot - rake
+    hero_received = awarded * hero_equity
+    villain_received = awarded * (1.0 - hero_equity)
+
+    return TerminalNode(
+        node_id=node_id,
+        hero_ev=hero_received - hero_invested,
+        villain_ev=villain_received - villain_invested,
+        house_rake=rake,
+    )
+
+
 def make_fold_terminal(node_id: str, winner: str, loser_committed: float) -> TerminalNode:
     """Build a terminal reached when one player folds.
 
