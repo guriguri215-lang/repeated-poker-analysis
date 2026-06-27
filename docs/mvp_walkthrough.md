@@ -173,7 +173,9 @@ check as an immediate check-check showdown, but a matrix-mode scenario may add a
 optional `betting_tree` (river one-street tree v1) with an IP stab after the OOP
 check and one IP raise versus the OOP bet
 (`examples/scenarios/range_equity_betting_tree_bet98.json`). Re-raises and
-arbitrary betting trees remain out of scope.
+arbitrary betting trees remain out of scope. The analysis runner can also save
+its result with `--output-json`, `--output-markdown`, and `--output-csv` (these
+go under the git-ignored `reports/` by convention).
 
 Parameters:
 

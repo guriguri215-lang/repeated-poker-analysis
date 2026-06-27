@@ -187,7 +187,10 @@ mutually exclusive modes:
 
 To run a scenario all the way through the candidate-analysis pipeline and print
 the Markdown summary, use `run_river_scenario_analysis` or
-`python scripts/run_river_scenario_analysis.py <scenario.json>`.
+`python scripts/run_river_scenario_analysis.py <scenario.json>`. That script can
+also save the result to files with `--output-json`, `--output-markdown`, and
+`--output-csv` (each creates missing parent directories and overwrites an
+existing file); without them it prints to stdout only.
 
 Scope of the abstract range modes in v1:
 
