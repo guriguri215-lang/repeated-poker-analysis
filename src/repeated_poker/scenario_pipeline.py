@@ -95,6 +95,7 @@ class RiverScenarioAnalysisResult:
 
         counts = self.pipeline_result.filter_result.summary_counts
         return {
+            "format_version": self.scenario.format_version,
             "scenario_id": self.scenario_id,
             "horizon": self.horizon,
             "discount": self.discount,

@@ -1,4 +1,5 @@
 {
+  "format_version": "1",
   "scenario_id": "range_matrix_steal_bet98",
   "description": "Abstract Hero/Villain range with matchup showdown matrix.",
   "rake": {

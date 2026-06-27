@@ -1,4 +1,5 @@
 {
+  "format_version": "1",
   "scenario_id": "abstract_range_steal_bet98",
   "description": "Abstract weighted Hero range for a river steal spot.",
   "rake": {

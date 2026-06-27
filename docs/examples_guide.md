@@ -132,6 +132,15 @@ Instead of a hand-written Python example, an abstract river spot can be loaded
 from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
 BET=98 nuts-chop steal case.
 
+The scenario JSON format is currently version `"1"`. New files should include a
+top-level `"format_version": "1"` (all the bundled samples now do); the field is
+optional for backward compatibility, so a file without it is read as `"1"`, while
+any unknown version is rejected. The format is still experimental and may get a
+v2 before template-generation or GUI input tooling. The resolved version is
+surfaced in the build metadata and in the analysis, validation, and batch outputs
+(JSON / CSV / Markdown / stdout), so you can tell at a glance which format a
+result came from.
+
 The input has three mutually exclusive modes:
 
 - **single-hand mode**: a top-level `showdown` result and a single

@@ -76,11 +76,16 @@ class BatchScenarioRow:
     top_candidate_post_response_hero_ev_worst_diff: Optional[float]
     top_candidate_detected_adaptation_is_at_least_baseline: Optional[bool]
     error: Optional[str]
+    # Appended last (with a default) for positional-constructor compatibility, so
+    # the original positional field order is preserved; ``to_dict`` still emits
+    # ``format_version`` near ``scenario_id`` for readable output.
+    format_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
             "scenario_id": self.scenario_id,
             "source_path": self.source_path,
+            "format_version": self.format_version,
             "model_kind": self.model_kind,
             "horizon": self.horizon,
             "discount": self.discount,
@@ -108,6 +113,7 @@ BATCH_ROW_COLUMNS: List[str] = list(
     BatchScenarioRow(
         scenario_id=None,
         source_path="",
+        format_version=None,
         model_kind=None,
         horizon=None,
         discount=None,
@@ -211,6 +217,7 @@ def _success_row(display_path: str, result: RiverScenarioAnalysisResult) -> Batc
     return BatchScenarioRow(
         scenario_id=result.scenario_id,
         source_path=display_path,
+        format_version=result.scenario.format_version,
         model_kind=model_kind_from_metadata(result.build.metadata),
         horizon=result.horizon,
         discount=result.discount,
@@ -237,6 +244,7 @@ def _error_row(display_path: str, exc: BaseException) -> BatchScenarioRow:
     return BatchScenarioRow(
         scenario_id=None,
         source_path=display_path,
+        format_version=None,
         model_kind=None,
         horizon=None,
         discount=None,

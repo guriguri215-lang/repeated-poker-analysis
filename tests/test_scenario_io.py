@@ -10,6 +10,7 @@ import pytest
 
 from repeated_poker import (
     HeroStrategy,
+    RiverScenario,
     build_river_steal_game_from_scenario,
     calculate_adaptation_deadline,
     iter_terminals,
@@ -185,6 +186,92 @@ def test_non_positive_shift_amount_is_rejected():
     data["candidate_generation"]["shift_amounts"] = [0.0]
     with pytest.raises(ValueError, match="shift_amounts"):
         river_scenario_from_dict(data)
+
+
+# ---------------------------------------------------------------------------
+# Format version
+# ---------------------------------------------------------------------------
+
+
+def test_sample_scenario_declares_format_version_one():
+    scenario = load_river_scenario_json(_SAMPLE)
+    assert scenario.format_version == "1"
+
+
+def test_missing_format_version_defaults_to_one():
+    data = _valid_dict()
+    data.pop("format_version", None)
+    scenario = river_scenario_from_dict(data)
+    assert scenario.format_version == "1"
+
+
+def test_format_version_string_one_is_accepted():
+    data = _valid_dict()
+    data["format_version"] = "1"
+    assert river_scenario_from_dict(data).format_version == "1"
+
+
+def test_unsupported_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = "2"
+    with pytest.raises(ValueError, match="unsupported format_version"):
+        river_scenario_from_dict(data)
+
+
+def test_numeric_format_version_is_rejected():
+    # Only the string "1" is the canonical v1 value; a numeric 1 is rejected so
+    # the field stays consistent with a future JSON schema and later versions.
+    data = _valid_dict()
+    data["format_version"] = 1
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_null_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = None
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_bool_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = True
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_empty_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = ""
+    with pytest.raises(ValueError, match="unsupported format_version"):
+        river_scenario_from_dict(data)
+
+
+def test_build_metadata_includes_format_version():
+    build = _build_sample()
+    assert build.metadata["format_version"] == "1"
+
+
+def test_river_scenario_positional_construction_is_backward_compatible():
+    # format_version is appended after betting_tree, so the original positional
+    # field order is preserved: the 10th positional arg is still hero_range and
+    # must not be captured by format_version.
+    sentinel_hero_range = object()
+    scenario = RiverScenario(
+        "sid",  # scenario_id
+        "desc",  # description
+        None,  # rake
+        None,  # initial_commitment
+        1.0,  # bet_size
+        "chop",  # showdown
+        None,  # baseline_hero_strategy
+        None,  # shift_amounts
+        None,  # repeated
+        sentinel_hero_range,  # hero_range
+    )
+    assert scenario.hero_range is sentinel_hero_range
+    assert scenario.format_version == "1"
 
 
 # ---------------------------------------------------------------------------

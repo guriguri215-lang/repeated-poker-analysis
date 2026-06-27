@@ -94,6 +94,7 @@ def analysis_result_to_dict(result: "RiverScenarioAnalysisResult") -> dict:
 
     counts = result.pipeline_result.filter_result.summary_counts
     payload = {
+        "format_version": result.scenario.format_version,
         "scenario_id": result.scenario_id,
         "selected_horizon": result.horizon,
         "selected_discount": result.discount,
@@ -221,6 +222,7 @@ def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) ->
 # for side-by-side scenario comparison.
 _BATCH_MARKDOWN_COLUMNS: List[str] = [
     "scenario_id",
+    "format_version",
     "model_kind",
     "horizon",
     "discount",

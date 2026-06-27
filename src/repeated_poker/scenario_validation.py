@@ -88,12 +88,16 @@ class ScenarioValidationRow:
     chance_outcome_count: Optional[int] = None
     error_type: Optional[str] = None
     error_message: Optional[str] = None
+    # Appended last for positional-constructor compatibility; ``to_dict`` still
+    # emits ``format_version`` near ``scenario_id`` for readable output.
+    format_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
             "source_path": self.source_path,
             "ok": self.ok,
             "scenario_id": self.scenario_id,
+            "format_version": self.format_version,
             "model_kind": self.model_kind,
             "horizons": self.horizons,
             "discount": self.discount,
@@ -153,6 +157,7 @@ def _success_row(display: str, scenario, build) -> ScenarioValidationRow:
         source_path=display,
         ok=True,
         scenario_id=scenario.scenario_id,
+        format_version=scenario.format_version,
         model_kind=model_kind_from_metadata(build.metadata),
         horizons=list(repeated.horizons) if repeated and repeated.horizons else None,
         discount=repeated.discount if repeated else None,
