@@ -83,6 +83,11 @@ def test_summary_row_contains_required_fields():
     assert row.error is None
 
 
+def test_summary_row_includes_format_version():
+    batch = run_batch_scenario_analysis([_NUTS])
+    assert batch.rows[0].format_version == "1"
+
+
 def test_model_kind_reflects_betting_tree_and_matrix_type():
     batch = run_batch_scenario_analysis(
         [_SCENARIOS / "range_equity_betting_tree_bet98.json"]
@@ -161,6 +166,7 @@ def test_batch_json_contains_rows_and_results(tmp_path, batch):
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert len(payload["summary_rows"]) == 2
     assert payload["summary_rows"][0]["scenario_id"] == "nuts_chop_steal_bet98"
+    assert payload["summary_rows"][0]["format_version"] == "1"
     assert set(payload["scenario_results"]) == set(batch.results)
 
 
@@ -186,6 +192,7 @@ def test_batch_csv_includes_important_columns(tmp_path, batch):
     with path.open(encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
     for column in (
+        "format_version",
         "top_candidate_post_response_hero_ev_worst_diff",
         "top_candidate_detected_adaptation_is_at_least_baseline",
         "error",
@@ -222,6 +229,7 @@ def test_batch_markdown_includes_important_columns(tmp_path, batch):
         if line.startswith("| scenario_id")
     )
     for column in (
+        "format_version",
         "minimum_villain_ev_candidates",
         "top_candidate_post_response_hero_ev_worst_diff",
         "top_candidate_detected_adaptation_is_at_least_baseline",
@@ -415,6 +423,7 @@ def _row_with(**overrides) -> BatchScenarioRow:
     base = dict(
         scenario_id=None,
         source_path="x.json",
+        format_version="1",
         model_kind="single_hand",
         horizon=10,
         discount=1.0,

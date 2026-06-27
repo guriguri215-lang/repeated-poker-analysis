@@ -188,6 +188,71 @@ def test_non_positive_shift_amount_is_rejected():
 
 
 # ---------------------------------------------------------------------------
+# Format version
+# ---------------------------------------------------------------------------
+
+
+def test_sample_scenario_declares_format_version_one():
+    scenario = load_river_scenario_json(_SAMPLE)
+    assert scenario.format_version == "1"
+
+
+def test_missing_format_version_defaults_to_one():
+    data = _valid_dict()
+    data.pop("format_version", None)
+    scenario = river_scenario_from_dict(data)
+    assert scenario.format_version == "1"
+
+
+def test_format_version_string_one_is_accepted():
+    data = _valid_dict()
+    data["format_version"] = "1"
+    assert river_scenario_from_dict(data).format_version == "1"
+
+
+def test_unsupported_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = "2"
+    with pytest.raises(ValueError, match="unsupported format_version"):
+        river_scenario_from_dict(data)
+
+
+def test_numeric_format_version_is_rejected():
+    # Only the string "1" is the canonical v1 value; a numeric 1 is rejected so
+    # the field stays consistent with a future JSON schema and later versions.
+    data = _valid_dict()
+    data["format_version"] = 1
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_null_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = None
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_bool_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = True
+    with pytest.raises(ValueError, match="format_version must be a string"):
+        river_scenario_from_dict(data)
+
+
+def test_empty_format_version_is_rejected():
+    data = _valid_dict()
+    data["format_version"] = ""
+    with pytest.raises(ValueError, match="unsupported format_version"):
+        river_scenario_from_dict(data)
+
+
+def test_build_metadata_includes_format_version():
+    build = _build_sample()
+    assert build.metadata["format_version"] == "1"
+
+
+# ---------------------------------------------------------------------------
 # CLI script
 # ---------------------------------------------------------------------------
 

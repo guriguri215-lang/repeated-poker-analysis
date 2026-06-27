@@ -59,6 +59,15 @@ def test_write_json_contains_core_fields(tmp_path, result):
     }
 
 
+def test_write_json_contains_format_version(tmp_path, result):
+    path = tmp_path / "out.json"
+    write_analysis_json(result, path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["format_version"] == "1"
+    # The build metadata also carries it, so a consumer can read either place.
+    assert payload["build_metadata"]["format_version"] == "1"
+
+
 def test_write_json_contains_report_and_ranking(tmp_path, result):
     path = tmp_path / "out.json"
     write_analysis_json(result, path)

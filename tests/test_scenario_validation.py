@@ -57,6 +57,7 @@ def test_success_row_includes_descriptive_fields():
     row = validation.rows[0]
     assert row.ok is True
     assert row.scenario_id == "nuts_chop_steal_bet98"
+    assert row.format_version == "1"
     assert row.model_kind == "single_hand"
     assert row.hero_info_set_count == 1
     assert row.villain_info_set_count == 1
@@ -171,12 +172,14 @@ def test_validation_json_writes_expected_keys(tmp_path):
         "source_path",
         "ok",
         "scenario_id",
+        "format_version",
         "model_kind",
         "hero_info_set_count",
         "villain_info_set_count",
         "terminal_count",
     ):
         assert key in first
+    assert first["format_version"] == "1"
 
 
 def test_validation_strict_json_parses(tmp_path):
@@ -210,6 +213,7 @@ def test_cli_directory_input():
     )
     assert "scenarios:" in completed.stdout
     assert "nuts_chop_steal_bet98" in completed.stdout
+    assert "format_version" in completed.stdout
     assert "Traceback" not in completed.stderr
 
 
