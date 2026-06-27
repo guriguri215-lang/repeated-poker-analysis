@@ -188,6 +188,34 @@ def test_batch_markdown_contains_table(tmp_path, batch):
     assert "| scenario_id |" in text
 
 
+def _detection_batch():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+        )
+    )
+    # The betting-tree scenario yields non-finite KL divergences under detection.
+    return run_batch_scenario_analysis(
+        [_SCENARIOS / "range_equity_betting_tree_bet98.json"], config
+    )
+
+
+def test_batch_lenient_json_keeps_infinity(tmp_path):
+    path = tmp_path / "batch_lenient.json"
+    write_batch_json(_detection_batch(), path)  # default strict=False
+    assert "Infinity" in path.read_text(encoding="utf-8")
+
+
+def test_batch_strict_json_has_no_non_finite(tmp_path):
+    path = tmp_path / "batch_strict.json"
+    write_batch_json(_detection_batch(), path, strict=True)
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" not in text
+    assert "NaN" not in text
+    json.loads(text)  # parses as strict JSON
+
+
 def test_parent_directory_auto_created(tmp_path, batch):
     path = tmp_path / "nested" / "deep" / "batch.json"
     write_batch_json(batch, path)
@@ -239,6 +267,39 @@ def test_cli_writes_outputs(tmp_path):
     assert json_path.exists()
     assert csv_path.exists()
     assert md_path.exists()
+
+
+def test_cli_strict_json_writes_rfc_json(tmp_path):
+    json_path = tmp_path / "strict.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_SCENARIOS),
+            "--output-json",
+            str(json_path),
+            "--strict-json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "saved JSON to" in completed.stdout
+    text = json_path.read_text(encoding="utf-8")
+    assert "Infinity" not in text
+    assert "NaN" not in text
+    json.loads(text)  # parses as strict JSON
+
+
+def test_cli_strict_json_without_output_json_succeeds(tmp_path):
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(_NUTS), "--strict-json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "scenarios:" in completed.stdout
+    assert "saved " not in completed.stdout
 
 
 def test_cli_no_markdown_runs(tmp_path):
