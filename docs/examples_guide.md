@@ -132,37 +132,45 @@ Instead of a hand-written Python example, an abstract river spot can be loaded
 from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
 BET=98 nuts-chop steal case.
 
-The input has two modes:
+The input has three mutually exclusive modes:
 
 - **single-hand mode**: a top-level `showdown` result and a single
   `baseline_hero_strategy` at the `IP_vs_bet` information set (the nuts-chop
   sample above).
-- **abstract weighted range mode**: a `hero_range` list of weighted hands, each
-  with its own `hand_id`, `weight`, `showdown`, and `baseline_strategy`. See
+- **abstract Hero range mode**: a `hero_range` list of weighted hands, each with
+  its own `hand_id`, `weight`, `showdown`, and `baseline_strategy`. See
   `examples/scenarios/abstract_range_steal_bet98.json` for a two-hand range (one
   hand chops and folds at baseline, one hand wins at showdown and calls). A
-  chance node draws the hand bucket; Villain shares one `OOP_river` information
+  chance node draws the Hero bucket; Villain shares one `OOP_river` information
   set across all buckets (it does not see Hero's hand), while Hero gets a
-  per-hand `IP_vs_bet::<hand_id>` information set. This is an *abstract* range:
-  the weights and per-hand showdown results are given directly. It is **not** a
-  real card or hand-range parser. The two modes are mutually exclusive.
+  per-hand `IP_vs_bet::<hand_id>` information set.
+- **abstract Hero/Villain range matrix mode**: a `hero_range` (without per-hand
+  `showdown`), a `villain_range`, and a `showdown_matrix` keyed by
+  `[hero_id][villain_id]`. See `examples/scenarios/range_matrix_steal_bet98.json`.
+  A chance node draws the `(hero, villain)` pair with probability
+  `hero_weight * villain_weight`; the outcome of each pair comes from the matrix.
 
-What the abstract range mode does **not** do in v1:
+The difference between the two range modes is the showdown source. Hero-range-only
+mode fixes one `showdown` per Hero bucket, so Villain has no private hand and
+shares a single `OOP_river` information set. Matrix mode gives Villain its own
+weighted buckets and resolves each Hero/Villain matchup through `showdown_matrix`;
+Villain then knows its own bucket (a per-bucket `OOP_river::<villain_id>`
+information set, shared across Hero buckets), while Hero still knows only its own
+bucket (`IP_vs_bet::<hero_id>`, shared across Villain buckets). These are
+*abstract* ranges given directly as weights and showdown results; they are **not**
+a real card or hand-range parser, and there is no equity matrix.
 
-- It is Hero-range-only. It does not model Villain private hand buckets yet, so
-  Villain cannot have its own range or matchup-dependent decisions.
-- Each hand's `showdown` is a fixed abstract outcome for that Hero bucket. There
-  is no showdown matrix or equity matrix that resolves Hero vs Villain holdings.
-- The action tree is fixed to OOP `check`/`bet` and IP `call`/`fold`. Raises and
-  arbitrary betting trees are not generated from JSON, even though the core
-  `GameTree` supports arbitrary action labels.
+What the abstract range modes do **not** do in v1:
 
-When Villain hand buckets are added later, Villain will know its own bucket, so
-each Villain bucket needs its own information set; but because Villain still does
-not see Hero's bucket, that information set must be shared across Hero buckets
-within the same Villain bucket.
+- There is no equity matrix; matrix mode resolves matchups only to a fixed
+  `chop`/`hero`/`villain` showdown result, not to equities.
+- The action tree is fixed to OOP `check`/`bet` and IP `call`/`fold`, and an OOP
+  `check` resolves immediately to a check-check showdown. IP betting after an OOP
+  check, raises, and arbitrary betting trees are not generated from JSON, even
+  though the core `GameTree` supports arbitrary action labels.
+- No real card parsing, hand-range syntax, hand evaluation, or solver imports.
 
-Both modes work with the same helper scripts and runner below.
+All three modes work with the same helper scripts and runner below.
 
 There are two helper scripts for a scenario file:
 
