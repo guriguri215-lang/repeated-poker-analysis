@@ -90,6 +90,8 @@ from .pipeline import (
     run_candidate_analysis_pipeline,
 )
 from .scenario_io import (
+    DEFAULT_FORMAT_VERSION,
+    SUPPORTED_FORMAT_VERSIONS,
     RiverScenario,
     RiverScenarioBettingTree,
     RiverScenarioBuildResult,
@@ -193,6 +195,8 @@ __all__ = [
     "CandidateFilterConfig",
     "CandidateGenerationConfig",
     "run_candidate_analysis_pipeline",
+    "DEFAULT_FORMAT_VERSION",
+    "SUPPORTED_FORMAT_VERSIONS",
     "RiverScenario",
     "RiverScenarioBettingTree",
     "RiverScenarioBuildResult",

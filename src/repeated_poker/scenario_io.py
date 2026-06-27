@@ -93,6 +93,13 @@ from .payoffs import (
 )
 
 _TOLERANCE = 1e-9
+# Scenario JSON format version. v1 is the string ``"1"``; a scenario without a
+# ``format_version`` field is treated as ``"1"`` for backward compatibility. Only
+# the exact strings in ``_SUPPORTED_FORMAT_VERSIONS`` are accepted -- a numeric
+# ``1`` or any unknown version is rejected, so the field stays consistent with a
+# future JSON schema and later versions such as ``"1.1"`` / ``"2"``.
+DEFAULT_FORMAT_VERSION = "1"
+SUPPORTED_FORMAT_VERSIONS = ("1",)
 _SHOWDOWN_RESULTS = (CHOP, HERO, VILLAIN)
 _OOP_INFO_SET = "OOP_river"
 _IP_INFO_SET = "IP_vs_bet"
@@ -208,6 +215,10 @@ class RiverScenario:
 
     :meth:`is_range_mode` is true in both range modes; :meth:`is_matrix_mode`
     distinguishes matrix mode.
+
+    ``format_version`` is the scenario JSON format version (currently ``"1"``); it
+    defaults to :data:`DEFAULT_FORMAT_VERSION` so a scenario built in code or
+    loaded from a pre-versioning JSON file still has a value.
     """
 
     scenario_id: str
@@ -219,6 +230,7 @@ class RiverScenario:
     baseline_hero_strategy: Optional[Dict[str, Dict[str, float]]]
     shift_amounts: Optional[List[float]]
     repeated: Optional[RiverScenarioRepeatedConfig]
+    format_version: str = DEFAULT_FORMAT_VERSION
     hero_range: Optional[RiverScenarioHeroRange] = None
     villain_range: Optional[RiverScenarioVillainRange] = None
     showdown_matrix: Optional[Dict[str, Dict[str, str]]] = None
@@ -630,6 +642,33 @@ def _parse_repeated(data) -> Optional[RiverScenarioRepeatedConfig]:
     return RiverScenarioRepeatedConfig(horizons=horizons, discount=discount)
 
 
+def _parse_format_version(data) -> str:
+    """Validate and return the scenario's ``format_version``.
+
+    A missing field defaults to :data:`DEFAULT_FORMAT_VERSION` (backward
+    compatibility with pre-versioning JSON). The value must be one of the exact
+    strings in :data:`SUPPORTED_FORMAT_VERSIONS`; a numeric ``1``, ``None``,
+    ``bool``, empty string, or any unknown version is rejected so the field stays
+    consistent with a future JSON schema and later versions.
+    """
+
+    if "format_version" not in data:
+        return DEFAULT_FORMAT_VERSION
+    value = data["format_version"]
+    # ``bool`` is an ``int`` subclass; reject it explicitly before the str check.
+    if isinstance(value, bool) or not isinstance(value, str):
+        raise ValueError(
+            "format_version must be a string such as "
+            f"{DEFAULT_FORMAT_VERSION!r}, got {value!r}"
+        )
+    if value not in SUPPORTED_FORMAT_VERSIONS:
+        raise ValueError(
+            f"unsupported format_version {value!r}; supported versions are "
+            f"{list(SUPPORTED_FORMAT_VERSIONS)}"
+        )
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -640,6 +679,8 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+
+    format_version = _parse_format_version(data)
 
     scenario_id = data.get("scenario_id")
     if not isinstance(scenario_id, str) or not scenario_id:
@@ -784,6 +825,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         baseline_hero_strategy=baseline_hero_strategy,
         shift_amounts=shift_amounts,
         repeated=repeated,
+        format_version=format_version,
         hero_range=hero_range,
         villain_range=villain_range,
         showdown_matrix=showdown_matrix,
@@ -903,6 +945,7 @@ def _hand_subtree(
 
 def _base_metadata(scenario: RiverScenario) -> dict:
     return {
+        "format_version": scenario.format_version,
         "scenario_id": scenario.scenario_id,
         "description": scenario.description,
         "bet_size": scenario.bet_size,
