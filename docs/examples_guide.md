@@ -269,6 +269,28 @@ print(result.markdown_summary)
 write_analysis_json(result, "reports/result.json")
 ```
 
+### Comparing several scenarios
+
+The single-scenario runner above analyses one file. To compare several at once,
+use the batch runner, which runs the same per-scenario analysis on each input and
+emits one comparison row per scenario:
+
+```powershell
+python scripts/run_scenario_batch.py examples/scenarios
+python scripts/run_scenario_batch.py examples/scenarios/nuts_chop_steal_bet98.json examples/scenarios/abstract_range_steal_bet98.json --rank-by t_deadline --output-json reports/batch.json --output-csv reports/batch.csv --output-markdown reports/batch.md
+```
+
+A single directory argument reads its `*.json` in filename order; multiple
+arguments are read in the given order. The batch CSV/Markdown carry one row per
+scenario (scenario id, model kind, horizon, candidate counts, and the top ranked
+candidate when `--rank-by` is given), and the batch JSON also embeds each
+successful scenario's full result. `--continue-on-error` records a failing
+scenario's error on its row instead of stopping. From Python this is
+`run_batch_scenario_analysis` with `write_batch_json` / `write_batch_csv` /
+`write_batch_markdown`. Like the rest of the scenario tooling, the batch runner
+is an analysis/reporting helper over the existing pipeline, not a new solver
+model.
+
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:
 
