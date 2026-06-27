@@ -172,14 +172,48 @@ Matrix mode accepts either matrix, but not both:
 These are *abstract* ranges given directly as weights and matchup outcomes; they
 are **not** a real card or hand-range parser.
 
+### River betting tree v1
+
+By default matrix mode uses the simple action tree (OOP `check`/`bet`, IP
+`call`/`fold`, with an OOP `check` resolving immediately to a check-check
+showdown). Matrix mode can instead opt into a fuller one-street betting tree by
+adding a `betting_tree` object with three sizes:
+
+- `oop_bet_size`: OOP's bet when it bets first.
+- `ip_bet_after_check_size`: IP's stab after an OOP check.
+- `ip_raise_size`: IP's **total** committed chips once a raise versus the OOP bet
+  is called (not the raise increment), and it must exceed `oop_bet_size`.
+
+See `examples/scenarios/range_equity_betting_tree_bet98.json`. The action tree
+becomes:
+
+```
+OOP check -> IP check (check-check showdown)
+          -> IP bet   -> OOP fold / OOP call (showdown)
+OOP bet   -> IP fold / IP call (showdown)
+          -> IP raise -> OOP fold / OOP call (showdown)
+```
+
+So an OOP `check` no longer has to be an immediate showdown: there is now one IP
+stab after the check and one IP raise versus the OOP bet. The information sets
+add Hero points `IP_after_OOP_check::<hero_id>` and `IP_vs_OOP_bet::<hero_id>`
+and Villain points `OOP_first::<villain_id>`, `OOP_vs_IP_bet::<villain_id>`, and
+`OOP_vs_IP_raise::<villain_id>`. In betting-tree mode each Hero bucket supplies
+`baseline_strategies` for both Hero decision points (`after_oop_check` with
+`check`/`bet`, and `vs_oop_bet` with `call`/`fold`/`raise`) instead of the simple
+`baseline_strategy`. Betting-tree mode is supported with matrix mode only
+(it requires `hero_range` + `villain_range` + a matrix).
+
 What the abstract range modes do **not** do in v1:
 
 - The `equity_matrix` is a directly supplied Hero pot share, not a computed
   equity: there is no card or hand evaluation behind it.
-- The action tree is fixed to OOP `check`/`bet` and IP `call`/`fold`, and an OOP
-  `check` resolves immediately to a check-check showdown. IP betting after an OOP
-  check, raises, and arbitrary betting trees are not generated from JSON, even
-  though the core `GameTree` supports arbitrary action labels.
+- Without a `betting_tree`, the action tree is fixed to OOP `check`/`bet` and IP
+  `call`/`fold`, and an OOP `check` resolves immediately to a check-check
+  showdown.
+- The `betting_tree` is one river street only: no re-raise, no multiple sizes per
+  node, no nested/arbitrary betting trees, and no street transitions, even though
+  the core `GameTree` supports arbitrary action labels.
 - No real card parsing, hand-range syntax, hand evaluation, or solver imports.
 
 All three modes work with the same helper scripts and runner below.

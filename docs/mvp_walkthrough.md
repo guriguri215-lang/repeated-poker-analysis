@@ -168,9 +168,12 @@ Hero/Villain range with a matchup matrix, which can be either a discrete
 All build a chance node (over Hero buckets, or over `(hero, villain)` matchup
 pairs) and run through the same pipeline. These range modes are abstract in v1:
 matrix outcomes are supplied directly (the `equity_matrix` is a given Hero pot
-share, not a computed equity), and the JSON action tree treats an OOP check as an
-immediate check-check showdown with no IP betting after an OOP check, raises, or
-arbitrary betting trees.
+share, not a computed equity). By default the JSON action tree treats an OOP
+check as an immediate check-check showdown, but a matrix-mode scenario may add an
+optional `betting_tree` (river one-street tree v1) with an IP stab after the OOP
+check and one IP raise versus the OOP bet
+(`examples/scenarios/range_equity_betting_tree_bet98.json`). Re-raises and
+arbitrary betting trees remain out of scope.
 
 Parameters:
 

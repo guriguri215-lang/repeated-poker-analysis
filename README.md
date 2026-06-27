@@ -195,10 +195,20 @@ Scope of the abstract range modes in v1:
   `showdown_matrix`, or an `equity_matrix` of Hero pot shares (for example
   precomputed by an external tool). There is no real card or hand evaluation, so
   it does not parse real cards, hand ranges, or solver exports.
-- The JSON action tree is limited to OOP `check`/`bet` and IP `call`/`fold`, and
-  an OOP `check` resolves immediately to a check-check showdown. It does not
-  support IP betting after an OOP check, raises, or arbitrary betting trees, even
-  though the core `GameTree` itself allows arbitrary action labels.
+- By default the JSON action tree is limited to OOP `check`/`bet` and IP
+  `call`/`fold`, and an OOP `check` resolves immediately to a check-check
+  showdown.
+
+Matrix-mode scenarios may also add an optional **river betting tree v1** via a
+`betting_tree` object (`oop_bet_size`, `ip_bet_after_check_size`,
+`ip_raise_size`; see `examples/scenarios/range_equity_betting_tree_bet98.json`).
+This adds an IP stab after an OOP check (with an OOP call/fold response) and one
+IP raise versus an OOP bet (with an OOP call/fold response). In betting-tree mode
+each Hero bucket supplies `baseline_strategies` for both decision points instead
+of the simple `baseline_strategy`. It is still one river street only: no
+re-raise, no multiple sizes per node, no nested betting trees, and no street
+transitions, even though the core `GameTree` itself allows arbitrary action
+labels.
 
 ### MVP walkthrough
 
