@@ -329,6 +329,13 @@ and `BettingTreeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
 covering all five scenario modes (single-hand, Hero-range-only, discrete
 showdown-matrix, equity-matrix, and river betting-tree).
 
+To exercise the form models from the command line before any GUI exists, run
+`python scripts/inspect_scenario_form.py <scenario.json>`. It detects the mode,
+runs that mode's form `from_dict` / `validate` / `to_dict`, and re-parses and
+rebuilds the result, printing a short report (mode, form class, validation, and
+round-trip status). It is an inspect-only developer utility: it never edits the
+scenario and adds no analysis.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
