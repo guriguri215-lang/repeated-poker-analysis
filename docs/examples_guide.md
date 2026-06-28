@@ -359,6 +359,21 @@ are meant to be edited and re-validated; for the full field specification see
 [scenario_format_reference.md](scenario_format_reference.md). From Python this is
 `create_scenario_template(kind)` (see `available_scenario_template_kinds()`).
 
+For a guided version of the same thing, run the interactive wizard:
+
+```powershell
+python scripts/wizard_create_scenario.py
+python scripts/wizard_create_scenario.py --kind single-hand --output reports/my_scenario.json
+```
+
+The wizard starts from a template and prompts for the common top-level fields
+(scenario id, description, rake, initial commitment, bet size, repeated horizons
+/ discount, and the output path); an empty answer keeps the template default, and
+anything passed as a flag is not asked. It validates before writing and will not
+overwrite an existing file without `--force`. Range buckets and matrices keep the
+template's toy values, so edit those in the JSON afterwards. The wizard is the
+precursor to a future GUI/form input layer, which is not implemented yet.
+
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:
 
