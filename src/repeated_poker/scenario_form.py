@@ -452,6 +452,13 @@ def validate_hero_range_form(
     for index, hand in enumerate(form.hands):
         prefix = f"hands[{index}]"
 
+        # A form being edited may hold a malformed entry (None, a dict, etc.).
+        # Report it as a field-level error and skip its detailed checks rather
+        # than raising AttributeError.
+        if not isinstance(hand, HeroRangeHandForm):
+            add(prefix, "hand entry must be a HeroRangeHandForm")
+            continue
+
         if not isinstance(hand.hand_id, str) or not hand.hand_id:
             add(f"{prefix}.hand_id", "hand_id must be a non-empty string")
         elif hand.hand_id in seen_ids:

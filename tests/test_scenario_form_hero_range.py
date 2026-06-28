@@ -138,6 +138,26 @@ def test_validation_requires_at_least_one_hand():
     assert "hands" in _fields_with_errors(replace(_valid_form(), hands=[]))
 
 
+@pytest.mark.parametrize("bad_entry", [None, {"hand_id": "x"}, "not-a-hand"])
+def test_validation_handles_malformed_hand_entry_without_raising(bad_entry):
+    # A form being edited may carry a None / dict / broken entry; validation must
+    # report it as a field error rather than raising.
+    form = replace(_valid_form(), hands=[bad_entry])
+    messages = validate_hero_range_form(form)
+    fields = {m.field for m in messages}
+    assert "hands[0]" in fields
+    # No weight-sum noise is added when an entry is malformed.
+    assert "hands" not in fields
+
+
+def test_validation_malformed_entry_alongside_valid_hand():
+    form = _valid_form()
+    form.hands = [None, form.hands[0]]
+    fields = _fields_with_errors(form)
+    assert "hands[0]" in fields
+    assert "hands" not in fields  # weight sum check is skipped
+
+
 def test_validation_detects_empty_hand_id():
     form = _valid_form()
     form.hands[0] = replace(form.hands[0], hand_id="")
