@@ -1249,9 +1249,23 @@ def betting_tree_form_to_dict(form: BettingTreeScenarioForm) -> dict:
     valid form yields a dict accepted by ``river_scenario_from_dict`` and
     ``build_river_steal_game_from_scenario``; an invalid form may not (use
     :func:`validate_betting_tree_form` first).
+
+    Unlike ``format_version`` (a passthrough value), ``matrix_type`` selects which
+    matrix key is emitted, so an unrecognised value cannot be passed through: it
+    raises :class:`ValueError` rather than being silently coerced to
+    ``showdown_matrix`` (which would hide the invalid form behind a parseable
+    dict).
     """
 
-    matrix_key = "equity_matrix" if form.matrix_type == "equity" else "showdown_matrix"
+    if form.matrix_type == "equity":
+        matrix_key = "equity_matrix"
+    elif form.matrix_type == "showdown":
+        matrix_key = "showdown_matrix"
+    else:
+        raise ValueError(
+            f"matrix_type must be one of {list(_BETTING_TREE_MATRIX_TYPES)}, "
+            f"got {form.matrix_type!r}"
+        )
     sizing = form.betting_tree
     return {
         "format_version": form.format_version,

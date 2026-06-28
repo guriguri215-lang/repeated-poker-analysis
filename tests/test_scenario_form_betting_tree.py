@@ -270,6 +270,15 @@ def test_validation_detects_invalid_matrix_type():
     assert not _has_matrix_grid_error(form)
 
 
+def test_to_dict_rejects_invalid_matrix_type():
+    # to_dict must not silently coerce an unknown matrix_type to showdown_matrix
+    # (which would hide the invalid form behind a parseable dict).
+    form = replace(_valid_form(), matrix_type="weird")
+    assert "matrix_type" in _fields_with_errors(form)
+    with pytest.raises(ValueError):
+        betting_tree_form_to_dict(form)
+
+
 def test_validation_detects_empty_and_duplicate_hero_hand_id():
     form = _valid_form()
     form.hero_buckets[0] = replace(form.hero_buckets[0], hand_id="")
