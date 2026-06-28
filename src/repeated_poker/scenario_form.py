@@ -138,7 +138,10 @@ def single_hand_form_to_dict(form: SingleHandScenarioForm) -> dict:
     """
 
     return {
-        "format_version": form.format_version or DEFAULT_FORMAT_VERSION,
+        # Emit the form's value as-is: a valid form yields "1", and an invalid
+        # value (for example "") is preserved so it is not silently corrected and
+        # is still caught by validate_single_hand_form and the JSON parser.
+        "format_version": form.format_version,
         "scenario_id": form.scenario_id,
         "description": form.description,
         "rake": {"rate": form.rake_rate, "cap": form.rake_cap},
@@ -186,6 +189,9 @@ def validate_single_hand_form(
 
     if not isinstance(form.scenario_id, str) or not form.scenario_id:
         add("scenario_id", "scenario_id must be a non-empty string")
+
+    if not isinstance(form.description, str):
+        add("description", "description must be a string (it may be empty)")
 
     if form.format_version not in SUPPORTED_FORMAT_VERSIONS:
         add(

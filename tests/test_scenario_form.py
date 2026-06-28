@@ -182,6 +182,45 @@ def test_validation_detects_invalid_commitments():
 
 
 # ---------------------------------------------------------------------------
+# format_version is preserved (not silently corrected) by to_dict
+# ---------------------------------------------------------------------------
+
+
+def test_empty_format_version_is_a_validation_error():
+    assert "format_version" in _fields_with_errors(
+        replace(_valid_form(), format_version="")
+    )
+
+
+def test_to_dict_preserves_invalid_format_version():
+    data = single_hand_form_to_dict(replace(_valid_form(), format_version=""))
+    # The invalid value is kept, not corrected to "1".
+    assert data["format_version"] == ""
+    # And the parser then rejects it, matching the field-level validation.
+    with pytest.raises(ValueError):
+        river_scenario_from_dict(data)
+
+
+def test_to_dict_keeps_format_version_one_for_valid_form():
+    assert single_hand_form_to_dict(_valid_form())["format_version"] == "1"
+
+
+# ---------------------------------------------------------------------------
+# description type validation
+# ---------------------------------------------------------------------------
+
+
+def test_non_string_description_is_a_validation_error():
+    assert "description" in _fields_with_errors(replace(_valid_form(), description=123))
+
+
+def test_empty_string_description_is_valid():
+    assert "description" not in _fields_with_errors(
+        replace(_valid_form(), description="")
+    )
+
+
+# ---------------------------------------------------------------------------
 # Edited form round-trips through the parser
 # ---------------------------------------------------------------------------
 
