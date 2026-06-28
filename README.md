@@ -272,6 +272,13 @@ notes.
 See [docs/examples_guide.md](docs/examples_guide.md) for a guide to the example
 scripts and the recommended order for running them.
 
+### Scenario format reference
+
+See [docs/scenario_format_reference.md](docs/scenario_format_reference.md) for
+the full JSON scenario format: every top-level field, each input mode and its
+required fields, the information-set naming, payoff conventions, and validation
+troubleshooting.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)

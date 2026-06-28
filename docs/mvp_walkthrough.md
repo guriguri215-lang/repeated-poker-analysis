@@ -177,7 +177,9 @@ arbitrary betting trees remain out of scope. The analysis runner can also save
 its result with `--output-json`, `--output-markdown`, and `--output-csv` (these
 go under the git-ignored `reports/` by convention). To compare several scenarios
 at once, `python scripts/run_scenario_batch.py <dir-or-files>` runs the same
-per-scenario analysis on each and emits one comparison row per scenario.
+per-scenario analysis on each and emits one comparison row per scenario. For the
+full field-by-field JSON specification of every mode, see the
+[Scenario Format Reference](scenario_format_reference.md).
 
 Parameters:
 
