@@ -131,6 +131,74 @@ def test_non_interactive_create_without_output_rejected():
 
 
 # ---------------------------------------------------------------------------
+# Create-only flags rejected with an existing scenario
+# ---------------------------------------------------------------------------
+
+
+def _run_cli(extra_argv):
+    return subprocess.run(
+        [sys.executable, str(_SCRIPT), "--scenario", str(_SAMPLE), *extra_argv],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_existing_scenario_with_scenario_id_rejected():
+    completed = _run_cli(["--scenario-id", "foo"])
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+def test_existing_scenario_with_description_rejected():
+    completed = _run_cli(["--description", "something"])
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+def test_existing_scenario_with_force_rejected():
+    completed = _run_cli(["--force"])
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+# ---------------------------------------------------------------------------
+# Validation happens before the scenario file is written (create mode)
+# ---------------------------------------------------------------------------
+
+
+def test_create_validation_failure_does_not_write_file(tmp_path, monkeypatch, capsys):
+    out = tmp_path / "scenario.json"
+
+    def _boom(_scenario):
+        raise ValueError("forced validation failure")
+
+    monkeypatch.setattr(workflow, "build_river_steal_game_from_scenario", _boom)
+    rc = workflow.main(
+        argv=[
+            "--kind",
+            "single-hand",
+            "--scenario-output",
+            str(out),
+            "--non-interactive",
+        ],
+        input_func=lambda _p: "",
+        print_func=lambda _m: None,
+    )
+    assert rc == 1
+    # The invalid scenario must not have been written.
+    assert not out.exists()
+    captured = capsys.readouterr()
+    assert "error:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+# ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
 

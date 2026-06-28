@@ -129,10 +129,13 @@ def _create_scenario(args, interactive, input_func, print_func):
     )
     template = _build_template(create_args, interactive, input_func, print_func)
     scenario_output = _resolve_scenario_output(args, interactive, input_func)
+    # Validate (parser/build) before writing, like the create wizard: a template
+    # that fails validation must not leave a scenario file behind.
+    scenario = river_scenario_from_dict(template)
+    build_river_steal_game_from_scenario(scenario)
     # ``_write_output`` validates the path (empty / directory / OSError) and
     # honours --force, printing "saved scenario to ..." and the toy-values note.
     _write_output(template, scenario_output, create_args, interactive, input_func, print_func)
-    scenario = river_scenario_from_dict(template)
     return scenario, scenario_output, True
 
 
@@ -151,10 +154,21 @@ def _run_workflow(args, input_func, print_func) -> int:
 
     if args.scenario is not None and args.kind is not None:
         raise _WizardError("--scenario and --kind cannot be used together")
-    if args.scenario is not None and args.scenario_output is not None:
-        raise _WizardError(
-            "--scenario-output only applies to create-and-run mode, not --scenario"
-        )
+    if args.scenario is not None:
+        # These flags only configure create-and-run mode; with an existing
+        # scenario they would be silently ignored, so reject them explicitly.
+        create_only = [
+            ("--scenario-output", args.scenario_output is not None),
+            ("--scenario-id", args.scenario_id is not None),
+            ("--description", args.description is not None),
+            ("--force", args.force),
+        ]
+        offending = [name for name, present in create_only if present]
+        if offending:
+            raise _WizardError(
+                f"{', '.join(offending)} only apply to create-and-run mode, "
+                "not --scenario"
+            )
 
     if args.scenario is not None:
         scenario = _load_existing_scenario(args.scenario)
