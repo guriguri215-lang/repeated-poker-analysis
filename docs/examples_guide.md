@@ -338,6 +338,27 @@ records the failing file and keeps going, and `--output-json` (optionally with
 input mistakes; use `run_river_scenario_analysis` / `run_scenario_batch.py` once
 the inputs validate to actually analyse and compare candidates.
 
+### Generating a starter scenario
+
+To avoid writing a scenario JSON from scratch, generate a starter template with
+`create_scenario_template` or `scripts/create_scenario_template.py`. Each
+template is an abstract toy example (not a strategic recommendation), includes
+`"format_version": "1"`, and is validated at the parser/build level by default
+(pass `--no-validate` to skip). It prints to stdout, or saves with `--output`
+(refusing to overwrite an existing file unless `--force` is given):
+
+```powershell
+python scripts/create_scenario_template.py --list-kinds
+python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
+python scripts/validate_river_scenario.py reports/template.json
+```
+
+The kinds are `single-hand`, `hero-range`, `range-matrix-showdown`,
+`range-matrix-equity`, and `range-matrix-equity-betting-tree`. Generated files
+are meant to be edited and re-validated; for the full field specification see
+[scenario_format_reference.md](scenario_format_reference.md). From Python this is
+`create_scenario_template(kind)` (see `available_scenario_template_kinds()`).
+
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:
 

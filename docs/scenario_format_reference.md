@@ -26,6 +26,19 @@ input-usability work (a template generator and a form/GUI input layer).
 
   Validation runs at the parser/build level only (see section 7).
 
+- To start from a working file instead of writing one by hand, generate a
+  template that conforms to this reference:
+
+  ```bash
+  python scripts/create_scenario_template.py --list-kinds
+  python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
+  python scripts/validate_river_scenario.py reports/template.json
+  ```
+
+  Generated templates are abstract toy examples (not strategic recommendations),
+  always include `"format_version": "1"`, and are meant to be edited and
+  re-validated.
+
 ## 2. Top-level fields
 
 | Field | Required | Modes | Type | Meaning / constraints |
