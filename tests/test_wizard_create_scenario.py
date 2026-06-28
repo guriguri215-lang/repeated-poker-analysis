@@ -240,6 +240,70 @@ def test_non_interactive_writes_defaults(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Output / id edge cases (clean errors, no traceback)
+# ---------------------------------------------------------------------------
+
+
+def _run_cli(extra_argv):
+    return subprocess.run(
+        [sys.executable, str(_SCRIPT), "--kind", "single-hand", *extra_argv],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_cli_empty_output_is_rejected_without_traceback():
+    completed = _run_cli(["--non-interactive", "--output", ""])
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "--output must not be empty" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+def test_cli_directory_output_with_force_is_rejected_without_traceback(tmp_path):
+    existing_dir = tmp_path / "a_directory"
+    existing_dir.mkdir()
+    completed = _run_cli(
+        ["--non-interactive", "--output", str(existing_dir), "--force"]
+    )
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "is a directory" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+def test_cli_empty_scenario_id_is_rejected_without_traceback():
+    completed = _run_cli(["--scenario-id", "", "--no-validate"])
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
+
+
+def test_directory_output_rejected_even_with_force_via_main(tmp_path):
+    existing_dir = tmp_path / "a_directory"
+    existing_dir.mkdir()
+    printed = []
+    rc = wizard.main(
+        argv=[
+            "--kind",
+            "single-hand",
+            "--non-interactive",
+            "--output",
+            str(existing_dir),
+            "--force",
+        ],
+        input_func=lambda _p: "",
+        print_func=printed.append,
+    )
+    assert rc == 1
+    # The directory is left untouched (no scenario file created inside it).
+    assert list(existing_dir.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
