@@ -152,17 +152,19 @@ is rejected.
 
 - EV is hand-level net profit (chips won or lost relative to the start of the
   river decision), not a pot-size fraction.
-- Rake is taken from the awarded pot first, bounded by `rake.cap` when set. With
-  a positive rake the game is **non-zero-sum** between Hero and Villain (the
-  house takes a share).
+- Rake is computed from the full showdown pot, then subtracted before the
+  remaining pot is awarded or split, bounded by `rake.cap` when set. With a
+  positive rake the game is **non-zero-sum** between Hero and Villain (the house
+  takes a share).
 - An uncalled bet is returned: when a player folds to a bet/raise, the uncalled
   amount goes back and the other player wins the folding player's committed
-  chips.
+  chips. No rake is taken on a fold.
 - `showdown_matrix` gives a discrete `chop` / `hero` / `villain` result per
-  matchup; the pot (after rake) is split accordingly.
-- `equity_matrix` gives the Hero pot share **before rake** in `[0, 1]`; the rake
-  is then taken from the awarded pot. There is no real card evaluation behind
-  these numbers.
+  matchup; the remaining pot after rake is awarded or split accordingly.
+- `equity_matrix` gives the Hero pot share **before rake** in `[0, 1]`. The rake
+  is computed from the full pot and subtracted, then the remaining pot is split
+  by that share (so Hero effectively receives its share of the after-rake pot).
+  There is no real card evaluation behind these numbers.
 
 ## 6. Candidate generation and repeated-game fields
 
