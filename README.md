@@ -344,6 +344,16 @@ that JSON -- to `--output PATH` (refusing to overwrite without `--force`) or, by
 default or with `--output -`, to stdout as JSON only. `--strict-json` reuses the
 same RFC 8259 serialiser as the analysis exporters.
 
+To edit fields and save (the smallest "form edit -> save" flow, single-hand mode
+only), run `python scripts/edit_scenario_form.py <scenario.json> --set
+FIELD=VALUE [...] [--output PATH|-] [--force] [--strict-json]`. Each `--set`
+updates one flat `SingleHandScenarioForm` field (for example `bet_size=50`,
+`horizons=10,20`, `shift_amounts=0.25,0.5,1.0`, `rake_cap=none`), with dotted
+aliases such as `rake.rate` and `baseline.call`; the result is only written when
+the edited form validates and round-trips. Non-single-hand scenarios, unknown
+fields, and bad values are rejected with a clean `error:` message. The three form
+CLIs compose: `edit` -> stdout -> `inspect` / `roundtrip`.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)

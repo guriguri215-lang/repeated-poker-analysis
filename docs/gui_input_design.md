@@ -194,6 +194,15 @@ re-parses and rebuilds, writes that JSON to a file (refusing to overwrite withou
 `--force`) or to stdout. It reuses the same strict-JSON serialiser as the analysis
 exporters, so a GUI save and a CLI save would share one format.
 
+`scripts/edit_scenario_form.py <scenario.json> --set FIELD=VALUE [...]
+[--output PATH|-] [--force] [--strict-json]` is the smallest "form edit -> save"
+flow, restricted to single-hand mode: it loads the `SingleHandScenarioForm`,
+applies `--set` edits to flat fields (with dotted aliases like `rake.rate` /
+`baseline.call`), and writes only when the edited form validates and round-trips.
+It approximates the GUI's per-field edit and save path. The three form CLIs
+(inspect, roundtrip, edit) reuse one loader, mode detection, safe writer, and
+strict-JSON serialiser, and compose as `edit -> inspect / roundtrip`.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
