@@ -246,6 +246,22 @@ def test_validation_detects_unknown_matrix_row_and_villain_id():
     assert "showdown_matrix[hero_chop]" in _fields_with_errors(form)
 
 
+def test_validation_tolerates_non_comparable_unknown_row_keys():
+    # A form being edited may end up with non-comparable matrix row keys (e.g. 1
+    # and None next to strings). The validator must return messages, not raise.
+    form = _valid_form()
+    form.showdown_matrix[1] = {"villain_chop": "chop", "villain_strong": "chop"}
+    form.showdown_matrix[None] = {"villain_chop": "chop", "villain_strong": "chop"}
+    assert "showdown_matrix" in _fields_with_errors(form)
+
+
+def test_validation_tolerates_non_comparable_unknown_villain_keys():
+    form = _valid_form()
+    form.showdown_matrix["hero_chop"][1] = "chop"
+    form.showdown_matrix["hero_chop"][None] = "chop"
+    assert "showdown_matrix[hero_chop]" in _fields_with_errors(form)
+
+
 def test_validation_detects_invalid_cell_value():
     form = _valid_form()
     form.showdown_matrix["hero_chop"]["villain_chop"] = "split"

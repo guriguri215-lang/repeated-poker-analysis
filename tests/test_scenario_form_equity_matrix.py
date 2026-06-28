@@ -244,6 +244,22 @@ def test_validation_detects_unknown_matrix_row_and_villain_id():
     assert "equity_matrix[hero_medium]" in _fields_with_errors(form)
 
 
+def test_validation_tolerates_non_comparable_unknown_row_keys():
+    # A form being edited may end up with non-comparable matrix row keys (e.g. 1
+    # and None next to strings). The validator must return messages, not raise.
+    form = _valid_form()
+    form.equity_matrix[1] = {"villain_weak": 0.5, "villain_strong": 0.5}
+    form.equity_matrix[None] = {"villain_weak": 0.5, "villain_strong": 0.5}
+    assert "equity_matrix" in _fields_with_errors(form)
+
+
+def test_validation_tolerates_non_comparable_unknown_villain_keys():
+    form = _valid_form()
+    form.equity_matrix["hero_medium"][1] = 0.5
+    form.equity_matrix["hero_medium"][None] = 0.5
+    assert "equity_matrix[hero_medium]" in _fields_with_errors(form)
+
+
 @pytest.mark.parametrize(
     "bad_value", [-0.1, 1.1, float("nan"), float("inf"), float("-inf"), True, "0.5", None]
 )

@@ -729,6 +729,18 @@ def _validate_matrix_bucket_ids_and_weights(buckets, prefix, expected_type, add)
     return ids, ids_usable
 
 
+def _sorted_for_display(values) -> list:
+    """Sort ``values`` for stable display, tolerating non-comparable types.
+
+    A form being edited may hold a matrix dict with mixed key types (for example
+    ``1`` and ``None`` alongside strings), which a plain ``sorted`` cannot order
+    and would raise ``TypeError`` on. Sorting by ``repr`` keeps the output stable
+    without changing the keys themselves -- it is only for message ordering.
+    """
+
+    return sorted(values, key=repr)
+
+
 def _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_error, add) -> None:
     """Validate that ``matrix`` covers exactly the Hero x Villain id grid.
 
@@ -740,6 +752,11 @@ def _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_erro
     ``"equity_matrix"``) so messages point at the matrix, a row, or a single cell.
     Only valid, unique ids from the bucket lists are used so a bad row/cell is not
     double-reported on top of a bad bucket id.
+
+    Unknown keys come from the (possibly broken) form matrix, so their order is
+    computed with :func:`_sorted_for_display` to stay exception-free even when the
+    matrix mixes non-comparable key types -- the validator must return messages,
+    not raise.
     """
 
     if not isinstance(matrix, dict):
@@ -750,9 +767,9 @@ def _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_erro
     villain_set = set(villain_ids)
     matrix_hero_ids = set(matrix)
 
-    for missing in sorted(hero_set - matrix_hero_ids):
+    for missing in _sorted_for_display(hero_set - matrix_hero_ids):
         add(matrix_field, f"missing row for hero id {missing!r}")
-    for unknown in sorted(matrix_hero_ids - hero_set):
+    for unknown in _sorted_for_display(matrix_hero_ids - hero_set):
         add(matrix_field, f"unknown hero id {unknown!r}")
 
     for hero_id in hero_ids:
@@ -764,9 +781,9 @@ def _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_erro
             add(row_field, "row must be an object keyed by villain hand id")
             continue
         row_ids = set(row)
-        for missing in sorted(villain_set - row_ids):
+        for missing in _sorted_for_display(villain_set - row_ids):
             add(row_field, f"missing cell for villain id {missing!r}")
-        for unknown in sorted(row_ids - villain_set):
+        for unknown in _sorted_for_display(row_ids - villain_set):
             add(row_field, f"unknown villain id {unknown!r}")
         for villain_id in villain_ids:
             if villain_id not in row:
