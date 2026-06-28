@@ -1,49 +1,50 @@
-"""Tests for the discrete showdown-matrix scenario form model."""
+"""Tests for the equity-matrix scenario form model."""
 
 import json
+import math
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from repeated_poker import (
+    EquityMatrixScenarioForm,
     FormValidationMessage,
     HeroMatrixBucketForm,
-    ShowdownMatrixScenarioForm,
     VillainMatrixBucketForm,
     build_river_steal_game_from_scenario,
+    equity_matrix_form_from_dict,
+    equity_matrix_form_to_dict,
     river_scenario_from_dict,
-    showdown_matrix_form_from_dict,
-    showdown_matrix_form_to_dict,
-    validate_showdown_matrix_form,
+    validate_equity_matrix_form,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCENARIOS = _ROOT / "examples" / "scenarios"
-_SHOWDOWN_MATRIX = _SCENARIOS / "range_matrix_steal_bet98.json"
 _EQUITY_MATRIX = _SCENARIOS / "range_equity_steal_bet98.json"
+_SHOWDOWN_MATRIX = _SCENARIOS / "range_matrix_steal_bet98.json"
 _HERO_RANGE = _SCENARIOS / "abstract_range_steal_bet98.json"
 _SINGLE_HAND = _SCENARIOS / "nuts_chop_steal_bet98.json"
 _BETTING_TREE = _SCENARIOS / "range_equity_betting_tree_bet98.json"
 
 
 def _sample_dict() -> dict:
-    return json.loads(_SHOWDOWN_MATRIX.read_text(encoding="utf-8"))
+    return json.loads(_EQUITY_MATRIX.read_text(encoding="utf-8"))
 
 
-def _valid_form() -> ShowdownMatrixScenarioForm:
-    return showdown_matrix_form_from_dict(_sample_dict())
+def _valid_form() -> EquityMatrixScenarioForm:
+    return equity_matrix_form_from_dict(_sample_dict())
 
 
 def _fields_with_errors(form) -> set:
-    return {message.field for message in validate_showdown_matrix_form(form)}
+    return {message.field for message in validate_equity_matrix_form(form)}
 
 
 def _has_matrix_grid_error(form) -> bool:
-    """True if any message targets the showdown_matrix grid (or a row/cell)."""
+    """True if any message targets the equity_matrix grid (or a row/cell)."""
     return any(
-        message.field == "showdown_matrix" or message.field.startswith("showdown_matrix[")
-        for message in validate_showdown_matrix_form(form)
+        message.field == "equity_matrix" or message.field.startswith("equity_matrix[")
+        for message in validate_equity_matrix_form(form)
     )
 
 
@@ -52,34 +53,34 @@ def _has_matrix_grid_error(form) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_from_dict_reads_bundled_showdown_matrix_sample():
+def test_from_dict_reads_bundled_equity_matrix_sample():
     form = _valid_form()
-    assert isinstance(form, ShowdownMatrixScenarioForm)
-    assert form.scenario_id == "range_matrix_steal_bet98"
+    assert isinstance(form, EquityMatrixScenarioForm)
+    assert form.scenario_id == "range_equity_steal_bet98"
     assert form.bet_size == 98.0
-    assert [b.hand_id for b in form.hero_buckets] == ["hero_chop", "hero_strong"]
-    assert [b.weight for b in form.hero_buckets] == [0.8, 0.2]
+    assert [b.hand_id for b in form.hero_buckets] == ["hero_medium", "hero_strong"]
+    assert [b.weight for b in form.hero_buckets] == [0.7, 0.3]
     assert form.hero_buckets[0].baseline_call_probability == 0.0
     assert form.hero_buckets[0].baseline_fold_probability == 1.0
-    assert [b.hand_id for b in form.villain_buckets] == ["villain_chop", "villain_strong"]
-    assert [b.weight for b in form.villain_buckets] == [0.7, 0.3]
-    assert form.showdown_matrix["hero_chop"]["villain_strong"] == "villain"
-    assert form.showdown_matrix["hero_strong"]["villain_chop"] == "hero"
+    assert [b.hand_id for b in form.villain_buckets] == ["villain_weak", "villain_strong"]
+    assert [b.weight for b in form.villain_buckets] == [0.6, 0.4]
+    assert form.equity_matrix["hero_medium"]["villain_weak"] == 0.65
+    assert form.equity_matrix["hero_strong"]["villain_strong"] == 0.55
     assert form.format_version == "1"
 
 
 def test_to_dict_round_trips_through_parser_and_build():
-    data = showdown_matrix_form_to_dict(_valid_form())
+    data = equity_matrix_form_to_dict(_valid_form())
     scenario = river_scenario_from_dict(data)
     build = build_river_steal_game_from_scenario(scenario)
     assert build.metadata["format_version"] == "1"
     assert build.metadata["mode"] == "range_matrix"
-    assert build.metadata["matrix_type"] == "showdown"
+    assert build.metadata["matrix_type"] == "equity"
 
 
 def test_round_trip_preserves_main_buckets_and_matrix():
     original = _sample_dict()
-    data = showdown_matrix_form_to_dict(showdown_matrix_form_from_dict(original))
+    data = equity_matrix_form_to_dict(equity_matrix_form_from_dict(original))
     assert data["scenario_id"] == original["scenario_id"]
     assert data["bet_size"] == original["bet_size"]
     assert data["rake"] == original["rake"]
@@ -88,20 +89,20 @@ def test_round_trip_preserves_main_buckets_and_matrix():
     assert data["candidate_generation"] == original["candidate_generation"]
     assert data["hero_range"] == original["hero_range"]
     assert data["villain_range"] == original["villain_range"]
-    assert data["showdown_matrix"] == original["showdown_matrix"]
+    assert data["equity_matrix"] == original["equity_matrix"]
 
 
 def test_to_dict_omits_per_hand_showdown_on_hero_buckets():
-    data = showdown_matrix_form_to_dict(_valid_form())
+    data = equity_matrix_form_to_dict(_valid_form())
     assert all("showdown" not in bucket for bucket in data["hero_range"])
 
 
 def test_to_dict_keeps_format_version_one_for_valid_form():
-    assert showdown_matrix_form_to_dict(_valid_form())["format_version"] == "1"
+    assert equity_matrix_form_to_dict(_valid_form())["format_version"] == "1"
 
 
 def test_to_dict_preserves_invalid_format_version():
-    data = showdown_matrix_form_to_dict(replace(_valid_form(), format_version="9"))
+    data = equity_matrix_form_to_dict(replace(_valid_form(), format_version="9"))
     assert data["format_version"] == "9"
     with pytest.raises(ValueError):
         river_scenario_from_dict(data)
@@ -113,33 +114,33 @@ def test_to_dict_preserves_invalid_format_version():
 
 
 @pytest.mark.parametrize(
-    "path", [_SINGLE_HAND, _HERO_RANGE, _EQUITY_MATRIX, _BETTING_TREE]
+    "path", [_SINGLE_HAND, _HERO_RANGE, _SHOWDOWN_MATRIX, _BETTING_TREE]
 )
-def test_non_showdown_matrix_modes_are_rejected(path):
+def test_non_equity_matrix_modes_are_rejected(path):
     data = json.loads(path.read_text(encoding="utf-8"))
     with pytest.raises(ValueError):
-        showdown_matrix_form_from_dict(data)
+        equity_matrix_form_from_dict(data)
 
 
 def test_unsupported_hero_baseline_action_is_rejected():
     data = _sample_dict()
     data["hero_range"][0]["baseline_strategy"] = {"call": 0.5, "raise": 0.5}
     with pytest.raises(ValueError):
-        showdown_matrix_form_from_dict(data)
+        equity_matrix_form_from_dict(data)
 
 
 def test_non_dict_input_is_rejected():
     with pytest.raises(ValueError):
-        showdown_matrix_form_from_dict([1, 2, 3])
+        equity_matrix_form_from_dict([1, 2, 3])
 
 
 # ---------------------------------------------------------------------------
-# validate_showdown_matrix_form
+# validate_equity_matrix_form
 # ---------------------------------------------------------------------------
 
 
 def test_valid_form_has_no_messages():
-    assert validate_showdown_matrix_form(_valid_form()) == []
+    assert validate_equity_matrix_form(_valid_form()) == []
 
 
 def test_validation_returns_multiple_field_errors():
@@ -150,7 +151,7 @@ def test_validation_returns_multiple_field_errors():
         bet_size=0.0,
         discount=1.5,
     )
-    messages = validate_showdown_matrix_form(form)
+    messages = validate_equity_matrix_form(form)
     assert len(messages) >= 4
     assert all(isinstance(m, FormValidationMessage) for m in messages)
     assert all(m.severity == "error" for m in messages)
@@ -164,8 +165,6 @@ def test_validation_requires_at_least_one_hero_and_villain_bucket():
 
 
 def test_validation_detects_empty_and_duplicate_hero_hand_id():
-    # An empty / duplicate hero id makes the hero axis unreliable, so the matrix
-    # grid check is suppressed to avoid misleading unknown-row noise.
     form = _valid_form()
     form.hero_buckets[0] = replace(form.hero_buckets[0], hand_id="")
     assert "hero_buckets[0].hand_id" in _fields_with_errors(form)
@@ -194,8 +193,7 @@ def test_validation_detects_empty_and_duplicate_villain_hand_id():
 def test_validation_detects_hero_villain_id_overlap():
     form = _valid_form()
     # Reuse a hero id as a villain id without touching the matrix: the overlap is
-    # reported and the matrix grid check is suppressed (the axes are not disjoint,
-    # so the expected row/column sets cannot be trusted).
+    # reported and the matrix grid check is suppressed (axes not disjoint).
     shared = form.hero_buckets[0].hand_id
     form.villain_buckets[0] = replace(form.villain_buckets[0], hand_id=shared)
     assert "villain_buckets" in _fields_with_errors(form)
@@ -226,52 +224,66 @@ def test_validation_detects_hero_baseline_probabilities_not_summing_to_one():
 
 def test_validation_detects_missing_matrix_row():
     form = _valid_form()
-    del form.showdown_matrix["hero_strong"]
-    assert "showdown_matrix" in _fields_with_errors(form)
+    del form.equity_matrix["hero_strong"]
+    assert "equity_matrix" in _fields_with_errors(form)
 
 
 def test_validation_detects_missing_matrix_cell():
     form = _valid_form()
-    del form.showdown_matrix["hero_chop"]["villain_strong"]
-    assert "showdown_matrix[hero_chop]" in _fields_with_errors(form)
+    del form.equity_matrix["hero_medium"]["villain_strong"]
+    assert "equity_matrix[hero_medium]" in _fields_with_errors(form)
 
 
 def test_validation_detects_unknown_matrix_row_and_villain_id():
     form = _valid_form()
-    form.showdown_matrix["hero_ghost"] = {"villain_chop": "chop", "villain_strong": "chop"}
-    assert "showdown_matrix" in _fields_with_errors(form)
+    form.equity_matrix["hero_ghost"] = {"villain_weak": 0.5, "villain_strong": 0.5}
+    assert "equity_matrix" in _fields_with_errors(form)
 
     form = _valid_form()
-    form.showdown_matrix["hero_chop"]["villain_ghost"] = "chop"
-    assert "showdown_matrix[hero_chop]" in _fields_with_errors(form)
+    form.equity_matrix["hero_medium"]["villain_ghost"] = 0.5
+    assert "equity_matrix[hero_medium]" in _fields_with_errors(form)
 
 
 def test_validation_tolerates_non_comparable_unknown_row_keys():
     # A form being edited may end up with non-comparable matrix row keys (e.g. 1
     # and None next to strings). The validator must return messages, not raise.
     form = _valid_form()
-    form.showdown_matrix[1] = {"villain_chop": "chop", "villain_strong": "chop"}
-    form.showdown_matrix[None] = {"villain_chop": "chop", "villain_strong": "chop"}
-    assert "showdown_matrix" in _fields_with_errors(form)
+    form.equity_matrix[1] = {"villain_weak": 0.5, "villain_strong": 0.5}
+    form.equity_matrix[None] = {"villain_weak": 0.5, "villain_strong": 0.5}
+    assert "equity_matrix" in _fields_with_errors(form)
 
 
 def test_validation_tolerates_non_comparable_unknown_villain_keys():
     form = _valid_form()
-    form.showdown_matrix["hero_chop"][1] = "chop"
-    form.showdown_matrix["hero_chop"][None] = "chop"
-    assert "showdown_matrix[hero_chop]" in _fields_with_errors(form)
+    form.equity_matrix["hero_medium"][1] = 0.5
+    form.equity_matrix["hero_medium"][None] = 0.5
+    assert "equity_matrix[hero_medium]" in _fields_with_errors(form)
 
 
-def test_validation_detects_invalid_cell_value():
+@pytest.mark.parametrize(
+    "bad_value", [-0.1, 1.1, float("nan"), float("inf"), float("-inf"), True, "0.5", None]
+)
+def test_validation_detects_invalid_equity_cell_value(bad_value):
     form = _valid_form()
-    form.showdown_matrix["hero_chop"]["villain_chop"] = "split"
-    assert "showdown_matrix[hero_chop][villain_chop]" in _fields_with_errors(form)
+    form.equity_matrix["hero_medium"]["villain_weak"] = bad_value
+    assert "equity_matrix[hero_medium][villain_weak]" in _fields_with_errors(form)
+
+
+def test_validation_accepts_boundary_equities():
+    form = _valid_form()
+    form.equity_matrix["hero_medium"]["villain_weak"] = 0.0
+    form.equity_matrix["hero_medium"]["villain_strong"] = 1.0
+    assert validate_equity_matrix_form(form) == []
+    # And these boundary values round-trip through the parser/build.
+    build_river_steal_game_from_scenario(
+        river_scenario_from_dict(equity_matrix_form_to_dict(form))
+    )
 
 
 @pytest.mark.parametrize("bad_entry", [None, {"hand_id": "x"}, "not-a-bucket"])
 def test_validation_handles_malformed_hero_bucket_without_raising(bad_entry):
     form = replace(_valid_form(), hero_buckets=[bad_entry])
-    fields = {m.field for m in validate_showdown_matrix_form(form)}
+    fields = {m.field for m in validate_equity_matrix_form(form)}
     assert "hero_buckets[0]" in fields
     # No weight-sum noise is added when an entry is malformed.
     assert "hero_buckets" not in fields
@@ -282,7 +294,7 @@ def test_validation_handles_malformed_hero_bucket_without_raising(bad_entry):
 @pytest.mark.parametrize("bad_entry", [None, {"hand_id": "x"}, "not-a-bucket"])
 def test_validation_handles_malformed_villain_bucket_without_raising(bad_entry):
     form = replace(_valid_form(), villain_buckets=[bad_entry])
-    fields = {m.field for m in validate_showdown_matrix_form(form)}
+    fields = {m.field for m in validate_equity_matrix_form(form)}
     assert "villain_buckets[0]" in fields
     assert "villain_buckets" not in fields
     assert not _has_matrix_grid_error(form)
@@ -309,8 +321,8 @@ def test_validation_detects_empty_or_non_positive_shift_amounts():
 
 
 def test_edited_valid_form_still_parses_and_builds():
-    form = ShowdownMatrixScenarioForm(
-        scenario_id="edited_showdown_matrix",
+    form = EquityMatrixScenarioForm(
+        scenario_id="edited_equity_matrix",
         description="edited",
         rake_rate=0.0,
         rake_cap=None,
@@ -335,17 +347,18 @@ def test_edited_valid_form_still_parses_and_builds():
             VillainMatrixBucketForm(hand_id="va", weight=0.6),
             VillainMatrixBucketForm(hand_id="vb", weight=0.4),
         ],
-        showdown_matrix={
-            "ha": {"va": "hero", "vb": "chop"},
-            "hb": {"va": "villain", "vb": "hero"},
+        equity_matrix={
+            "ha": {"va": 0.8, "vb": 0.5},
+            "hb": {"va": 0.3, "vb": 0.9},
         },
         shift_amounts=[0.5, 1.0],
         horizons=[10, 50],
         discount=0.9,
     )
-    assert validate_showdown_matrix_form(form) == []
-    scenario = river_scenario_from_dict(showdown_matrix_form_to_dict(form))
+    assert validate_equity_matrix_form(form) == []
+    scenario = river_scenario_from_dict(equity_matrix_form_to_dict(form))
     build_river_steal_game_from_scenario(scenario)
-    assert scenario.scenario_id == "edited_showdown_matrix"
+    assert scenario.scenario_id == "edited_equity_matrix"
     assert [h.hand_id for h in scenario.hero_range.hands] == ["ha", "hb"]
     assert [v.hand_id for v in scenario.villain_range.hands] == ["va", "vb"]
+    assert not math.isnan(scenario.equity_matrix["ha"]["va"])

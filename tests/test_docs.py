@@ -338,7 +338,18 @@ def test_gui_design_is_ascii_only():
         "real-card parser",
         "external solver import",
         "implementation phases",
+        # The form-model section now covers more than single-hand / hero-range
+        # (showdown-matrix and equity-matrix too), so its heading is mode-neutral.
+        "### Scenario form model (supported modes)",
     ],
 )
 def test_gui_design_contains_key_phrase(phrase):
     assert phrase in _GUI_DESIGN.read_text(encoding="utf-8")
+
+
+def test_gui_design_form_model_heading_is_not_stale():
+    # The old heading named only single-hand / hero-range; it must not linger now
+    # that the section also covers showdown-matrix and equity-matrix.
+    assert "Scenario form model (single-hand and hero-range)" not in _GUI_DESIGN.read_text(
+        encoding="utf-8"
+    )

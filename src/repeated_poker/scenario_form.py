@@ -8,10 +8,10 @@ from the existing JSON scenario format and to surface field-level validation
 messages for display.
 
 Scope so far: single-hand mode (:class:`SingleHandScenarioForm`),
-Hero-range-only mode (:class:`HeroRangeScenarioForm`), and the discrete
-showdown-matrix mode (:class:`ShowdownMatrixScenarioForm`). The equity-matrix and
-betting-tree modes are out of scope here and are rejected by the ``*_from_dict``
-helpers.
+Hero-range-only mode (:class:`HeroRangeScenarioForm`), the discrete
+showdown-matrix mode (:class:`ShowdownMatrixScenarioForm`), and the
+equity-matrix mode (:class:`EquityMatrixScenarioForm`). The betting-tree mode is
+out of scope here and is rejected by the ``*_from_dict`` helpers.
 
 JSON stays the source of truth. The ``*_from_dict`` helpers reuse the existing
 :func:`repeated_poker.scenario_io.river_scenario_from_dict` parser (so loading a
@@ -729,65 +729,101 @@ def _validate_matrix_bucket_ids_and_weights(buckets, prefix, expected_type, add)
     return ids, ids_usable
 
 
-def _validate_showdown_matrix_grid(matrix, hero_ids, villain_ids, add) -> None:
+def _sorted_for_display(values) -> list:
+    """Sort ``values`` for stable display, tolerating non-comparable types.
+
+    A form being edited may hold a matrix dict with mixed key types (for example
+    ``1`` and ``None`` alongside strings), which a plain ``sorted`` cannot order
+    and would raise ``TypeError`` on. Sorting by ``repr`` keeps the output stable
+    without changing the keys themselves -- it is only for message ordering.
+    """
+
+    return sorted(values, key=repr)
+
+
+def _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_error, add) -> None:
     """Validate that ``matrix`` covers exactly the Hero x Villain id grid.
 
-    Checks the matrix is a mapping, every Hero bucket has a row, every row has a
-    cell for every Villain bucket, there are no unknown Hero / Villain ids, and
-    every cell value is one of ``"hero"`` / ``"villain"`` / ``"chop"``. Field
-    names point at the matrix, a row, or a single cell so a GUI can highlight the
-    offending location. Only valid, unique ids from the bucket lists are used so a
-    bad row/cell is not double-reported on top of a bad bucket id.
+    Shared by the showdown and equity matrix validators. Checks the matrix is a
+    mapping, every Hero bucket has a row, every row has a cell for every Villain
+    bucket, there are no unknown Hero / Villain ids, and every cell value passes
+    ``cell_error`` (which returns an error message for a bad value, or ``None``).
+    ``matrix_field`` is the GUI field name (``"showdown_matrix"`` /
+    ``"equity_matrix"``) so messages point at the matrix, a row, or a single cell.
+    Only valid, unique ids from the bucket lists are used so a bad row/cell is not
+    double-reported on top of a bad bucket id.
+
+    Unknown keys come from the (possibly broken) form matrix, so their order is
+    computed with :func:`_sorted_for_display` to stay exception-free even when the
+    matrix mixes non-comparable key types -- the validator must return messages,
+    not raise.
     """
 
     if not isinstance(matrix, dict):
-        add("showdown_matrix", "showdown_matrix must be an object keyed by hero hand id")
+        add(matrix_field, f"{matrix_field} must be an object keyed by hero hand id")
         return
 
     hero_set = set(hero_ids)
     villain_set = set(villain_ids)
     matrix_hero_ids = set(matrix)
 
-    for missing in sorted(hero_set - matrix_hero_ids):
-        add("showdown_matrix", f"missing row for hero id {missing!r}")
-    for unknown in sorted(matrix_hero_ids - hero_set):
-        add("showdown_matrix", f"unknown hero id {unknown!r}")
+    for missing in _sorted_for_display(hero_set - matrix_hero_ids):
+        add(matrix_field, f"missing row for hero id {missing!r}")
+    for unknown in _sorted_for_display(matrix_hero_ids - hero_set):
+        add(matrix_field, f"unknown hero id {unknown!r}")
 
     for hero_id in hero_ids:
         if hero_id not in matrix:
             continue
         row = matrix[hero_id]
-        row_field = f"showdown_matrix[{hero_id}]"
+        row_field = f"{matrix_field}[{hero_id}]"
         if not isinstance(row, dict):
             add(row_field, "row must be an object keyed by villain hand id")
             continue
         row_ids = set(row)
-        for missing in sorted(villain_set - row_ids):
+        for missing in _sorted_for_display(villain_set - row_ids):
             add(row_field, f"missing cell for villain id {missing!r}")
-        for unknown in sorted(row_ids - villain_set):
+        for unknown in _sorted_for_display(row_ids - villain_set):
             add(row_field, f"unknown villain id {unknown!r}")
         for villain_id in villain_ids:
             if villain_id not in row:
                 continue
-            value = row[villain_id]
-            if value not in _SHOWDOWN_RESULTS:
-                add(
-                    f"showdown_matrix[{hero_id}][{villain_id}]",
-                    f"cell must be one of {list(_SHOWDOWN_RESULTS)}",
-                )
+            error = cell_error(row[villain_id])
+            if error is not None:
+                add(f"{matrix_field}[{hero_id}][{villain_id}]", error)
 
 
-def validate_showdown_matrix_form(
-    form: ShowdownMatrixScenarioForm,
+def _showdown_cell_error(value) -> Optional[str]:
+    """Return an error message for a bad showdown cell, or ``None`` if valid."""
+
+    if value not in _SHOWDOWN_RESULTS:
+        return f"cell must be one of {list(_SHOWDOWN_RESULTS)}"
+    return None
+
+
+def _equity_cell_error(value) -> Optional[str]:
+    """Return an error message for a bad equity cell, or ``None`` if valid.
+
+    An equity cell is the Hero pot share before rake: a finite number (``bool``
+    excluded) within ``[0, 1]``.
+    """
+
+    if not _is_finite_number(value) or not 0.0 <= value <= 1.0:
+        return "cell must be a number within [0, 1] (Hero pot share before rake)"
+    return None
+
+
+def _validate_matrix_form(
+    form, matrix, matrix_field, cell_error
 ) -> List[FormValidationMessage]:
-    """Return field-level validation messages for ``form`` (empty when valid).
+    """Return field-level messages shared by the matrix-mode form validators.
 
-    Mirrors the discrete showdown-matrix rules of the JSON scenario format with
-    GUI-friendly field names (for example ``hero_buckets[0].hand_id``,
-    ``villain_buckets[1].weight``, and ``showdown_matrix[hero_id][villain_id]``).
-    The authoritative check remains ``river_scenario_from_dict`` +
-    ``build_river_steal_game_from_scenario`` on
-    :func:`showdown_matrix_form_to_dict`'s output.
+    Validates the common top-level fields, the Hero buckets (id / weight /
+    baseline call-fold split) and Villain buckets (id / weight), the
+    disjoint-id rule, and the matrix grid via :func:`_validate_matrix_grid` with
+    ``matrix_field`` / ``cell_error``. The grid is only checked once both id axes
+    are trustworthy and disjoint, so a broken bucket id does not produce
+    misleading missing / unknown row/cell noise.
     """
 
     messages: List[FormValidationMessage] = []
@@ -845,6 +881,200 @@ def validate_showdown_matrix_form(
     # emit misleading missing / unknown row/cell noise on top of the real bucket
     # errors.
     if hero_ids_usable and villain_ids_usable and not shared_ids:
-        _validate_showdown_matrix_grid(form.showdown_matrix, hero_ids, villain_ids, add)
+        _validate_matrix_grid(matrix, hero_ids, villain_ids, matrix_field, cell_error, add)
 
     return messages
+
+
+def validate_showdown_matrix_form(
+    form: ShowdownMatrixScenarioForm,
+) -> List[FormValidationMessage]:
+    """Return field-level validation messages for ``form`` (empty when valid).
+
+    Mirrors the discrete showdown-matrix rules of the JSON scenario format with
+    GUI-friendly field names (for example ``hero_buckets[0].hand_id``,
+    ``villain_buckets[1].weight``, and ``showdown_matrix[hero_id][villain_id]``).
+    The authoritative check remains ``river_scenario_from_dict`` +
+    ``build_river_steal_game_from_scenario`` on
+    :func:`showdown_matrix_form_to_dict`'s output.
+    """
+
+    return _validate_matrix_form(
+        form, form.showdown_matrix, "showdown_matrix", _showdown_cell_error
+    )
+
+
+# ---------------------------------------------------------------------------
+# Equity-matrix mode
+# ---------------------------------------------------------------------------
+
+# Top-level keys that, alongside a ``villain_range`` + ``equity_matrix``, select
+# the discrete showdown-matrix flavour or the betting-tree model rather than the
+# equity-matrix mode handled here.
+_NON_EQUITY_MATRIX_KEYS = (
+    "showdown_matrix",
+    "betting_tree",
+)
+
+
+@dataclass
+class EquityMatrixScenarioForm:
+    """A flat, form-friendly view of an equity-matrix river scenario.
+
+    The fields map one-to-one to the equity-matrix scenario JSON (see
+    ``docs/scenario_format_reference.md``): the weighted Hero and Villain buckets
+    reuse :class:`HeroMatrixBucketForm` / :class:`VillainMatrixBucketForm`, and
+    ``equity_matrix`` is the Hero x Villain grid keyed by ``[hero_id][villain_id]``
+    with each cell the Hero pot share before rake -- a finite number in ``[0, 1]``
+    (``1.0`` = Hero wins, ``0.5`` = chop, ``0.0`` = Villain wins). The rake,
+    initial commitment, candidate-generation, and repeated-game values are
+    flattened. This is the equity flavour of :class:`ShowdownMatrixScenarioForm`.
+    """
+
+    format_version: str = DEFAULT_FORMAT_VERSION
+    scenario_id: str = ""
+    description: str = ""
+    rake_rate: float = 0.0
+    rake_cap: Optional[float] = None
+    initial_commitment_hero: float = 0.0
+    initial_commitment_villain: float = 0.0
+    bet_size: float = 0.0
+    hero_buckets: List[HeroMatrixBucketForm] = field(default_factory=list)
+    villain_buckets: List[VillainMatrixBucketForm] = field(default_factory=list)
+    equity_matrix: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    shift_amounts: List[float] = field(default_factory=list)
+    horizons: List[int] = field(default_factory=list)
+    discount: float = 1.0
+
+
+def equity_matrix_form_from_dict(data: dict) -> EquityMatrixScenarioForm:
+    """Build an :class:`EquityMatrixScenarioForm` from an equity-matrix scenario.
+
+    Raises :class:`ValueError` if ``data`` is not an equity-matrix scenario (it
+    lacks ``villain_range`` / ``equity_matrix``, so it is a single-hand or
+    Hero-range-only scenario; or it carries a ``showdown_matrix`` or
+    ``betting_tree``, selecting a different model) or fails the existing parser's
+    validation (an unsupported baseline action, weights not summing to one,
+    overlapping Hero/Villain ids, an incomplete matrix, an equity outside
+    ``[0, 1]``, an unsupported ``format_version``, and so on).
+    """
+
+    if not isinstance(data, dict):
+        raise ValueError("scenario must be a JSON object")
+    if "villain_range" not in data or "equity_matrix" not in data:
+        raise ValueError(
+            "equity-matrix form requires both 'villain_range' and "
+            "'equity_matrix'; this is not an equity-matrix scenario"
+        )
+    forbidden = [key for key in _NON_EQUITY_MATRIX_KEYS if key in data]
+    if forbidden:
+        raise ValueError(
+            "equity-matrix form supports the equity-matrix mode; "
+            f"remove {sorted(forbidden)} (those select the showdown-matrix or "
+            "betting-tree model)"
+        )
+
+    # Reuse the existing parser for all structural validation and mode handling;
+    # with a villain_range + equity_matrix and none of the forbidden keys this
+    # yields an equity-matrix scenario (the parser also requires hero_range,
+    # rejects per-hand showdown, enforces matrix completeness and equities in
+    # [0, 1], and keeps Hero/Villain ids disjoint).
+    scenario = river_scenario_from_dict(data)
+    repeated = scenario.repeated
+    hero_buckets = [
+        HeroMatrixBucketForm(
+            hand_id=hand.hand_id,
+            weight=hand.weight,
+            baseline_call_probability=hand.baseline_strategy["call"],
+            baseline_fold_probability=hand.baseline_strategy["fold"],
+        )
+        for hand in scenario.hero_range.hands
+    ]
+    villain_buckets = [
+        VillainMatrixBucketForm(hand_id=hand.hand_id, weight=hand.weight)
+        for hand in scenario.villain_range.hands
+    ]
+    equity_matrix = {
+        hero_id: dict(row) for hero_id, row in scenario.equity_matrix.items()
+    }
+    return EquityMatrixScenarioForm(
+        format_version=scenario.format_version,
+        scenario_id=scenario.scenario_id,
+        description=scenario.description,
+        rake_rate=scenario.rake.rate,
+        rake_cap=scenario.rake.cap,
+        initial_commitment_hero=scenario.initial_commitment.hero,
+        initial_commitment_villain=scenario.initial_commitment.villain,
+        bet_size=scenario.bet_size,
+        hero_buckets=hero_buckets,
+        villain_buckets=villain_buckets,
+        equity_matrix=equity_matrix,
+        shift_amounts=list(scenario.shift_amounts) if scenario.shift_amounts else [],
+        horizons=list(repeated.horizons) if (repeated and repeated.horizons) else [],
+        discount=repeated.discount if repeated else 1.0,
+    )
+
+
+def equity_matrix_form_to_dict(form: EquityMatrixScenarioForm) -> dict:
+    """Return the equity-matrix scenario dict represented by ``form``.
+
+    The result always includes ``"format_version"`` (emitted as-is, like
+    :func:`single_hand_form_to_dict`) and the ``hero_range`` / ``villain_range`` /
+    ``equity_matrix`` / ``candidate_generation`` / ``repeated`` sections. Hero
+    buckets carry no per-hand ``showdown`` (matrix mode forbids it). A valid form
+    yields a dict accepted by ``river_scenario_from_dict`` and
+    ``build_river_steal_game_from_scenario``; an invalid form may not (use
+    :func:`validate_equity_matrix_form` first).
+    """
+
+    return {
+        "format_version": form.format_version,
+        "scenario_id": form.scenario_id,
+        "description": form.description,
+        "rake": {"rate": form.rake_rate, "cap": form.rake_cap},
+        "initial_commitment": {
+            "hero": form.initial_commitment_hero,
+            "villain": form.initial_commitment_villain,
+        },
+        "bet_size": form.bet_size,
+        "hero_range": [
+            {
+                "hand_id": bucket.hand_id,
+                "weight": bucket.weight,
+                "baseline_strategy": {
+                    "call": bucket.baseline_call_probability,
+                    "fold": bucket.baseline_fold_probability,
+                },
+            }
+            for bucket in form.hero_buckets
+        ],
+        "villain_range": [
+            {"hand_id": bucket.hand_id, "weight": bucket.weight}
+            for bucket in form.villain_buckets
+        ],
+        "equity_matrix": {
+            hero_id: dict(row) for hero_id, row in form.equity_matrix.items()
+        },
+        "candidate_generation": {"shift_amounts": list(form.shift_amounts)},
+        "repeated": {"horizons": list(form.horizons), "discount": form.discount},
+    }
+
+
+def validate_equity_matrix_form(
+    form: EquityMatrixScenarioForm,
+) -> List[FormValidationMessage]:
+    """Return field-level validation messages for ``form`` (empty when valid).
+
+    Mirrors the equity-matrix rules of the JSON scenario format with GUI-friendly
+    field names (for example ``hero_buckets[0].hand_id``,
+    ``villain_buckets[1].weight``, and ``equity_matrix[hero_id][villain_id]``).
+    Only the matrix cell rule differs from
+    :func:`validate_showdown_matrix_form`: each cell must be a finite number in
+    ``[0, 1]``. The authoritative check remains ``river_scenario_from_dict`` +
+    ``build_river_steal_game_from_scenario`` on
+    :func:`equity_matrix_form_to_dict`'s output.
+    """
+
+    return _validate_matrix_form(
+        form, form.equity_matrix, "equity_matrix", _equity_cell_error
+    )
