@@ -9,9 +9,10 @@ messages for display.
 
 Scope so far: single-hand mode (:class:`SingleHandScenarioForm`),
 Hero-range-only mode (:class:`HeroRangeScenarioForm`), the discrete
-showdown-matrix mode (:class:`ShowdownMatrixScenarioForm`), and the
-equity-matrix mode (:class:`EquityMatrixScenarioForm`). The betting-tree mode is
-out of scope here and is rejected by the ``*_from_dict`` helpers.
+showdown-matrix mode (:class:`ShowdownMatrixScenarioForm`), the equity-matrix
+mode (:class:`EquityMatrixScenarioForm`), and the river betting-tree mode
+(:class:`BettingTreeScenarioForm`). All five JSON scenario modes now have a form
+model; the ``*_from_dict`` helpers each reject the other modes.
 
 JSON stays the source of truth. The ``*_from_dict`` helpers reuse the existing
 :func:`repeated_poker.scenario_io.river_scenario_from_dict` parser (so loading a
@@ -1078,3 +1079,386 @@ def validate_equity_matrix_form(
     return _validate_matrix_form(
         form, form.equity_matrix, "equity_matrix", _equity_cell_error
     )
+
+
+# ---------------------------------------------------------------------------
+# Betting-tree mode
+# ---------------------------------------------------------------------------
+
+# Betting-tree mode is the matrix mode (hero_range + villain_range + one matrix)
+# plus a ``betting_tree``. It supports either a discrete ``showdown_matrix`` or an
+# ``equity_matrix``; the form tracks which via ``matrix_type``.
+_BETTING_TREE_MATRIX_TYPES = ("showdown", "equity")
+# Hero betting-tree decision points (see river_betting_tree.py / the format
+# reference): the two distributions the form splits into flat probability fields.
+_AFTER_OOP_CHECK_ACTIONS = ("check", "bet")
+_VS_OOP_BET_ACTIONS = ("call", "fold", "raise")
+
+
+@dataclass
+class BettingTreeSizingForm:
+    """The three river betting-tree sizes (betting-tree mode only).
+
+    Mirrors the JSON ``betting_tree`` object. ``ip_raise_size`` is the *total*
+    chips each player commits once IP's raise is called (not the raise
+    increment); it must exceed ``oop_bet_size``.
+    """
+
+    oop_bet_size: float = 0.0
+    ip_bet_after_check_size: float = 0.0
+    ip_raise_size: float = 0.0
+
+
+@dataclass
+class HeroBettingTreeBucketForm:
+    """A flat, form-friendly view of one weighted Hero bucket in betting-tree mode.
+
+    Like :class:`HeroMatrixBucketForm` there is no per-hand ``showdown`` (the
+    outcome comes from the matrix). Instead of a single call/fold baseline, a
+    betting-tree bucket has two Hero decision points, each split into flat
+    probability fields:
+
+    * ``after_oop_check`` (IP acts after an OOP check): ``check`` / ``bet``;
+    * ``vs_oop_bet`` (IP faces an OOP bet): ``call`` / ``fold`` / ``raise``.
+    """
+
+    hand_id: str = ""
+    weight: float = 0.0
+    after_oop_check_check_probability: float = 0.0
+    after_oop_check_bet_probability: float = 1.0
+    vs_oop_bet_call_probability: float = 0.0
+    vs_oop_bet_fold_probability: float = 1.0
+    vs_oop_bet_raise_probability: float = 0.0
+
+
+@dataclass
+class BettingTreeScenarioForm:
+    """A flat, form-friendly view of a river betting-tree scenario.
+
+    The fields map to the betting-tree scenario JSON (see
+    ``docs/scenario_format_reference.md``): the weighted Hero buckets are
+    :class:`HeroBettingTreeBucketForm` (two decision points), the Villain buckets
+    reuse :class:`VillainMatrixBucketForm`, ``betting_tree`` carries the three
+    sizes, and the matchup outcomes come from ``matrix`` keyed by
+    ``[hero_id][villain_id]``. ``matrix_type`` selects how a cell is read:
+    ``"showdown"`` (discrete ``hero`` / ``villain`` / ``chop``) or ``"equity"``
+    (Hero pot share before rake in ``[0, 1]``).
+
+    ``bet_size`` mirrors the simple-tree top-level field; in betting-tree mode it
+    must equal ``betting_tree.oop_bet_size`` (the JSON allows it to be omitted and
+    default to that, but the form keeps it explicit and validates the match).
+    """
+
+    format_version: str = DEFAULT_FORMAT_VERSION
+    scenario_id: str = ""
+    description: str = ""
+    rake_rate: float = 0.0
+    rake_cap: Optional[float] = None
+    initial_commitment_hero: float = 0.0
+    initial_commitment_villain: float = 0.0
+    bet_size: float = 0.0
+    betting_tree: BettingTreeSizingForm = field(default_factory=BettingTreeSizingForm)
+    matrix_type: str = "showdown"
+    matrix: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    hero_buckets: List[HeroBettingTreeBucketForm] = field(default_factory=list)
+    villain_buckets: List[VillainMatrixBucketForm] = field(default_factory=list)
+    shift_amounts: List[float] = field(default_factory=list)
+    horizons: List[int] = field(default_factory=list)
+    discount: float = 1.0
+
+
+def betting_tree_form_from_dict(data: dict) -> BettingTreeScenarioForm:
+    """Build a :class:`BettingTreeScenarioForm` from a betting-tree scenario dict.
+
+    Raises :class:`ValueError` if ``data`` is not a betting-tree scenario (it has
+    no ``betting_tree``, so it is a single-hand / Hero-range-only / showdown- or
+    equity-matrix scenario) or fails the existing parser's validation (a
+    ``betting_tree`` outside matrix mode, an unsupported baseline action, bad
+    sizes, an incomplete matrix, an unsupported ``format_version``, and so on).
+    """
+
+    if not isinstance(data, dict):
+        raise ValueError("scenario must be a JSON object")
+    if "betting_tree" not in data:
+        raise ValueError(
+            "betting-tree form requires a 'betting_tree'; this is not a "
+            "betting-tree scenario"
+        )
+
+    # Reuse the existing parser for all structural validation and mode handling.
+    # The parser only accepts a betting_tree in matrix mode (hero_range +
+    # villain_range + exactly one matrix, each Hero hand carrying
+    # baseline_strategies), so a non-matrix betting_tree raises here.
+    scenario = river_scenario_from_dict(data)
+    betting = scenario.betting_tree
+    use_equity = scenario.equity_matrix is not None
+    matrix = scenario.equity_matrix if use_equity else scenario.showdown_matrix
+    repeated = scenario.repeated
+
+    hero_buckets = []
+    for hand in scenario.hero_range.hands:
+        after_check = hand.baseline_strategies["after_oop_check"]
+        vs_bet = hand.baseline_strategies["vs_oop_bet"]
+        hero_buckets.append(
+            HeroBettingTreeBucketForm(
+                hand_id=hand.hand_id,
+                weight=hand.weight,
+                after_oop_check_check_probability=after_check["check"],
+                after_oop_check_bet_probability=after_check["bet"],
+                vs_oop_bet_call_probability=vs_bet["call"],
+                vs_oop_bet_fold_probability=vs_bet["fold"],
+                vs_oop_bet_raise_probability=vs_bet["raise"],
+            )
+        )
+    villain_buckets = [
+        VillainMatrixBucketForm(hand_id=hand.hand_id, weight=hand.weight)
+        for hand in scenario.villain_range.hands
+    ]
+    return BettingTreeScenarioForm(
+        format_version=scenario.format_version,
+        scenario_id=scenario.scenario_id,
+        description=scenario.description,
+        rake_rate=scenario.rake.rate,
+        rake_cap=scenario.rake.cap,
+        initial_commitment_hero=scenario.initial_commitment.hero,
+        initial_commitment_villain=scenario.initial_commitment.villain,
+        bet_size=scenario.bet_size,
+        betting_tree=BettingTreeSizingForm(
+            oop_bet_size=betting.oop_bet_size,
+            ip_bet_after_check_size=betting.ip_bet_after_check_size,
+            ip_raise_size=betting.ip_raise_size,
+        ),
+        matrix_type="equity" if use_equity else "showdown",
+        matrix={hero_id: dict(row) for hero_id, row in matrix.items()},
+        hero_buckets=hero_buckets,
+        villain_buckets=villain_buckets,
+        shift_amounts=list(scenario.shift_amounts) if scenario.shift_amounts else [],
+        horizons=list(repeated.horizons) if (repeated and repeated.horizons) else [],
+        discount=repeated.discount if repeated else 1.0,
+    )
+
+
+def betting_tree_form_to_dict(form: BettingTreeScenarioForm) -> dict:
+    """Return the betting-tree scenario dict represented by ``form``.
+
+    The result always includes ``"format_version"`` (emitted as-is, like
+    :func:`single_hand_form_to_dict`), the ``betting_tree`` sizes, the
+    ``hero_range`` with per-hand ``baseline_strategies`` (not the simple
+    ``baseline_strategy``), the ``villain_range``, and one matrix under
+    ``"showdown_matrix"`` or ``"equity_matrix"`` chosen by ``matrix_type``. A
+    valid form yields a dict accepted by ``river_scenario_from_dict`` and
+    ``build_river_steal_game_from_scenario``; an invalid form may not (use
+    :func:`validate_betting_tree_form` first).
+    """
+
+    matrix_key = "equity_matrix" if form.matrix_type == "equity" else "showdown_matrix"
+    sizing = form.betting_tree
+    return {
+        "format_version": form.format_version,
+        "scenario_id": form.scenario_id,
+        "description": form.description,
+        "rake": {"rate": form.rake_rate, "cap": form.rake_cap},
+        "initial_commitment": {
+            "hero": form.initial_commitment_hero,
+            "villain": form.initial_commitment_villain,
+        },
+        "bet_size": form.bet_size,
+        "betting_tree": {
+            "oop_bet_size": sizing.oop_bet_size,
+            "ip_bet_after_check_size": sizing.ip_bet_after_check_size,
+            "ip_raise_size": sizing.ip_raise_size,
+        },
+        "hero_range": [
+            {
+                "hand_id": bucket.hand_id,
+                "weight": bucket.weight,
+                "baseline_strategies": {
+                    "after_oop_check": {
+                        "check": bucket.after_oop_check_check_probability,
+                        "bet": bucket.after_oop_check_bet_probability,
+                    },
+                    "vs_oop_bet": {
+                        "call": bucket.vs_oop_bet_call_probability,
+                        "fold": bucket.vs_oop_bet_fold_probability,
+                        "raise": bucket.vs_oop_bet_raise_probability,
+                    },
+                },
+            }
+            for bucket in form.hero_buckets
+        ],
+        "villain_range": [
+            {"hand_id": bucket.hand_id, "weight": bucket.weight}
+            for bucket in form.villain_buckets
+        ],
+        matrix_key: {hero_id: dict(row) for hero_id, row in form.matrix.items()},
+        "candidate_generation": {"shift_amounts": list(form.shift_amounts)},
+        "repeated": {"horizons": list(form.horizons), "discount": form.discount},
+    }
+
+
+def _validate_probability_group(add, entries, sum_field, label) -> None:
+    """Validate one Hero decision distribution, appending messages via ``add``.
+
+    ``entries`` is a list of ``(field_name, value)`` pairs; each value must be a
+    finite, non-negative number and the values must sum to one. The sum error is
+    reported on ``sum_field`` (the group's first field) so a GUI can anchor it,
+    and ``label`` names the decision point in the message.
+    """
+
+    all_ok = True
+    total = 0.0
+    for field_name, value in entries:
+        if not _is_finite_number(value) or value < 0:
+            add(field_name, "must be a non-negative number")
+            all_ok = False
+        else:
+            total += value
+    if all_ok and abs(total - 1.0) > _TOLERANCE:
+        add(sum_field, f"{label} probabilities must sum to 1 (got {total})")
+
+
+def validate_betting_tree_form(
+    form: BettingTreeScenarioForm,
+) -> List[FormValidationMessage]:
+    """Return field-level validation messages for ``form`` (empty when valid).
+
+    Mirrors the betting-tree rules of the JSON scenario format with GUI-friendly
+    field names (for example ``betting_tree.ip_raise_size``,
+    ``hero_buckets[0].vs_oop_bet_raise_probability``, and the matrix cell field
+    ``showdown_matrix[hero_id][villain_id]`` / ``equity_matrix[...]`` chosen by
+    ``matrix_type``). The bucket id/weight, disjoint-id, and matrix-grid checks
+    are shared with the matrix forms; betting-tree adds the three sizes, the
+    ``bet_size`` match, and the two Hero decision distributions. The authoritative
+    check remains ``river_scenario_from_dict`` +
+    ``build_river_steal_game_from_scenario`` on
+    :func:`betting_tree_form_to_dict`'s output.
+    """
+
+    messages: List[FormValidationMessage] = []
+
+    def add(field_name: str, message: str) -> None:
+        messages.append(FormValidationMessage(field_name, message))
+
+    _validate_common_fields(form, add)
+
+    # Betting-tree sizes.
+    sizing = form.betting_tree
+    if not isinstance(sizing, BettingTreeSizingForm):
+        add("betting_tree", "betting_tree must be a BettingTreeSizingForm")
+    else:
+        oop_ok = _is_finite_number(sizing.oop_bet_size) and sizing.oop_bet_size > 0
+        raise_ok = _is_finite_number(sizing.ip_raise_size) and sizing.ip_raise_size > 0
+        if not oop_ok:
+            add("betting_tree.oop_bet_size", "must be a positive number")
+        if not (
+            _is_finite_number(sizing.ip_bet_after_check_size)
+            and sizing.ip_bet_after_check_size > 0
+        ):
+            add("betting_tree.ip_bet_after_check_size", "must be a positive number")
+        if not raise_ok:
+            add("betting_tree.ip_raise_size", "must be a positive number")
+        if oop_ok and raise_ok and sizing.ip_raise_size <= sizing.oop_bet_size:
+            add(
+                "betting_tree.ip_raise_size",
+                "must be greater than betting_tree.oop_bet_size (it is the total "
+                "committed after the raise is called, not the raise increment)",
+            )
+        # bet_size must equal oop_bet_size in betting-tree mode.
+        if (
+            oop_ok
+            and _is_finite_number(form.bet_size)
+            and abs(form.bet_size - sizing.oop_bet_size) > _TOLERANCE
+        ):
+            add("bet_size", "must equal betting_tree.oop_bet_size in betting-tree mode")
+
+    matrix_type_ok = form.matrix_type in _BETTING_TREE_MATRIX_TYPES
+    if not matrix_type_ok:
+        add(
+            "matrix_type",
+            f"matrix_type must be one of {list(_BETTING_TREE_MATRIX_TYPES)}",
+        )
+
+    hero_ok = isinstance(form.hero_buckets, (list, tuple)) and len(form.hero_buckets) > 0
+    villain_ok = (
+        isinstance(form.villain_buckets, (list, tuple)) and len(form.villain_buckets) > 0
+    )
+    if not hero_ok:
+        add("hero_buckets", "at least one hero bucket is required")
+    if not villain_ok:
+        add("villain_buckets", "at least one villain bucket is required")
+
+    hero_ids: List[str] = []
+    villain_ids: List[str] = []
+    hero_ids_usable = False
+    villain_ids_usable = False
+    if hero_ok:
+        hero_ids, hero_ids_usable = _validate_matrix_bucket_ids_and_weights(
+            form.hero_buckets, "hero_buckets", HeroBettingTreeBucketForm, add
+        )
+        for index, bucket in enumerate(form.hero_buckets):
+            if not isinstance(bucket, HeroBettingTreeBucketForm):
+                continue
+            prefix = f"hero_buckets[{index}]"
+            _validate_probability_group(
+                add,
+                [
+                    (
+                        f"{prefix}.after_oop_check_check_probability",
+                        bucket.after_oop_check_check_probability,
+                    ),
+                    (
+                        f"{prefix}.after_oop_check_bet_probability",
+                        bucket.after_oop_check_bet_probability,
+                    ),
+                ],
+                f"{prefix}.after_oop_check_check_probability",
+                "after_oop_check",
+            )
+            _validate_probability_group(
+                add,
+                [
+                    (
+                        f"{prefix}.vs_oop_bet_call_probability",
+                        bucket.vs_oop_bet_call_probability,
+                    ),
+                    (
+                        f"{prefix}.vs_oop_bet_fold_probability",
+                        bucket.vs_oop_bet_fold_probability,
+                    ),
+                    (
+                        f"{prefix}.vs_oop_bet_raise_probability",
+                        bucket.vs_oop_bet_raise_probability,
+                    ),
+                ],
+                f"{prefix}.vs_oop_bet_call_probability",
+                "vs_oop_bet",
+            )
+    if villain_ok:
+        villain_ids, villain_ids_usable = _validate_matrix_bucket_ids_and_weights(
+            form.villain_buckets, "villain_buckets", VillainMatrixBucketForm, add
+        )
+
+    # The parser keeps Hero/Villain ids disjoint so the matrix keys stay
+    # unambiguous; mirror that here on the valid ids.
+    shared_ids = set(hero_ids) & set(villain_ids)
+    for shared in sorted(shared_ids):
+        add(
+            "villain_buckets",
+            f"hand_id {shared!r} is used by both a hero and a villain bucket; "
+            "ids must be disjoint",
+        )
+
+    # Only validate the matrix grid once both id axes are trustworthy and disjoint
+    # and the matrix flavour is known, so a broken bucket id or matrix_type does
+    # not produce misleading missing / unknown row/cell noise.
+    if hero_ids_usable and villain_ids_usable and not shared_ids and matrix_type_ok:
+        if form.matrix_type == "equity":
+            _validate_matrix_grid(
+                form.matrix, hero_ids, villain_ids, "equity_matrix", _equity_cell_error, add
+            )
+        else:
+            _validate_matrix_grid(
+                form.matrix, hero_ids, villain_ids, "showdown_matrix", _showdown_cell_error, add
+            )
+
+    return messages
