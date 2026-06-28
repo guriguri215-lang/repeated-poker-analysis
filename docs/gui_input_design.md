@@ -153,12 +153,19 @@ a form <-> JSON bridge and a field-level validator that returns
   field names such as `hero_buckets[0].hand_id`, `villain_buckets[1].weight`, and
   `showdown_matrix[hero_id][villain_id]`, checks Hero/Villain ids are disjoint,
   and reports matrix completeness (missing/unknown rows and cells). This is the
-  precursor to the matrix editor. The discrete `equity_matrix` flavour and the
-  betting-tree mode are not yet covered.
+  precursor to the matrix editor.
+- Equity-matrix (v1): `EquityMatrixScenarioForm`, the other matrix flavour. It
+  reuses the same `HeroMatrixBucketForm` / `VillainMatrixBucketForm` buckets, with
+  an `equity_matrix` grid whose cells are the Hero pot share before rake (a finite
+  number in `[0, 1]`), via `equity_matrix_form_from_dict` /
+  `equity_matrix_form_to_dict` / `validate_equity_matrix_form`. The bucket,
+  disjoint-id, and matrix-completeness checks are shared with the showdown-matrix
+  form; only the cell rule differs (a number in `[0, 1]`, with field name
+  `equity_matrix[hero_id][villain_id]`).
 
 Every `from_dict` reuses the existing JSON parser (so no parsing is duplicated),
 and a valid form's `to_dict` output is accepted by the parser and the game
-builder. The equity-matrix and betting-tree modes are future work.
+builder. The betting-tree mode is future work.
 
 ## 10. Implementation phases after this doc
 
