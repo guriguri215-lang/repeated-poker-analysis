@@ -130,7 +130,7 @@ The Results summary shows the analysis outputs already produced by the pipeline:
 - The GUI must be able to import an existing scenario JSON and export the current
   form state as JSON at any time.
 
-### Scenario form model (single-hand and hero-range)
+### Scenario form model (supported modes)
 
 A first slice of this data flow already exists as a small, GUI-independent layer
 in `repeated_poker.scenario_form`. Each supported mode has a flat dataclass plus
