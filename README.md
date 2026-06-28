@@ -176,8 +176,8 @@ The scenario JSON format is currently version `"1"`. New files should declare it
 with a top-level `"format_version": "1"`; the field is optional for backward
 compatibility, so a file without it is treated as `"1"`. Unknown versions (and a
 numeric `1`, `null`, a bool, or an empty string) are rejected. The format is
-still experimental and may get a v2 before any template-generation or GUI input
-tooling, so the version is recorded in the build metadata and in the analysis /
+still experimental and may get a v2 (GUI/form-based input is also still to come),
+so the version is recorded in the build metadata and in the analysis /
 validation / batch outputs.
 
 The input has three mutually exclusive modes:
