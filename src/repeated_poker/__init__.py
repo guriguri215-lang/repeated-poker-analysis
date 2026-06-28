@@ -111,6 +111,11 @@ from .scenario_pipeline import (
     RiverScenarioAnalysisResult,
     run_river_scenario_analysis,
 )
+from .scenario_templates import (
+    SCENARIO_TEMPLATE_KINDS,
+    available_scenario_template_kinds,
+    create_scenario_template,
+)
 from .scenario_batch import (
     BATCH_ROW_COLUMNS,
     BatchScenarioAnalysisConfig,
@@ -213,6 +218,9 @@ __all__ = [
     "RiverScenarioAnalysisConfig",
     "RiverScenarioAnalysisResult",
     "run_river_scenario_analysis",
+    "SCENARIO_TEMPLATE_KINDS",
+    "available_scenario_template_kinds",
+    "create_scenario_template",
     "analysis_result_to_dict",
     "write_analysis_csv",
     "write_analysis_json",
