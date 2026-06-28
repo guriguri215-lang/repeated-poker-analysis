@@ -38,7 +38,9 @@ work (a form/GUI input layer).
 
   Generated templates are abstract toy examples (not strategic recommendations),
   always include `"format_version": "1"`, and are meant to be edited and
-  re-validated.
+  re-validated. For a guided version that prompts for the common top-level
+  fields, use the interactive wizard
+  `python scripts/wizard_create_scenario.py`.
 
 ## 2. Top-level fields
 

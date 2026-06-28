@@ -246,6 +246,15 @@ python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tr
 python scripts/validate_river_scenario.py reports/template.json
 ```
 
+To fill in the common fields without editing JSON by hand, use the interactive
+wizard `python scripts/wizard_create_scenario.py`. It starts from a template and
+asks for the scenario id, description, rake, initial commitment, bet size,
+repeated horizons / discount, and output path; anything passed as a flag
+(`--kind`, `--output`, ...) is not asked. It validates before writing and refuses
+to overwrite without `--force`. Range buckets and matrices keep the template's
+toy values, so edit those in the JSON afterwards. This is the precursor to a
+future GUI/form input layer.
+
 Scope of the abstract range modes in v1:
 
 - Matchup outcomes are given directly as abstract inputs: a discrete
