@@ -6,7 +6,7 @@ This is the reference for the JSON scenario input consumed by
 describes every top-level field, every input mode, and the conventions the
 analysis relies on. It is the specification followed by the scenario template
 generator (`scripts/create_scenario_template.py`) and for later input-usability
-work (a form/GUI input layer).
+work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
 
 ## 1. Scope and status
 

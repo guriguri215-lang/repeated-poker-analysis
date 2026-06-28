@@ -316,6 +316,13 @@ the full JSON scenario format: every top-level field, each input mode and its
 required fields, the information-set naming, payoff conventions, and validation
 troubleshooting.
 
+### GUI/form input design
+
+See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of a
+future GUI/form input layer over the existing CLI workflow (screens, MVP scope,
+validation and results UX, and implementation phases). It is a design document
+only; no GUI is implemented yet.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
