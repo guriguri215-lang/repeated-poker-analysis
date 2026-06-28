@@ -321,11 +321,11 @@ troubleshooting.
 See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of a
 future GUI/form input layer over the existing CLI workflow (screens, MVP scope,
 validation and results UX, and implementation phases). It is a design document
-only; no GUI is implemented yet. A first, GUI-independent building block exists
-in `repeated_poker.scenario_form` (`SingleHandScenarioForm` plus
-`single_hand_form_from_dict` / `single_hand_form_to_dict` /
-`validate_single_hand_form`): a single-hand form <-> JSON bridge with
-field-level validation messages.
+only; no GUI is implemented yet. GUI-independent building blocks already exist in
+`repeated_poker.scenario_form`: `SingleHandScenarioForm` and
+`HeroRangeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
+`validate_*_form`), form <-> JSON bridges with field-level validation messages
+for single-hand and Hero-range-only scenarios.
 
 ### Public readiness
 
