@@ -374,6 +374,27 @@ overwrite an existing file without `--force`. Range buckets and matrices keep th
 template's toy values, so edit those in the JSON afterwards. The wizard is the
 precursor to a future GUI/form input layer, which is not implemented yet.
 
+### Guided end-to-end workflow
+
+To walk the whole path (create or pick a scenario, validate, analyse, and
+optionally export) in one command, use the guided workflow:
+
+```powershell
+python scripts/wizard_run_scenario.py --scenario examples/scenarios/nuts_chop_steal_bet98.json
+python scripts/wizard_run_scenario.py --kind single-hand --scenario-output reports/my_scenario.json --non-interactive
+python scripts/wizard_run_scenario.py --scenario examples/scenarios/nuts_chop_steal_bet98.json --output-json reports/result.json --strict-json --output-markdown reports/result.md
+```
+
+It has two modes: *create-and-run* (`--kind`, building a starter scenario via the
+wizard helpers and saving it to `--scenario-output`) and *existing-file*
+(`--scenario PATH`, which it does not modify). Both validate at the parser/build
+level, run `run_river_scenario_analysis`, print a short summary (scenario id,
+validation ok, horizon / discount, candidate counts), and can save the analysis
+with `--output-json` (optionally `--strict-json`) and `--output-markdown`. It
+only sequences the existing wizard / validation / analysis / export pieces, so it
+adds no new solver or game-theory model, and errors are reported as a short
+`error: ...` line rather than a traceback.
+
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:
 
