@@ -118,9 +118,14 @@ from .scenario_templates import (
 )
 from .scenario_form import (
     FormValidationMessage,
+    HeroRangeHandForm,
+    HeroRangeScenarioForm,
     SingleHandScenarioForm,
+    hero_range_form_from_dict,
+    hero_range_form_to_dict,
     single_hand_form_from_dict,
     single_hand_form_to_dict,
+    validate_hero_range_form,
     validate_single_hand_form,
 )
 from .scenario_batch import (
@@ -233,6 +238,11 @@ __all__ = [
     "single_hand_form_from_dict",
     "single_hand_form_to_dict",
     "validate_single_hand_form",
+    "HeroRangeHandForm",
+    "HeroRangeScenarioForm",
+    "hero_range_form_from_dict",
+    "hero_range_form_to_dict",
+    "validate_hero_range_form",
     "analysis_result_to_dict",
     "write_analysis_csv",
     "write_analysis_json",
