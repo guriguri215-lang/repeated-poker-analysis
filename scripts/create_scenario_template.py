@@ -104,7 +104,13 @@ def main(argv) -> int:
         print("error: --kind is required (or use --list-kinds)", file=sys.stderr)
         return 2
 
-    template = create_scenario_template(args.kind, args.scenario_id)
+    try:
+        template = create_scenario_template(args.kind, args.scenario_id)
+    except ValueError as exc:
+        # For example an empty or non-string --scenario-id; report cleanly rather
+        # than dumping a traceback.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     if args.validate:
         try:

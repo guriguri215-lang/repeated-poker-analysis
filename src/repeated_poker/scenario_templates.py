@@ -202,9 +202,11 @@ def create_scenario_template(kind: str, scenario_id: Optional[str] = None) -> di
     """Return a starter scenario ``dict`` for ``kind``.
 
     ``kind`` must be one of :data:`SCENARIO_TEMPLATE_KINDS`. ``scenario_id``
-    overrides the per-kind default id. The returned dict is an abstract toy
-    example (not a strategic recommendation) that passes the parser/build
-    validation and carries ``"format_version": "1"``.
+    overrides the per-kind default id when given; it must then be a non-empty
+    string (matching the parser's ``scenario_id`` rule), so a non-string or an
+    empty string is rejected rather than silently falling back to the default.
+    The returned dict is an abstract toy example (not a strategic recommendation)
+    that passes the parser/build validation and carries ``"format_version": "1"``.
     """
 
     builder = _BUILDERS.get(kind)
@@ -213,4 +215,10 @@ def create_scenario_template(kind: str, scenario_id: Optional[str] = None) -> di
             f"unknown template kind {kind!r}; choose one of "
             f"{SCENARIO_TEMPLATE_KINDS}"
         )
-    return builder(scenario_id or _DEFAULT_SCENARIO_IDS[kind])
+    if scenario_id is None:
+        scenario_id = _DEFAULT_SCENARIO_IDS[kind]
+    elif not isinstance(scenario_id, str) or not scenario_id:
+        raise ValueError(
+            f"scenario_id must be a non-empty string, got {scenario_id!r}"
+        )
+    return builder(scenario_id)

@@ -59,6 +59,16 @@ def test_scenario_id_override_is_used():
     assert template["scenario_id"] == "my_custom_id"
 
 
+def test_empty_scenario_id_override_is_rejected():
+    with pytest.raises(ValueError, match="scenario_id must be a non-empty string"):
+        create_scenario_template("single-hand", scenario_id="")
+
+
+def test_non_string_scenario_id_override_is_rejected():
+    with pytest.raises(ValueError, match="scenario_id must be a non-empty string"):
+        create_scenario_template("single-hand", scenario_id=123)
+
+
 def test_unknown_kind_is_rejected():
     with pytest.raises(ValueError, match="unknown template kind"):
         create_scenario_template("not-a-kind")
@@ -120,6 +130,28 @@ def test_cli_invalid_kind_rejected():
     )
     # argparse rejects an out-of-choices value with exit code 2.
     assert completed.returncode != 0
+
+
+def test_cli_empty_scenario_id_rejected_even_without_validate():
+    # An invalid --scenario-id must be rejected before output, even with
+    # --no-validate, and without dumping a traceback.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            "--kind",
+            "single-hand",
+            "--scenario-id",
+            "",
+            "--no-validate",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "error:" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert "Traceback" not in completed.stdout
 
 
 def test_cli_writes_output_file(tmp_path):
