@@ -336,6 +336,14 @@ rebuilds the result, printing a short report (mode, form class, validation, and
 round-trip status). It is an inspect-only developer utility: it never edits the
 scenario and adds no analysis.
 
+To write the round-tripped scenario back out (a stand-in for a future GUI
+"save"), run `python scripts/roundtrip_scenario_form.py <scenario.json>
+[--output PATH|-] [--force] [--strict-json]`. It loads the form, and only when
+the form validates cleanly and the `to_dict` output re-parses and rebuilds, emits
+that JSON -- to `--output PATH` (refusing to overwrite without `--force`) or, by
+default or with `--output -`, to stdout as JSON only. `--strict-json` reuses the
+same RFC 8259 serialiser as the analysis exporters.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)

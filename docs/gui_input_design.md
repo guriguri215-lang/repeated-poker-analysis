@@ -187,6 +187,13 @@ load a scenario through its form model and report the mode, validation messages,
 and round-trip parse/build status -- a quick way to exercise the form layer end
 to end from the command line.
 
+`scripts/roundtrip_scenario_form.py <scenario.json> [--output PATH|-] [--force]
+[--strict-json]` is the writer counterpart: a stand-in for the GUI "save" step. It
+loads the form and, only when it validates cleanly and the `to_dict` output
+re-parses and rebuilds, writes that JSON to a file (refusing to overwrite without
+`--force`) or to stdout. It reuses the same strict-JSON serialiser as the analysis
+exporters, so a GUI save and a CLI save would share one format.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
