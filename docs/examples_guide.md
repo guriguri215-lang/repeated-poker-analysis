@@ -130,7 +130,8 @@ python examples/value_bluff_river.py
 
 Instead of a hand-written Python example, an abstract river spot can be loaded
 from a JSON file. See `examples/scenarios/nuts_chop_steal_bet98.json` for the
-BET=98 nuts-chop steal case.
+BET=98 nuts-chop steal case. For the full field-by-field specification of every
+mode, see [scenario_format_reference.md](scenario_format_reference.md).
 
 The scenario JSON format is currently version `"1"`. New files should include a
 top-level `"format_version": "1"` (all the bundled samples now do); the field is
