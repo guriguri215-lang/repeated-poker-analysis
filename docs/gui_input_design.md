@@ -162,10 +162,22 @@ a form <-> JSON bridge and a field-level validator that returns
   disjoint-id, and matrix-completeness checks are shared with the showdown-matrix
   form; only the cell rule differs (a number in `[0, 1]`, with field name
   `equity_matrix[hero_id][villain_id]`).
+- Betting-tree (v1): `BettingTreeScenarioForm` for the river one-street betting
+  tree, via `betting_tree_form_from_dict` / `betting_tree_form_to_dict` /
+  `validate_betting_tree_form`. It reuses `VillainMatrixBucketForm` and adds a
+  `BettingTreeSizingForm` (`oop_bet_size` / `ip_bet_after_check_size` /
+  `ip_raise_size`) and `HeroBettingTreeBucketForm`, whose two Hero decision
+  points are split into flat probability fields (`after_oop_check`: check/bet;
+  `vs_oop_bet`: call/fold/raise). `matrix_type` (`"showdown"` / `"equity"`)
+  selects how `matrix` cells are read, reusing the shared matrix-grid check. The
+  validator adds the size rules (`ip_raise_size` > `oop_bet_size`), the
+  `bet_size` == `oop_bet_size` match, and the two per-bucket distributions. It is
+  the precursor to the betting-tree settings screen; arbitrary / nested tree
+  editing stays out of scope.
 
 Every `from_dict` reuses the existing JSON parser (so no parsing is duplicated),
 and a valid form's `to_dict` output is accepted by the parser and the game
-builder. The betting-tree mode is future work.
+builder. All five JSON scenario modes now have a form model.
 
 ## 10. Implementation phases after this doc
 

@@ -323,11 +323,11 @@ future GUI/form input layer over the existing CLI workflow (screens, MVP scope,
 validation and results UX, and implementation phases). It is a design document
 only; no GUI is implemented yet. GUI-independent building blocks already exist in
 `repeated_poker.scenario_form`: `SingleHandScenarioForm`,
-`HeroRangeScenarioForm`, `ShowdownMatrixScenarioForm`, and
-`EquityMatrixScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
+`HeroRangeScenarioForm`, `ShowdownMatrixScenarioForm`, `EquityMatrixScenarioForm`,
+and `BettingTreeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
 `validate_*_form`), form <-> JSON bridges with field-level validation messages
-for single-hand, Hero-range-only, discrete showdown-matrix, and equity-matrix
-scenarios.
+covering all five scenario modes (single-hand, Hero-range-only, discrete
+showdown-matrix, equity-matrix, and river betting-tree).
 
 ### Public readiness
 
