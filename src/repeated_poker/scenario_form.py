@@ -1476,3 +1476,53 @@ def validate_betting_tree_form(
             )
 
     return messages
+
+
+# ---------------------------------------------------------------------------
+# Mode detection (shared by the inspection CLI and a future GUI loader)
+# ---------------------------------------------------------------------------
+
+# The form-model mode labels, in roughly increasing structure. Each maps to one
+# ``*ScenarioForm`` dataclass and its ``*_form_from_dict`` / ``validate_*_form`` /
+# ``*_form_to_dict`` helpers.
+SCENARIO_FORM_MODES = (
+    "single-hand",
+    "hero-range",
+    "showdown-matrix",
+    "equity-matrix",
+    "betting-tree",
+)
+
+
+def detect_scenario_form_mode(data: dict) -> str:
+    """Return the form-model mode label for a scenario dict (one of
+    :data:`SCENARIO_FORM_MODES`).
+
+    The label is chosen from the top-level keys, mirroring how each
+    ``*_form_from_dict`` decides which mode it accepts:
+
+    * ``betting_tree`` present -> ``"betting-tree"``;
+    * otherwise a ``villain_range`` / ``showdown_matrix`` / ``equity_matrix``
+      present -> ``"equity-matrix"`` if an ``equity_matrix`` is present, else
+      ``"showdown-matrix"``;
+    * otherwise a ``hero_range`` present -> ``"hero-range"``;
+    * otherwise ``"single-hand"``.
+
+    This only selects the candidate mode from which keys exist; the authoritative
+    structural validation is still done by the matching ``*_form_from_dict`` (and
+    the underlying :func:`river_scenario_from_dict`), which raises if the scenario
+    is inconsistent (for example a ``villain_range`` without any matrix, or both
+    matrices at once). Raises :class:`ValueError` if ``data`` is not a dict.
+    """
+
+    if not isinstance(data, dict):
+        raise ValueError("scenario must be a JSON object")
+    if "betting_tree" in data:
+        return "betting-tree"
+    if "villain_range" in data or "showdown_matrix" in data or "equity_matrix" in data:
+        if "equity_matrix" in data:
+            return "equity-matrix"
+        return "showdown-matrix"
+    if "hero_range" in data:
+        return "hero-range"
+    return "single-hand"

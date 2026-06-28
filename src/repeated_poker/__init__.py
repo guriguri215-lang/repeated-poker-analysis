@@ -117,6 +117,7 @@ from .scenario_templates import (
     create_scenario_template,
 )
 from .scenario_form import (
+    SCENARIO_FORM_MODES,
     BettingTreeScenarioForm,
     BettingTreeSizingForm,
     EquityMatrixScenarioForm,
@@ -130,6 +131,7 @@ from .scenario_form import (
     VillainMatrixBucketForm,
     betting_tree_form_from_dict,
     betting_tree_form_to_dict,
+    detect_scenario_form_mode,
     equity_matrix_form_from_dict,
     equity_matrix_form_to_dict,
     hero_range_form_from_dict,
@@ -275,6 +277,8 @@ __all__ = [
     "betting_tree_form_from_dict",
     "betting_tree_form_to_dict",
     "validate_betting_tree_form",
+    "SCENARIO_FORM_MODES",
+    "detect_scenario_form_mode",
     "analysis_result_to_dict",
     "write_analysis_csv",
     "write_analysis_json",
