@@ -8,6 +8,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _WALKTHROUGH = _ROOT / "docs" / "mvp_walkthrough.md"
 _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
+_FORMAT_REFERENCE = _ROOT / "docs" / "scenario_format_reference.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
 _LICENSE = _ROOT / "LICENSE"
@@ -244,3 +245,39 @@ def test_assumptions_contains_key_phrase(phrase):
 )
 def test_examples_guide_contains_key_phrase(phrase):
     assert phrase in _EXAMPLES_GUIDE.read_text(encoding="utf-8")
+
+
+def test_format_reference_file_exists():
+    assert _FORMAT_REFERENCE.is_file()
+
+
+def test_readme_links_to_format_reference():
+    assert "docs/scenario_format_reference.md" in _README.read_text(encoding="utf-8")
+
+
+def test_examples_guide_links_to_format_reference():
+    assert "scenario_format_reference.md" in _EXAMPLES_GUIDE.read_text(encoding="utf-8")
+
+
+def test_format_reference_is_ascii_only():
+    # Match the README / examples-guide style: ASCII-only, so no mojibake glyphs,
+    # no replacement character, and no smart quotes / dashes.
+    assert _FORMAT_REFERENCE.read_text(encoding="utf-8").isascii()
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "format_version",
+        "single-hand mode",
+        "Hero-range-only mode",
+        "showdown_matrix",
+        "equity_matrix",
+        "betting_tree",
+        "Hero pot share before rake",
+        "validate_river_scenario.py",
+        "not a full poker solver",
+    ],
+)
+def test_format_reference_contains_key_phrase(phrase):
+    assert phrase in _FORMAT_REFERENCE.read_text(encoding="utf-8")
