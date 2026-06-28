@@ -130,6 +130,17 @@ The Results summary shows the analysis outputs already produced by the pipeline:
 - The GUI must be able to import an existing scenario JSON and export the current
   form state as JSON at any time.
 
+### Scenario form model (v1, single-hand only)
+
+A first slice of this data flow already exists as a small, GUI-independent layer
+in `repeated_poker.scenario_form`: a flat `SingleHandScenarioForm` dataclass plus
+`single_hand_form_from_dict` / `single_hand_form_to_dict` (the form <-> JSON
+bridge) and `validate_single_hand_form`, which returns `FormValidationMessage`
+items for field-level display instead of raising. It is single-hand only for now;
+`from_dict` reuses the existing JSON parser (so no parsing is duplicated) and a
+valid form's `to_dict` output is accepted by the parser and the game builder. The
+hero-range and matrix modes are future work.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
