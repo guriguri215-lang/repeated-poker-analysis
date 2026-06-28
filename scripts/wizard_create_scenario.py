@@ -258,6 +258,12 @@ def _build_template(args, interactive, input_func, print_func):
 
 def _resolve_output(args, interactive, input_func):
     if args.output is not None:
+        # An explicit but empty --output is a mistake: reject it rather than
+        # treating "" as Path('.') (a directory) further down.
+        if not args.output.strip():
+            raise _WizardError(
+                "--output must not be empty; omit --output to print to stdout"
+            )
         return args.output
     if not interactive:
         return None
@@ -273,6 +279,11 @@ def _write_output(template, output, args, interactive, input_func, print_func):
         return 0
 
     target = Path(output)
+    # Reject a directory target regardless of --force: writing to it would raise
+    # IsADirectoryError. Checked before the overwrite logic so --force cannot
+    # bypass it.
+    if target.is_dir():
+        raise _WizardError(f"--output path {output} is a directory; choose a file path")
     if target.exists() and not args.force:
         if interactive:
             if not _ask_yes_no(input_func, f"{output} exists; overwrite?"):
@@ -281,8 +292,11 @@ def _write_output(template, output, args, interactive, input_func, print_func):
             raise _WizardError(
                 f"{output} already exists; pass --force to overwrite"
             )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text + "\n", encoding="utf-8")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text + "\n", encoding="utf-8")
+    except OSError as exc:
+        raise _WizardError(f"could not write {output}: {exc.strerror or exc}")
     print_func(f"saved scenario to {output}")
     print_func(_TOY_VALUES_NOTE)
     return 0
