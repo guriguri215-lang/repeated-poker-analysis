@@ -40,7 +40,9 @@ work (a form/GUI input layer).
   always include `"format_version": "1"`, and are meant to be edited and
   re-validated. For a guided version that prompts for the common top-level
   fields, use the interactive wizard
-  `python scripts/wizard_create_scenario.py`.
+  `python scripts/wizard_create_scenario.py`. To create (or pick) a scenario and
+  validate, analyse, and export it in one command, use the guided workflow
+  `python scripts/wizard_run_scenario.py`.
 
 ## 2. Top-level fields
 

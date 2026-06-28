@@ -255,6 +255,19 @@ to overwrite without `--force`. Range buckets and matrices keep the template's
 toy values, so edit those in the JSON afterwards. This is the precursor to a
 future GUI/form input layer.
 
+To run the whole path in one go, use the guided workflow
+`python scripts/wizard_run_scenario.py`. It either creates a scenario from a
+template (`--kind`, saved to `--scenario-output`) or analyses an existing one
+(`--scenario PATH`), validating it, running the analysis, printing a short
+summary, and optionally saving the result with `--output-json` /
+`--output-markdown` (`--strict-json` for RFC 8259 JSON). It sequences the
+existing wizard / validation / analysis / export pieces, adding no new model.
+
+```bash
+python scripts/wizard_run_scenario.py --scenario examples/scenarios/nuts_chop_steal_bet98.json
+python scripts/wizard_run_scenario.py --kind single-hand --scenario-output reports/my.json --non-interactive
+```
+
 Scope of the abstract range modes in v1:
 
 - Matchup outcomes are given directly as abstract inputs: a discrete
