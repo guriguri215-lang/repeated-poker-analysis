@@ -144,10 +144,21 @@ a form <-> JSON bridge and a field-level validator that returns
   `validate_hero_range_form`. The validator uses per-hand field names such as
   `hands[0].hand_id` and `hands[1].weight`, and the form is the precursor to a
   range bucket editor.
+- Showdown-matrix (v1): `ShowdownMatrixScenarioForm` (lists of
+  `HeroMatrixBucketForm` and `VillainMatrixBucketForm`, plus a
+  `showdown_matrix` grid) with `showdown_matrix_form_from_dict` /
+  `showdown_matrix_form_to_dict` / `validate_showdown_matrix_form`. Hero buckets
+  carry a baseline call/fold split but no per-hand `showdown` (the outcome comes
+  from the matrix); Villain buckets are weighted ids only. The validator uses
+  field names such as `hero_buckets[0].hand_id`, `villain_buckets[1].weight`, and
+  `showdown_matrix[hero_id][villain_id]`, checks Hero/Villain ids are disjoint,
+  and reports matrix completeness (missing/unknown rows and cells). This is the
+  precursor to the matrix editor. The discrete `equity_matrix` flavour and the
+  betting-tree mode are not yet covered.
 
 Every `from_dict` reuses the existing JSON parser (so no parsing is duplicated),
 and a valid form's `to_dict` output is accepted by the parser and the game
-builder. The matrix and betting-tree modes are future work.
+builder. The equity-matrix and betting-tree modes are future work.
 
 ## 10. Implementation phases after this doc
 
