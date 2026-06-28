@@ -683,12 +683,14 @@ def _validate_matrix_bucket_ids_and_weights(buckets, prefix, expected_type, add)
     Appends messages via ``add`` for malformed entries, bad / duplicate ids, and
     non-positive weights, and (only when every entry is well typed with an
     individually valid weight) for a weight sum that is not one. Returns
-    ``(ids, all_well_typed)`` where ``ids`` is the list of valid, unique hand ids
-    seen and ``all_well_typed`` is true when every entry is an ``expected_type``.
+    ``(ids, ids_usable)`` where ``ids`` is the list of valid, unique hand ids
+    seen and ``ids_usable`` is true only when every entry is an ``expected_type``
+    with a non-empty, unique hand id and an individually valid weight -- i.e. the
+    id set can be trusted as the expected Hero/Villain axis for matrix grid
+    validation, so a downstream grid check is not run against an unreliable axis.
     """
 
     ids: List[str] = []
-    all_well_typed = True
     valid_weights: List[float] = []
     for index, bucket in enumerate(buckets):
         item = f"{prefix}[{index}]"
@@ -698,7 +700,6 @@ def _validate_matrix_bucket_ids_and_weights(buckets, prefix, expected_type, add)
         # than raising AttributeError.
         if not isinstance(bucket, expected_type):
             add(item, f"bucket entry must be a {expected_type.__name__}")
-            all_well_typed = False
             continue
 
         if not isinstance(bucket.hand_id, str) or not bucket.hand_id:
@@ -713,14 +714,19 @@ def _validate_matrix_bucket_ids_and_weights(buckets, prefix, expected_type, add)
         else:
             valid_weights.append(bucket.weight)
 
-    # Only check the weight sum when every entry is well typed and individually
-    # valid, so the message is not noise on top of per-bucket errors.
-    if all_well_typed and len(valid_weights) == len(buckets):
+    # Every well-typed bucket with a valid, unique id appends exactly one id (and
+    # one weight); malformed / bad-id / duplicate / bad-weight entries do not. So
+    # these equalities hold only when every entry passed those checks.
+    ids_usable = len(ids) == len(buckets) and len(valid_weights) == len(buckets)
+
+    # Only check the weight sum when every weight is individually valid, so the
+    # message is not noise on top of per-bucket weight errors.
+    if len(valid_weights) == len(buckets):
         total = sum(valid_weights)
         if abs(total - 1.0) > _TOLERANCE:
             add(prefix, f"{prefix} weights must sum to 1 (got {total})")
 
-    return ids, all_well_typed
+    return ids, ids_usable
 
 
 def _validate_showdown_matrix_grid(matrix, hero_ids, villain_ids, add) -> None:
@@ -802,8 +808,10 @@ def validate_showdown_matrix_form(
 
     hero_ids: List[str] = []
     villain_ids: List[str] = []
+    hero_ids_usable = False
+    villain_ids_usable = False
     if hero_ok:
-        hero_ids, _ = _validate_matrix_bucket_ids_and_weights(
+        hero_ids, hero_ids_usable = _validate_matrix_bucket_ids_and_weights(
             form.hero_buckets, "hero_buckets", HeroMatrixBucketForm, add
         )
         for index, bucket in enumerate(form.hero_buckets):
@@ -817,7 +825,7 @@ def validate_showdown_matrix_form(
                 bucket.baseline_fold_probability,
             )
     if villain_ok:
-        villain_ids, _ = _validate_matrix_bucket_ids_and_weights(
+        villain_ids, villain_ids_usable = _validate_matrix_bucket_ids_and_weights(
             form.villain_buckets, "villain_buckets", VillainMatrixBucketForm, add
         )
 
@@ -831,6 +839,12 @@ def validate_showdown_matrix_form(
             "ids must be disjoint",
         )
 
-    _validate_showdown_matrix_grid(form.showdown_matrix, hero_ids, villain_ids, add)
+    # Only validate the matrix grid once both id axes are trustworthy: every
+    # bucket well typed with a valid, unique id, and the two axes disjoint.
+    # Otherwise the expected row/column sets are unreliable, so a grid check would
+    # emit misleading missing / unknown row/cell noise on top of the real bucket
+    # errors.
+    if hero_ids_usable and villain_ids_usable and not shared_ids:
+        _validate_showdown_matrix_grid(form.showdown_matrix, hero_ids, villain_ids, add)
 
     return messages

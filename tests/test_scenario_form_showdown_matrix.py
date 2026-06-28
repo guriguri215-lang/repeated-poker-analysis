@@ -39,6 +39,14 @@ def _fields_with_errors(form) -> set:
     return {message.field for message in validate_showdown_matrix_form(form)}
 
 
+def _has_matrix_grid_error(form) -> bool:
+    """True if any message targets the showdown_matrix grid (or a row/cell)."""
+    return any(
+        message.field == "showdown_matrix" or message.field.startswith("showdown_matrix[")
+        for message in validate_showdown_matrix_form(form)
+    )
+
+
 # ---------------------------------------------------------------------------
 # from_dict / to_dict
 # ---------------------------------------------------------------------------
@@ -156,36 +164,42 @@ def test_validation_requires_at_least_one_hero_and_villain_bucket():
 
 
 def test_validation_detects_empty_and_duplicate_hero_hand_id():
+    # An empty / duplicate hero id makes the hero axis unreliable, so the matrix
+    # grid check is suppressed to avoid misleading unknown-row noise.
     form = _valid_form()
     form.hero_buckets[0] = replace(form.hero_buckets[0], hand_id="")
     assert "hero_buckets[0].hand_id" in _fields_with_errors(form)
+    assert not _has_matrix_grid_error(form)
 
     form = _valid_form()
     form.hero_buckets[1] = replace(form.hero_buckets[1], hand_id=form.hero_buckets[0].hand_id)
     assert "hero_buckets[1].hand_id" in _fields_with_errors(form)
+    assert not _has_matrix_grid_error(form)
 
 
 def test_validation_detects_empty_and_duplicate_villain_hand_id():
     form = _valid_form()
     form.villain_buckets[0] = replace(form.villain_buckets[0], hand_id="")
     assert "villain_buckets[0].hand_id" in _fields_with_errors(form)
+    assert not _has_matrix_grid_error(form)
 
     form = _valid_form()
     form.villain_buckets[1] = replace(
         form.villain_buckets[1], hand_id=form.villain_buckets[0].hand_id
     )
     assert "villain_buckets[1].hand_id" in _fields_with_errors(form)
+    assert not _has_matrix_grid_error(form)
 
 
 def test_validation_detects_hero_villain_id_overlap():
     form = _valid_form()
-    # Reuse a hero id as a villain id and add a matching matrix column so the only
-    # error is the id overlap.
+    # Reuse a hero id as a villain id without touching the matrix: the overlap is
+    # reported and the matrix grid check is suppressed (the axes are not disjoint,
+    # so the expected row/column sets cannot be trusted).
     shared = form.hero_buckets[0].hand_id
     form.villain_buckets[0] = replace(form.villain_buckets[0], hand_id=shared)
-    for row in form.showdown_matrix.values():
-        row[shared] = row.pop("villain_chop")
     assert "villain_buckets" in _fields_with_errors(form)
+    assert not _has_matrix_grid_error(form)
 
 
 def test_validation_detects_non_positive_weight_and_bad_sum():
@@ -245,6 +259,8 @@ def test_validation_handles_malformed_hero_bucket_without_raising(bad_entry):
     assert "hero_buckets[0]" in fields
     # No weight-sum noise is added when an entry is malformed.
     assert "hero_buckets" not in fields
+    # The unreliable hero axis must not trigger misleading matrix grid noise.
+    assert not _has_matrix_grid_error(form)
 
 
 @pytest.mark.parametrize("bad_entry", [None, {"hand_id": "x"}, "not-a-bucket"])
@@ -253,6 +269,7 @@ def test_validation_handles_malformed_villain_bucket_without_raising(bad_entry):
     fields = {m.field for m in validate_showdown_matrix_form(form)}
     assert "villain_buckets[0]" in fields
     assert "villain_buckets" not in fields
+    assert not _has_matrix_grid_error(form)
 
 
 def test_validation_detects_invalid_rake_horizon_discount_and_bet_size():
