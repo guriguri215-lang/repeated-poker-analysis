@@ -179,6 +179,14 @@ Every `from_dict` reuses the existing JSON parser (so no parsing is duplicated),
 and a valid form's `to_dict` output is accepted by the parser and the game
 builder. All five JSON scenario modes now have a form model.
 
+`repeated_poker.detect_scenario_form_mode(data)` returns the mode label for a
+scenario dict (one of `repeated_poker.SCENARIO_FORM_MODES`), so a loader can pick
+the right form without duplicating the mode rules. Before any GUI exists, the
+inspect-only CLI `scripts/inspect_scenario_form.py <scenario.json>` uses it to
+load a scenario through its form model and report the mode, validation messages,
+and round-trip parse/build status -- a quick way to exercise the form layer end
+to end from the command line.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
