@@ -9,6 +9,7 @@ _WALKTHROUGH = _ROOT / "docs" / "mvp_walkthrough.md"
 _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
 _FORMAT_REFERENCE = _ROOT / "docs" / "scenario_format_reference.md"
+_GUI_DESIGN = _ROOT / "docs" / "gui_input_design.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
 _LICENSE = _ROOT / "LICENSE"
@@ -306,3 +307,38 @@ def test_docs_have_no_stale_template_generator_wording(doc_name, stale_phrase):
         "FORMAT_REFERENCE": _FORMAT_REFERENCE,
     }[doc_name]
     assert stale_phrase not in doc.read_text(encoding="utf-8")
+
+
+def test_gui_design_file_exists():
+    assert _GUI_DESIGN.is_file()
+
+
+def test_readme_links_to_gui_design():
+    assert "docs/gui_input_design.md" in _README.read_text(encoding="utf-8")
+
+
+def test_format_reference_links_to_gui_design():
+    assert "gui_input_design.md" in _FORMAT_REFERENCE.read_text(encoding="utf-8")
+
+
+def test_gui_design_is_ascii_only():
+    # Match the other docs' style: ASCII-only, so no mojibake glyphs, no
+    # replacement character, and no smart quotes / dashes.
+    assert _GUI_DESIGN.read_text(encoding="utf-8").isascii()
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "GUI/form input design",
+        "JSON remains the source of truth",
+        "Validation panel",
+        "Results summary",
+        "not real-money advice",
+        "real-card parser",
+        "external solver import",
+        "implementation phases",
+    ],
+)
+def test_gui_design_contains_key_phrase(phrase):
+    assert phrase in _GUI_DESIGN.read_text(encoding="utf-8")
