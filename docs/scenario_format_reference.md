@@ -4,8 +4,9 @@ This is the reference for the JSON scenario input consumed by
 `load_river_scenario_json` / `river_scenario_from_dict` and built into a game by
 `build_river_steal_game_from_scenario`. It is meant to be a single place that
 describes every top-level field, every input mode, and the conventions the
-analysis relies on, so it can also serve as the specification for later
-input-usability work (a template generator and a form/GUI input layer).
+analysis relies on. It is the specification followed by the scenario template
+generator (`scripts/create_scenario_template.py`) and for later input-usability
+work (a form/GUI input layer).
 
 ## 1. Scope and status
 
@@ -25,6 +26,19 @@ input-usability work (a template generator and a form/GUI input layer).
   ```
 
   Validation runs at the parser/build level only (see section 7).
+
+- To start from a working file instead of writing one by hand, generate a
+  template that conforms to this reference:
+
+  ```bash
+  python scripts/create_scenario_template.py --list-kinds
+  python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
+  python scripts/validate_river_scenario.py reports/template.json
+  ```
+
+  Generated templates are abstract toy examples (not strategic recommendations),
+  always include `"format_version": "1"`, and are meant to be edited and
+  re-validated.
 
 ## 2. Top-level fields
 

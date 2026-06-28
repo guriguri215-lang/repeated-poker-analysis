@@ -137,7 +137,7 @@ The scenario JSON format is currently version `"1"`. New files should include a
 top-level `"format_version": "1"` (all the bundled samples now do); the field is
 optional for backward compatibility, so a file without it is read as `"1"`, while
 any unknown version is rejected. The format is still experimental and may get a
-v2 before template-generation or GUI input tooling. The resolved version is
+v2 (GUI/form-based input is also still to come). The resolved version is
 surfaced in the build metadata and in the analysis, validation, and batch outputs
 (JSON / CSV / Markdown / stdout), so you can tell at a glance which format a
 result came from.
@@ -337,6 +337,27 @@ records the failing file and keeps going, and `--output-json` (optionally with
 `validate_river_scenario_inputs` with `write_validation_json`. Use this to catch
 input mistakes; use `run_river_scenario_analysis` / `run_scenario_batch.py` once
 the inputs validate to actually analyse and compare candidates.
+
+### Generating a starter scenario
+
+To avoid writing a scenario JSON from scratch, generate a starter template with
+`create_scenario_template` or `scripts/create_scenario_template.py`. Each
+template is an abstract toy example (not a strategic recommendation), includes
+`"format_version": "1"`, and is validated at the parser/build level by default
+(pass `--no-validate` to skip). It prints to stdout, or saves with `--output`
+(refusing to overwrite an existing file unless `--force` is given):
+
+```powershell
+python scripts/create_scenario_template.py --list-kinds
+python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
+python scripts/validate_river_scenario.py reports/template.json
+```
+
+The kinds are `single-hand`, `hero-range`, `range-matrix-showdown`,
+`range-matrix-equity`, and `range-matrix-equity-betting-tree`. Generated files
+are meant to be edited and re-validated; for the full field specification see
+[scenario_format_reference.md](scenario_format_reference.md). From Python this is
+`create_scenario_template(kind)` (see `available_scenario_template_kinds()`).
 
 To stop at the building blocks instead, build the game and feed it into the
 pipeline yourself:

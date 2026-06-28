@@ -281,3 +281,28 @@ def test_format_reference_is_ascii_only():
 )
 def test_format_reference_contains_key_phrase(phrase):
     assert phrase in _FORMAT_REFERENCE.read_text(encoding="utf-8")
+
+
+def test_docs_mention_template_generator_script():
+    # The generator is implemented, so the docs should reference the script.
+    for doc in (_README, _EXAMPLES_GUIDE, _FORMAT_REFERENCE):
+        assert "create_scenario_template.py" in doc.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "doc_name, stale_phrase",
+    [
+        # The template generator now exists, so it must no longer be described as
+        # future "template-generation ... tooling" work.
+        ("README", "template-generation"),
+        ("EXAMPLES_GUIDE", "template-generation"),
+        ("FORMAT_REFERENCE", "a template generator and a form/GUI input layer"),
+    ],
+)
+def test_docs_have_no_stale_template_generator_wording(doc_name, stale_phrase):
+    doc = {
+        "README": _README,
+        "EXAMPLES_GUIDE": _EXAMPLES_GUIDE,
+        "FORMAT_REFERENCE": _FORMAT_REFERENCE,
+    }[doc_name]
+    assert stale_phrase not in doc.read_text(encoding="utf-8")

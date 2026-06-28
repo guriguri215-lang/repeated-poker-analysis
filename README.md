@@ -176,8 +176,8 @@ The scenario JSON format is currently version `"1"`. New files should declare it
 with a top-level `"format_version": "1"`; the field is optional for backward
 compatibility, so a file without it is treated as `"1"`. Unknown versions (and a
 numeric `1`, `null`, a bool, or an empty string) are rejected. The format is
-still experimental and may get a v2 before any template-generation or GUI input
-tooling, so the version is recorded in the build metadata and in the analysis /
+still experimental and may get a v2 (GUI/form-based input is also still to come),
+so the version is recorded in the build metadata and in the analysis /
 validation / batch outputs.
 
 The input has three mutually exclusive modes:
@@ -230,6 +230,21 @@ Unlike the analysis and batch runners it stops at the parser/build level: it doe
 pipeline. A bad file reports a short `error: ...` line instead of a Python
 traceback; pass `--continue-on-error` to record failing files and keep going,
 and `--output-json` (optionally with `--strict-json`) to save the rows as JSON.
+
+To start from a working file instead of an empty one, generate a starter
+scenario with `create_scenario_template` or
+`python scripts/create_scenario_template.py --kind <kind>` (use `--list-kinds`
+to see the kinds). It prints the JSON to stdout, or saves it with `--output`
+(`--force` to overwrite). Every template includes `"format_version": "1"` and is
+validated at the parser/build level by default. The generated templates are
+abstract toy examples, not strategic recommendations: edit them, then re-check
+with `python scripts/validate_river_scenario.py <file>`. Example:
+
+```bash
+python scripts/create_scenario_template.py --list-kinds
+python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
+python scripts/validate_river_scenario.py reports/template.json
+```
 
 Scope of the abstract range modes in v1:
 
