@@ -240,8 +240,15 @@ row) and the same `POST /api/load`, `/api/validate`, `/api/save` API, reusing
 `HeroRangeScenarioForm` / `validate_hero_range_form` / `hero_range_form_to_dict`,
 the shared loader and safe writer, and the same safety rules (localhost only, raw
 `format_version`, boolean save options, `textContent` display, no tracebacks). It
-rejects non-Hero-range scenarios. It does not run the analysis pipeline yet, and
-the matrix and betting-tree editors and graphing remain future work.
+rejects non-Hero-range scenarios. It also runs the analysis from the current bucket
+form values via `POST /api/analyze` (reusing the single-hand GUI's optional
+horizon / discount validators and `run_river_scenario_analysis`): the **Analyze**
+section exposes a horizon override, a discount override, and a "render Markdown
+summary" toggle, and shows the candidate counts (generated / kept / excluded), the
+resolved horizon and discount, and the Markdown summary as plain text, separate
+from the status and validation messages. It remains Hero-range-only and abstract;
+the matrix and betting-tree editors, graphing, and any new solver or model remain
+future work.
 
 ## 10. Implementation phases after this doc
 
