@@ -362,9 +362,16 @@ validate, and save. Range / matrix / betting-tree scenarios are not supported.</
   <legend>Analyze</legend>
   <p class="hint">Runs the candidate analysis for the current form values (no file
   needed). Single-hand only; shows candidate counts and the Markdown summary.</p>
+  <label><span>horizon override (blank = default)</span>
+    <input type="text" id="opt_horizon" placeholder="e.g. 100"></label>
+  <label><span>discount override (blank = default)</span>
+    <input type="text" id="opt_discount" placeholder="e.g. 1.0"></label>
+  <label><input type="checkbox" id="render_markdown" checked> render Markdown summary</label>
   <button id="analyze_btn">Analyze</button>
-  <div id="analysis_counts"></div>
-  <pre id="analysis_summary"></pre>
+  <div id="analysis_result">
+    <div id="analysis_counts"></div>
+    <pre id="analysis_summary"></pre>
+  </div>
 </fieldset>
 
 <div id="status"></div>
@@ -452,10 +459,36 @@ document.getElementById("save_btn").onclick = function () {
     .catch(function () { setStatus("request failed", true); });
 };
 
+// Parse an optional numeric override field: blank -> omit; otherwise a number.
+// A non-numeric entry is reported client-side so it is not silently dropped.
+function parseOption(elementId, label) {
+  var text = document.getElementById(elementId).value.trim();
+  if (text === "") { return {present: false}; }
+  var n = Number(text);
+  if (!isFinite(n)) { return {present: true, error: label + " must be a number"}; }
+  return {present: true, value: n};
+}
+
 document.getElementById("analyze_btn").onclick = function () {
   document.getElementById("analysis_counts").textContent = "";
   document.getElementById("analysis_summary").textContent = "";
-  post("/api/analyze", {form: collectForm()})
+
+  var payload = {
+    form: collectForm(),
+    render_markdown: document.getElementById("render_markdown").checked
+  };
+  var horizon = parseOption("opt_horizon", "horizon");
+  if (horizon.present) {
+    if (horizon.error) { setStatus("error: " + horizon.error, true); return; }
+    payload.horizon = horizon.value;
+  }
+  var discount = parseOption("opt_discount", "discount");
+  if (discount.present) {
+    if (discount.error) { setStatus("error: " + discount.error, true); return; }
+    payload.discount = discount.value;
+  }
+
+  post("/api/analyze", payload)
     .then(function (res) {
       if (!res.ok) {
         setStatus("error: " + (res.error || "not analyzed"), true);
@@ -463,12 +496,19 @@ document.getElementById("analyze_btn").onclick = function () {
         return;
       }
       showMessages([]);
+      // Analysis result is shown in its own area, separate from status/messages.
       document.getElementById("analysis_counts").textContent =
-        "horizon=" + res.horizon + "  discount=" + res.discount +
+        "scenario_id=" + res.scenario_id +
+        "  |  horizon=" + res.horizon + "  discount=" + res.discount +
         "  |  generated=" + res.generated_count +
         "  kept=" + res.kept_count + "  excluded=" + res.excluded_count;
       // Render the summary as text only (never as HTML) to avoid injection.
-      document.getElementById("analysis_summary").textContent = res.markdown_summary || "";
+      if (res.markdown_summary === null || res.markdown_summary === undefined) {
+        document.getElementById("analysis_summary").textContent =
+          "(Markdown summary not rendered; enable \\"render Markdown summary\\")";
+      } else {
+        document.getElementById("analysis_summary").textContent = res.markdown_summary;
+      }
       setStatus("analyzed", false);
     })
     .catch(function () { setStatus("request failed", true); });
