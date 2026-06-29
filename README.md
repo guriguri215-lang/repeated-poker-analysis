@@ -391,6 +391,17 @@ scenario default), and a "render Markdown summary" toggle -- and shows the resul
 status and validation messages. It adds no graphing and no new solver or model,
 and remains single-hand only.
 
+A showdown-matrix editor prototype is available with
+`python scripts/serve_showdown_matrix_gui.py --port 8002` (open
+`http://127.0.0.1:8002/`). It loads a discrete `showdown_matrix` scenario JSON into
+top-level fields, a table of weighted Hero buckets, a table of weighted Villain
+buckets, and a Hero x Villain matrix of hero / villain / chop cells; you can add /
+remove / edit buckets, rebuild the matrix (matching cells are kept, new cells
+default to chop), validate, and save -- the same local-only, abstract,
+standard-library approach as the other editors. It remains showdown-matrix-only
+and abstract; equity-matrix and betting-tree editing, graphing, and running the
+analysis from the matrix GUI are not supported yet.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
