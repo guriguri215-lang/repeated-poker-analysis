@@ -216,6 +216,15 @@ Safety: it binds to `127.0.0.1`, makes no external calls, reads/writes only
 user-supplied paths, refuses to overwrite without the overwrite box, and returns
 short error messages rather than tracebacks.
 
+The prototype also runs the analysis locally from the current form (`POST
+/api/analyze`, the **Analyze** button): it validates the form and calls
+`run_river_scenario_analysis`, returning the candidate counts (generated / kept /
+excluded), the resolved horizon and discount, and the Markdown summary (shown as
+plain text). Optional `horizon` / `discount` overrides are validated (a positive
+int / a finite positive number) and `render_markdown` must be a boolean. This is
+the "analyze and view a summary" step of the screen flow; charts, export beyond
+the existing save, and the other modes remain future work.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
