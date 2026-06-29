@@ -354,6 +354,17 @@ the edited form validates and round-trips. Non-single-hand scenarios, unknown
 fields, and bad values are rejected with a clean `error:` message. The three form
 CLIs compose: `edit` -> stdout -> `inspect` / `roundtrip`.
 
+For a browser version of that single-hand edit-and-save flow, run
+`python scripts/serve_single_hand_gui.py --port 8000` and open
+`http://127.0.0.1:8000/`. This is a local-only prototype built on the standard
+library (no framework or dependency): load a single-hand scenario JSON into a
+form, edit the fields, **Validate**, and **Save JSON** (with an overwrite
+checkbox and a strict-JSON option). It binds to `127.0.0.1`, makes no external
+calls, reads/writes only the paths you type, refuses to overwrite without the
+checkbox, and saves only after the form validates and round-trips. Range, matrix,
+and betting-tree editing and the analysis pipeline are out of scope for the
+prototype.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)

@@ -203,6 +203,19 @@ It approximates the GUI's per-field edit and save path. The three form CLIs
 (inspect, roundtrip, edit) reuse one loader, mode detection, safe writer, and
 strict-JSON serialiser, and compose as `edit -> inspect / roundtrip`.
 
+`scripts/serve_single_hand_gui.py [--host 127.0.0.1] [--port 8000]` is the first
+actual GUI: a local-only browser prototype of the single-hand edit-and-save flow,
+built on the standard library (`http.server` plus inline HTML / CSS / vanilla
+JavaScript -- no framework or dependency). It serves a form page (`GET /`) and a
+small JSON API (`POST /api/load`, `/api/validate`, `/api/save`) that reuse the
+same `SingleHandScenarioForm` helpers, field value parsing, safe writer, and
+strict-JSON serialiser as the CLIs. It is deliberately tiny and single-hand only:
+the screens, MVP scope, and phases above describe where a fuller GUI would go
+(other modes, the matrix editor, analysis, and export), all still future work.
+Safety: it binds to `127.0.0.1`, makes no external calls, reads/writes only
+user-supplied paths, refuses to overwrite without the overwrite box, and returns
+short error messages rather than tracebacks.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
