@@ -92,6 +92,23 @@ def test_validate_bad_value_is_error():
         gui.api_validate({"form": form})
 
 
+def test_validate_rejects_non_string_format_version():
+    # A numeric format_version must not be coerced to "1"; it stays invalid and is
+    # reported on the format_version field.
+    form = _loaded_form()
+    form["format_version"] = 1
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(m["field"] == "format_version" for m in result["messages"])
+
+
+def test_validate_accepts_string_format_version_one():
+    form = _loaded_form()
+    form["format_version"] = "1"
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is True
+
+
 # ---------------------------------------------------------------------------
 # api_save
 # ---------------------------------------------------------------------------
@@ -148,6 +165,32 @@ def test_save_invalid_form_does_not_write(tmp_path):
     assert result["ok"] is False
     assert result["messages"]
     assert not out.exists()
+
+
+def test_save_rejects_invalid_format_version(tmp_path):
+    out = tmp_path / "out.json"
+    form = _loaded_form()
+    form["format_version"] = 1  # numeric, unsupported
+    result = gui.api_save({"path": str(out), "form": form})
+    assert result["ok"] is False
+    assert any(m["field"] == "format_version" for m in result["messages"])
+    assert not out.exists()
+
+
+def test_save_force_string_is_rejected(tmp_path):
+    # "false" is truthy under bool(); the API must reject non-boolean force and
+    # leave the existing file untouched.
+    out = tmp_path / "out.json"
+    out.write_text("ORIGINAL", encoding="utf-8")
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(out), "form": _loaded_form(), "force": "false"})
+    assert out.read_text(encoding="utf-8") == "ORIGINAL"
+
+
+def test_save_strict_json_string_is_rejected(tmp_path):
+    out = tmp_path / "out.json"
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(out), "form": _loaded_form(), "strict_json": "true"})
 
 
 def test_save_missing_path():

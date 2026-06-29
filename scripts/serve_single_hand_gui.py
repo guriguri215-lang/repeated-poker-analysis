@@ -108,13 +108,18 @@ def _form_from_payload(payload) -> SingleHandScenarioForm:
     Values arrive as strings (HTML inputs); each known field is converted with the
     same per-field rules as ``edit_scenario_form`` (floats, optional ``rake_cap``,
     comma-separated ``shift_amounts`` / ``horizons``). ``format_version`` is carried
-    through unedited. Raises :class:`ValueError` on a bad value.
+    through unedited and *not* coerced -- a non-string / unsupported value is kept
+    as-is so ``validate_single_hand_form`` / the parser flag it, rather than being
+    silently rounded to a valid ``"1"``. Raises :class:`ValueError` on a bad value.
     """
 
     if not isinstance(payload, dict):
         raise ValueError("form must be a JSON object")
     form = SingleHandScenarioForm()
-    form.format_version = str(payload.get("format_version", form.format_version))
+    # Keep the raw value (no str() coercion); only fall back to the default when
+    # the field is absent.
+    if "format_version" in payload:
+        form.format_version = payload["format_version"]
     for field in _KNOWN_FIELDS:
         if field not in payload:
             continue
@@ -172,8 +177,14 @@ def api_save(payload) -> dict:
     path = payload.get("path")
     if not isinstance(path, str) or not path.strip():
         raise ValueError("path is required")
-    force = bool(payload.get("force", False))
-    strict = bool(payload.get("strict_json", False))
+    # Require real booleans: a string like "false" must not silently enable an
+    # overwrite or change the serialiser.
+    force = payload.get("force", False)
+    if not isinstance(force, bool):
+        raise ValueError("force must be a boolean")
+    strict = payload.get("strict_json", False)
+    if not isinstance(strict, bool):
+        raise ValueError("strict_json must be a boolean")
 
     form = _form_from_payload(payload.get("form"))
     messages = validate_single_hand_form(form)
