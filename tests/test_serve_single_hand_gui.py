@@ -300,6 +300,25 @@ def test_page_contains_analyze_options():
     assert "render_markdown: document.getElementById" in gui._PAGE
 
 
+def test_analyze_clears_stale_messages_and_result():
+    # The analyze handler clears validation messages and the previous analysis
+    # result on each run (so a parse error or re-run leaves no stale output).
+    page = gui._PAGE
+    assert "clearMessagesAndAnalysis" in page
+    assert "clearAnalysisResult" in page
+    assert "analyzing..." in page
+
+
+def test_analyze_clears_before_client_side_parse_error():
+    # The clear must happen before the horizon / discount parse-error returns, so
+    # those early returns cannot leave stale messages or analysis result behind.
+    page = gui._PAGE
+    start = page.index('getElementById("analyze_btn").onclick')
+    clear_idx = page.index("clearMessagesAndAnalysis()", start)
+    parse_idx = page.index('parseOption("opt_horizon"', start)
+    assert clear_idx < parse_idx
+
+
 def _serve_in_background():
     server = gui.build_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
