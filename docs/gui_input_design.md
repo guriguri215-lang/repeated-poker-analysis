@@ -263,9 +263,15 @@ safety rules (localhost only, raw `format_version`, boolean save options,
 `textContent` / DOM-only display with no `innerHTML`, no tracebacks). Adding /
 removing a bucket or pressing "Rebuild matrix" regenerates the grid, keeping cells
 for matching Hero/Villain ids and defaulting new cells to chop. It rejects
-non-showdown-matrix scenarios. It remains showdown-matrix-only and abstract; the
-equity-matrix and betting-tree editors, graphing, and running the analysis from the
-matrix GUI remain future work.
+non-showdown-matrix scenarios. It also runs the analysis from the current matrix
+form values via `POST /api/analyze` (reusing the single-hand GUI's optional
+horizon / discount validators and `run_river_scenario_analysis`): the **Analyze**
+section exposes a horizon override, a discount override, and a "render Markdown
+summary" toggle, and shows the candidate counts (generated / kept / excluded), the
+resolved horizon and discount, and the Markdown summary as plain text, separate
+from the status and validation messages. It remains showdown-matrix-only and
+abstract; the equity-matrix and betting-tree editors, graphing, and any new solver
+or model remain future work.
 
 ## 10. Implementation phases after this doc
 

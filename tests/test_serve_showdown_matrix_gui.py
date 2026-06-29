@@ -252,6 +252,71 @@ def test_save_preserves_invalid_format_version_for_parser(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# api_analyze
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_valid_form():
+    result = gui.api_analyze({"form": _loaded_form()})
+    assert result["ok"] is True
+    assert result["valid"] is True
+    assert result["scenario_id"] == "range_matrix_steal_bet98"
+    assert isinstance(result["generated_count"], int)
+    assert isinstance(result["kept_count"], int)
+    assert isinstance(result["excluded_count"], int)
+    assert isinstance(result["markdown_summary"], str)
+    assert result["markdown_summary"]
+
+
+def test_analyze_render_markdown_false_omits_summary():
+    result = gui.api_analyze({"form": _loaded_form(), "render_markdown": False})
+    assert result["ok"] is True
+    assert result["markdown_summary"] is None
+
+
+def test_analyze_horizon_and_discount_overrides_apply():
+    result = gui.api_analyze({"form": _loaded_form(), "horizon": 25, "discount": 0.9})
+    assert result["ok"] is True
+    assert result["horizon"] == 25
+    assert result["discount"] == 0.9
+
+
+def test_analyze_invalid_form_does_not_analyze():
+    form = _loaded_form()
+    form["hero_buckets"][0]["weight"] = "0.5"
+    form["hero_buckets"][1]["weight"] = "0.2"  # weights no longer sum to 1
+    result = gui.api_analyze({"form": form})
+    assert result["ok"] is False
+    assert result["valid"] is False
+    assert result["messages"]
+    assert "markdown_summary" not in result
+
+
+def test_analyze_bad_value_is_error():
+    form = _loaded_form()
+    form["hero_buckets"][0]["weight"] = "abc"
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": form})
+
+
+def test_analyze_invalid_render_markdown_type():
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "render_markdown": "yes"})
+
+
+@pytest.mark.parametrize("bad_horizon", [0, -5, 1.5, True])
+def test_analyze_invalid_horizon(bad_horizon):
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "horizon": bad_horizon})
+
+
+@pytest.mark.parametrize("bad_discount", [0, -1.0, float("inf"), float("nan"), "x", True])
+def test_analyze_invalid_discount(bad_discount):
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "discount": bad_discount})
+
+
+# ---------------------------------------------------------------------------
 # HTML page
 # ---------------------------------------------------------------------------
 
@@ -304,6 +369,44 @@ def test_page_add_remove_handlers_rebuild_matrix():
     assert "rebuildMatrix();" in page  # also called from a row's Remove handler
 
 
+def test_page_contains_analyze_elements():
+    page = gui._PAGE
+    assert "analyze_btn" in page
+    assert ">Analyze<" in page
+    assert "analysis_result" in page
+    assert "analysis_counts" in page
+    assert "analysis_summary" in page
+    assert "opt_horizon" in page
+    assert "opt_discount" in page
+    assert "render_markdown" in page
+
+
+def test_page_wires_analyze_options_into_payload():
+    page = gui._PAGE
+    # The override fields and markdown toggle are wired into the analyze request.
+    assert "payload.horizon" in page
+    assert "payload.discount" in page
+    assert "render_markdown: document.getElementById" in page
+
+
+def test_analyze_clears_stale_messages_and_result():
+    # The analyze handler clears validation messages and the previous analysis
+    # result on each run (so a parse error or re-run leaves no stale output).
+    page = gui._PAGE
+    assert "clearMessagesAndAnalysis" in page
+    assert "clearAnalysisResult" in page
+
+
+def test_analyze_clears_before_client_side_parse_error():
+    # The clear must happen before the horizon / discount parse-error returns, so
+    # those early returns cannot leave stale messages or analysis result behind.
+    page = gui._PAGE
+    start = page.index('getElementById("analyze_btn").onclick')
+    clear_idx = page.index("clearMessagesAndAnalysis()", start)
+    parse_idx = page.index('parseOption("opt_horizon"', start)
+    assert clear_idx < parse_idx
+
+
 # ---------------------------------------------------------------------------
 # Live HTTP server (ephemeral port)
 # ---------------------------------------------------------------------------
@@ -342,6 +445,11 @@ def test_http_server_serves_page_and_api():
 
         validated = _post(port, "/api/validate", {"form": loaded["form"]})
         assert validated["valid"] is True
+
+        analyzed = _post(port, "/api/analyze", {"form": loaded["form"]})
+        assert analyzed["ok"] is True
+        assert isinstance(analyzed["markdown_summary"], str)
+        assert "generated_count" in analyzed
     finally:
         server.shutdown()
         server.server_close()
