@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,10 +47,12 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling CLIs
 
 from repeated_poker import (  # noqa: E402  (path is set up above)
+    RiverScenarioAnalysisConfig,
     SingleHandScenarioForm,
     build_river_steal_game_from_scenario,
     detect_scenario_form_mode,
     river_scenario_from_dict,
+    run_river_scenario_analysis,
     single_hand_form_from_dict,
     single_hand_form_to_dict,
     validate_single_hand_form,
@@ -208,10 +211,87 @@ def api_save(payload) -> dict:
     return {"ok": True, "path": path.strip()}
 
 
+def _optional_horizon(value):
+    """Validate an optional horizon override (a positive int, ``None`` to skip)."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("horizon must be an integer")
+    if value < 1:
+        raise ValueError("horizon must be at least 1")
+    return value
+
+
+def _optional_discount(value):
+    """Validate an optional discount override (a finite positive number)."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("discount must be a number")
+    discount = float(value)
+    if not math.isfinite(discount) or discount <= 0:
+        raise ValueError("discount must be a finite positive number")
+    return discount
+
+
+def api_analyze(payload) -> dict:
+    """Run the candidate analysis for the form the browser sent.
+
+    Returns ``{"ok": False, ...}`` with messages when the form is invalid (the
+    analysis is not run). Raises :class:`ValueError` for a bad value or a bad
+    ``horizon`` / ``discount`` / ``render_markdown`` option; any other failure
+    propagates to the handler, which returns a generic "internal error" without a
+    traceback. The form supplies the default horizon (max of its horizons) and
+    discount; ``horizon`` / ``discount`` in the payload override them.
+    """
+
+    if not isinstance(payload, dict):
+        raise ValueError("request must be a JSON object")
+    render_markdown = payload.get("render_markdown", True)
+    if not isinstance(render_markdown, bool):
+        raise ValueError("render_markdown must be a boolean")
+    horizon = _optional_horizon(payload.get("horizon"))
+    discount = _optional_discount(payload.get("discount"))
+
+    form = _form_from_payload(payload.get("form"))
+    messages = validate_single_hand_form(form)
+    if messages:
+        return {
+            "ok": False,
+            "valid": False,
+            "messages": _messages_payload(messages),
+            "error": "form has validation messages; not analyzed",
+        }
+
+    # A valid form re-parses and rebuilds; run_river_scenario_analysis does the
+    # build itself, so any structural problem surfaces as a clean ValueError.
+    scenario = river_scenario_from_dict(single_hand_form_to_dict(form))
+    config = RiverScenarioAnalysisConfig(
+        horizon=horizon, discount=discount, markdown=render_markdown
+    )
+    result = run_river_scenario_analysis(scenario, config)
+
+    counts = result.pipeline_result.filter_result.summary_counts
+    return {
+        "ok": True,
+        "valid": True,
+        "scenario_id": result.scenario_id,
+        "horizon": result.horizon,
+        "discount": result.discount,
+        "generated_count": len(result.pipeline_result.generated_candidates),
+        "kept_count": counts.kept,
+        "excluded_count": counts.excluded,
+        "markdown_summary": result.markdown_summary,
+    }
+
+
 _API = {
     "/api/load": api_load,
     "/api/validate": api_validate,
     "/api/save": api_save,
+    "/api/analyze": api_analyze,
 }
 
 # Inline single-file page: HTML + CSS + vanilla JS, no external resources.
@@ -276,6 +356,15 @@ validate, and save. Range / matrix / betting-tree scenarios are not supported.</
   </div>
   <button id="validate_btn">Validate</button>
   <button id="save_btn">Save JSON</button>
+</fieldset>
+
+<fieldset>
+  <legend>Analyze</legend>
+  <p class="hint">Runs the candidate analysis for the current form values (no file
+  needed). Single-hand only; shows candidate counts and the Markdown summary.</p>
+  <button id="analyze_btn">Analyze</button>
+  <div id="analysis_counts"></div>
+  <pre id="analysis_summary"></pre>
 </fieldset>
 
 <div id="status"></div>
@@ -359,6 +448,28 @@ document.getElementById("save_btn").onclick = function () {
       }
       showMessages([]);
       setStatus("saved " + res.path, false);
+    })
+    .catch(function () { setStatus("request failed", true); });
+};
+
+document.getElementById("analyze_btn").onclick = function () {
+  document.getElementById("analysis_counts").textContent = "";
+  document.getElementById("analysis_summary").textContent = "";
+  post("/api/analyze", {form: collectForm()})
+    .then(function (res) {
+      if (!res.ok) {
+        setStatus("error: " + (res.error || "not analyzed"), true);
+        showMessages(res.messages || []);
+        return;
+      }
+      showMessages([]);
+      document.getElementById("analysis_counts").textContent =
+        "horizon=" + res.horizon + "  discount=" + res.discount +
+        "  |  generated=" + res.generated_count +
+        "  kept=" + res.kept_count + "  excluded=" + res.excluded_count;
+      // Render the summary as text only (never as HTML) to avoid injection.
+      document.getElementById("analysis_summary").textContent = res.markdown_summary || "";
+      setStatus("analyzed", false);
     })
     .catch(function () { setStatus("request failed", true); });
 };

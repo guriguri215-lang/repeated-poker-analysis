@@ -362,8 +362,14 @@ form, edit the fields, **Validate**, and **Save JSON** (with an overwrite
 checkbox and a strict-JSON option). It binds to `127.0.0.1`, makes no external
 calls, reads/writes only the paths you type, refuses to overwrite without the
 checkbox, and saves only after the form validates and round-trips. Range, matrix,
-and betting-tree editing and the analysis pipeline are out of scope for the
-prototype.
+and betting-tree editing are out of scope for the prototype.
+
+The prototype can also run the analysis from the current form values (no file
+needed): the **Analyze** button posts the form to a local `/api/analyze` endpoint,
+which validates it and runs `run_river_scenario_analysis`, then shows the
+candidate counts (generated / kept / excluded), the resolved horizon and discount,
+and the Markdown summary (rendered as plain text). It adds no graphing and no new
+solver or model, and remains single-hand only.
 
 ### Public readiness
 
