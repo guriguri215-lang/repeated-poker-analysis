@@ -232,6 +232,17 @@ horizon/discount, and the generated/kept/excluded counts on one line, plus the
 summary `<pre>`) from the status line and validation messages. It is still a
 local prototype and single-hand only, with no graphing or multi-mode editing.
 
+`scripts/serve_hero_range_gui.py [--host 127.0.0.1] [--port 8001]` is the next
+mode's editor: a local-only browser prototype of the Hero-range-only
+load / edit-buckets / validate / save flow. It serves a page (`GET /`) with the
+top-level fields plus a table of weighted Hero buckets (Add hand / Remove per
+row) and the same `POST /api/load`, `/api/validate`, `/api/save` API, reusing
+`HeroRangeScenarioForm` / `validate_hero_range_form` / `hero_range_form_to_dict`,
+the shared loader and safe writer, and the same safety rules (localhost only, raw
+`format_version`, boolean save options, `textContent` display, no tracebacks). It
+rejects non-Hero-range scenarios. It does not run the analysis pipeline yet, and
+the matrix and betting-tree editors and graphing remain future work.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is

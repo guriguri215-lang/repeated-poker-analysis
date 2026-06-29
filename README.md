@@ -361,11 +361,21 @@ library (no framework or dependency): load a single-hand scenario JSON into a
 form, edit the fields, **Validate**, and **Save JSON** (with an overwrite
 checkbox and a strict-JSON option). It binds to `127.0.0.1`, makes no external
 calls, reads/writes only the paths you type, refuses to overwrite without the
-checkbox, and saves only after the form validates and round-trips. Range, matrix,
-and betting-tree editing are out of scope for the prototype.
+checkbox, and saves only after the form validates and round-trips. Matrix and
+betting-tree editing are out of scope for the prototype (Hero-range editing has
+its own editor below).
 
-The prototype can also run the analysis from the current form values (no file
-needed): the **Analyze** button posts the form to a local `/api/analyze` endpoint,
+A separate Hero-range editor prototype is available with
+`python scripts/serve_hero_range_gui.py --port 8001` (open
+`http://127.0.0.1:8001/`). It loads a Hero-range-only scenario JSON into top-level
+fields plus a table of weighted Hero buckets, lets you add / remove / edit buckets,
+validates, and saves -- the same local-only, abstract, standard-library approach
+as the single-hand GUI. It does not run the analysis pipeline, and matrix /
+betting-tree editing and graphing remain out of scope.
+
+The single-hand prototype can also run the analysis from the current form values
+(no file needed): the **Analyze** button posts the form to a local `/api/analyze`
+endpoint,
 which validates it and runs `run_river_scenario_analysis`, then shows the
 candidate counts (generated / kept / excluded), the resolved horizon and discount,
 and the Markdown summary (rendered as plain text). The Analyze section also
