@@ -408,6 +408,14 @@ function showMessages(messages) {
     return "[" + m.severity + "] " + m.field + ": " + m.message;
   }).join("\\n");
 }
+function clearAnalysisResult() {
+  document.getElementById("analysis_counts").textContent = "";
+  document.getElementById("analysis_summary").textContent = "";
+}
+function clearMessagesAndAnalysis() {
+  showMessages([]);
+  clearAnalysisResult();
+}
 function post(url, body) {
   return fetch(url, {
     method: "POST",
@@ -470,8 +478,10 @@ function parseOption(elementId, label) {
 }
 
 document.getElementById("analyze_btn").onclick = function () {
-  document.getElementById("analysis_counts").textContent = "";
-  document.getElementById("analysis_summary").textContent = "";
+  // Clear stale validation messages and any previous analysis result up front, so
+  // a client-side parse-error return below or a re-run never leaves old output.
+  clearMessagesAndAnalysis();
+  setStatus("analyzing...", false);
 
   var payload = {
     form: collectForm(),
