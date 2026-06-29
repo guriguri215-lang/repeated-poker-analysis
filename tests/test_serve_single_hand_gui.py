@@ -287,6 +287,19 @@ def test_page_contains_analyze_elements():
     assert "analysis_counts" in gui._PAGE
 
 
+def test_page_contains_analyze_options():
+    # The Analyze UX polish exposes horizon / discount overrides and a markdown
+    # toggle, plus a dedicated result area.
+    assert "opt_horizon" in gui._PAGE
+    assert "opt_discount" in gui._PAGE
+    assert "render_markdown" in gui._PAGE
+    assert "analysis_result" in gui._PAGE
+    # The override fields and markdown toggle are wired into the analyze request.
+    assert "payload.horizon" in gui._PAGE
+    assert "payload.discount" in gui._PAGE
+    assert "render_markdown: document.getElementById" in gui._PAGE
+
+
 def _serve_in_background():
     server = gui.build_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

@@ -225,6 +225,13 @@ int / a finite positive number) and `render_markdown` must be a boolean. This is
 the "analyze and view a summary" step of the screen flow; charts, export beyond
 the existing save, and the other modes remain future work.
 
+A small UX-polish pass exposes those analyze options in the page -- a horizon
+override and a discount override (blank for the scenario default) and a "render
+Markdown summary" toggle -- and separates the analysis result (scenario id,
+horizon/discount, and the generated/kept/excluded counts on one line, plus the
+summary `<pre>`) from the status line and validation messages. It is still a
+local prototype and single-hand only, with no graphing or multi-mode editing.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
