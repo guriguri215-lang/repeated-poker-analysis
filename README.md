@@ -368,8 +368,12 @@ The prototype can also run the analysis from the current form values (no file
 needed): the **Analyze** button posts the form to a local `/api/analyze` endpoint,
 which validates it and runs `run_river_scenario_analysis`, then shows the
 candidate counts (generated / kept / excluded), the resolved horizon and discount,
-and the Markdown summary (rendered as plain text). It adds no graphing and no new
-solver or model, and remains single-hand only.
+and the Markdown summary (rendered as plain text). The Analyze section also
+exposes options -- a horizon override, a discount override (both blank for the
+scenario default), and a "render Markdown summary" toggle -- and shows the result
+(scenario id, horizon/discount, and counts on one line) separately from the
+status and validation messages. It adds no graphing and no new solver or model,
+and remains single-hand only.
 
 ### Public readiness
 
