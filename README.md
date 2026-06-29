@@ -398,9 +398,14 @@ top-level fields, a table of weighted Hero buckets, a table of weighted Villain
 buckets, and a Hero x Villain matrix of hero / villain / chop cells; you can add /
 remove / edit buckets, rebuild the matrix (matching cells are kept, new cells
 default to chop), validate, and save -- the same local-only, abstract,
-standard-library approach as the other editors. It remains showdown-matrix-only
-and abstract; equity-matrix and betting-tree editing, graphing, and running the
-analysis from the matrix GUI are not supported yet.
+standard-library approach as the other editors. It now also runs the analysis from
+the current matrix form values (no file needed): the **Analyze** button posts the
+form to a local `/api/analyze` endpoint, exposing a horizon override, a discount
+override (both blank for the scenario default), and a "render Markdown summary"
+toggle, and shows the candidate counts (generated / kept / excluded), the resolved
+horizon and discount, and the Markdown summary (rendered as plain text). It remains
+showdown-matrix-only and abstract; equity-matrix and betting-tree editing,
+graphing, and any new solver or model are out of scope.
 
 ### Public readiness
 
