@@ -250,6 +250,23 @@ from the status and validation messages. It remains Hero-range-only and abstract
 the matrix and betting-tree editors, graphing, and any new solver or model remain
 future work.
 
+`scripts/serve_showdown_matrix_gui.py [--host 127.0.0.1] [--port 8002]` is the
+first matrix-mode editor: a local-only browser prototype of the discrete
+`showdown_matrix` load / edit-Hero-buckets / edit-Villain-buckets /
+edit-matrix-cells / validate / save flow. It serves a page (`GET /`) with the
+top-level fields, a table of weighted Hero buckets, a table of weighted Villain
+buckets (Add / Remove per row), and a Hero x Villain matrix of hero / villain /
+chop `select` cells, plus the same `POST /api/load`, `/api/validate`, `/api/save`
+API, reusing `ShowdownMatrixScenarioForm` / `validate_showdown_matrix_form` /
+`showdown_matrix_form_to_dict`, the shared loader and safe writer, and the same
+safety rules (localhost only, raw `format_version`, boolean save options,
+`textContent` / DOM-only display with no `innerHTML`, no tracebacks). Adding /
+removing a bucket or pressing "Rebuild matrix" regenerates the grid, keeping cells
+for matching Hero/Villain ids and defaulting new cells to chop. It rejects
+non-showdown-matrix scenarios. It remains showdown-matrix-only and abstract; the
+equity-matrix and betting-tree editors, graphing, and running the analysis from the
+matrix GUI remain future work.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
