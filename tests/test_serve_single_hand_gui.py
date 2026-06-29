@@ -204,6 +204,70 @@ def test_save_output_directory_errors(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# api_analyze
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_valid_form():
+    result = gui.api_analyze({"form": _loaded_form()})
+    assert result["ok"] is True
+    assert result["valid"] is True
+    assert result["scenario_id"] == "nuts_chop_steal_bet98"
+    assert isinstance(result["generated_count"], int)
+    assert isinstance(result["kept_count"], int)
+    assert isinstance(result["excluded_count"], int)
+    assert isinstance(result["markdown_summary"], str)
+    assert result["markdown_summary"]
+
+
+def test_analyze_render_markdown_false_omits_summary():
+    result = gui.api_analyze({"form": _loaded_form(), "render_markdown": False})
+    assert result["ok"] is True
+    assert result["markdown_summary"] is None
+
+
+def test_analyze_horizon_and_discount_overrides_apply():
+    result = gui.api_analyze({"form": _loaded_form(), "horizon": 25, "discount": 0.9})
+    assert result["ok"] is True
+    assert result["horizon"] == 25
+    assert result["discount"] == 0.9
+
+
+def test_analyze_invalid_form_does_not_analyze():
+    form = _loaded_form()
+    form["baseline_call_probability"] = "0.3"  # call + fold no longer sums to 1
+    result = gui.api_analyze({"form": form})
+    assert result["ok"] is False
+    assert result["valid"] is False
+    assert result["messages"]
+    assert "markdown_summary" not in result
+
+
+def test_analyze_bad_value_is_error():
+    form = _loaded_form()
+    form["bet_size"] = "abc"
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": form})
+
+
+def test_analyze_invalid_render_markdown_type():
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "render_markdown": "yes"})
+
+
+@pytest.mark.parametrize("bad_horizon", [0, -5, 1.5, True])
+def test_analyze_invalid_horizon(bad_horizon):
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "horizon": bad_horizon})
+
+
+@pytest.mark.parametrize("bad_discount", [0, -1.0, float("inf"), float("nan"), "x", True])
+def test_analyze_invalid_discount(bad_discount):
+    with pytest.raises(ValueError):
+        gui.api_analyze({"form": _loaded_form(), "discount": bad_discount})
+
+
+# ---------------------------------------------------------------------------
 # HTML page + live HTTP server (ephemeral port)
 # ---------------------------------------------------------------------------
 
@@ -214,6 +278,13 @@ def test_page_contains_expected_labels():
     assert "Validate" in gui._PAGE
     assert "Save JSON" in gui._PAGE
     assert "single-hand" in gui._PAGE
+
+
+def test_page_contains_analyze_elements():
+    assert "analyze_btn" in gui._PAGE
+    assert ">Analyze<" in gui._PAGE
+    assert "analysis_summary" in gui._PAGE
+    assert "analysis_counts" in gui._PAGE
 
 
 def _serve_in_background():
@@ -249,6 +320,11 @@ def test_http_server_serves_page_and_api():
 
         validated = _post(port, "/api/validate", {"form": loaded["form"]})
         assert validated["valid"] is True
+
+        analyzed = _post(port, "/api/analyze", {"form": loaded["form"]})
+        assert analyzed["ok"] is True
+        assert isinstance(analyzed["markdown_summary"], str)
+        assert "generated_count" in analyzed
     finally:
         server.shutdown()
         server.server_close()
