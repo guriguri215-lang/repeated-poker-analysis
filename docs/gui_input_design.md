@@ -289,9 +289,15 @@ Validate rather than silently coerced (in particular never rounded to the defaul
 0.5). Adding / removing a bucket or pressing "Rebuild matrix" regenerates the grid,
 keeping cells for matching Hero/Villain ids and defaulting new cells to 0.5. The
 equity values are abstract Hero pot shares from the JSON, not computed from real
-cards. It rejects non-equity-matrix scenarios. It remains equity-matrix-only and
-abstract; the betting-tree editor, graphing, and running the analysis from the
-equity-matrix GUI remain future work.
+cards. It rejects non-equity-matrix scenarios. It also runs the analysis from the
+current matrix form values via `POST /api/analyze` (reusing the single-hand GUI's
+optional horizon / discount validators and `run_river_scenario_analysis`): the
+**Analyze** section exposes a horizon override, a discount override, and a "render
+Markdown summary" toggle, and shows the candidate counts (generated / kept /
+excluded), the resolved horizon and discount, and the Markdown summary as plain
+text, separate from the status and validation messages. It remains equity-matrix-only
+and abstract; the betting-tree editor, graphing, any new solver or model, and
+real-card equity calculation remain out of scope.
 
 ## 10. Implementation phases after this doc
 
