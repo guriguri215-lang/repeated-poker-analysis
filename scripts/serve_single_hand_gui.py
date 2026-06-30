@@ -36,10 +36,9 @@ overwrite an existing file unless the overwrite box is checked, and returns shor
 from __future__ import annotations
 
 import argparse
-import json
 import math
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +63,11 @@ from repeated_poker.report_export import _dump_json  # noqa: E402
 from inspect_scenario_form import _load_scenario_dict  # noqa: E402
 from roundtrip_scenario_form import _write_output  # noqa: E402
 from edit_scenario_form import _KNOWN_FIELDS, _convert_field  # noqa: E402
+
+# Shared local-GUI scaffolding (HTTP handler / server builder) and small payload
+# primitives, factored out of the sibling GUI scripts.
+from gui_common import build_server as _build_server  # noqa: E402
+from gui_common import messages_payload as _messages_payload  # noqa: E402
 
 # The fields shown in the form, in display order (the flat SingleHandScenarioForm
 # fields). shift_amounts / horizons are edited as comma-separated text.
@@ -130,13 +134,6 @@ def _form_from_payload(payload) -> SingleHandScenarioForm:
         raw_str = "" if raw is None else str(raw)
         setattr(form, field, _convert_field(field, raw_str))
     return form
-
-
-def _messages_payload(messages) -> list:
-    return [
-        {"field": m.field, "message": m.message, "severity": m.severity}
-        for m in messages
-    ]
 
 
 def api_load(payload) -> dict:
@@ -529,61 +526,10 @@ document.getElementById("analyze_btn").onclick = function () {
 """
 
 
-def make_handler():
-    """Return a request handler class bound to the API functions and page."""
-
-    class _Handler(BaseHTTPRequestHandler):
-        def _send_json(self, obj, status=200):
-            body = json.dumps(obj).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _read_json(self):
-            length = int(self.headers.get("Content-Length", 0) or 0)
-            raw = self.rfile.read(length) if length else b""
-            try:
-                return json.loads(raw.decode("utf-8")) if raw else {}
-            except json.JSONDecodeError:
-                raise ValueError("request body must be valid JSON")
-
-        def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
-            if self.path in ("/", "/index.html"):
-                body = _PAGE.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                self._send_json({"ok": False, "error": "not found"}, 404)
-
-        def do_POST(self):  # noqa: N802 - BaseHTTPRequestHandler API
-            handler = _API.get(self.path)
-            if handler is None:
-                self._send_json({"ok": False, "error": "not found"}, 404)
-                return
-            try:
-                payload = self._read_json()
-                self._send_json(handler(payload))
-            except ValueError as exc:
-                # Expected, user-facing error: short message, no traceback.
-                self._send_json({"ok": False, "error": str(exc)}, 400)
-            except Exception:  # noqa: BLE001 - never leak a traceback to the client
-                self._send_json({"ok": False, "error": "internal error"}, 500)
-
-        def log_message(self, *_args):  # silence the default per-request logging
-            pass
-
-    return _Handler
-
-
 def build_server(host: str, port: int) -> ThreadingHTTPServer:
     """Create (but do not start) the local GUI server bound to ``host:port``."""
 
-    return ThreadingHTTPServer((host, port), make_handler())
+    return _build_server(host, port, _API, _PAGE)
 
 
 def _parse_args(argv):

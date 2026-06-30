@@ -43,9 +43,8 @@ save options, keeps the raw ``format_version`` (no coercion), and returns short
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,6 +75,13 @@ from edit_scenario_form import _NO_CAP_VALUES, _to_float, _to_number_list  # noq
 # analyze-option semantics live in a single source rather than being duplicated.
 from serve_single_hand_gui import _optional_discount, _optional_horizon  # noqa: E402
 
+# Shared local-GUI scaffolding (HTTP handler / server builder) and small payload
+# primitives, factored out of the sibling GUI scripts.
+from gui_common import as_text as _as_text  # noqa: E402
+from gui_common import build_server as _build_server  # noqa: E402
+from gui_common import messages_payload as _messages_payload  # noqa: E402
+from gui_common import require_bool as _require_bool  # noqa: E402
+
 # Top-level (non-hand) flat fields shown in the form.
 _TOP_FIELDS = [
     "scenario_id",
@@ -97,16 +103,6 @@ _HAND_FIELDS = [
     "baseline_call_probability",
     "baseline_fold_probability",
 ]
-
-
-def _as_text(value) -> str:
-    return "" if value is None else str(value)
-
-
-def _require_bool(value, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{name} must be a boolean")
-    return value
 
 
 def _hand_from_payload(raw, index: int) -> HeroRangeHandForm:
@@ -221,13 +217,6 @@ def _form_to_payload(form: HeroRangeScenarioForm) -> dict:
             for hand in form.hands
         ],
     }
-
-
-def _messages_payload(messages) -> list:
-    return [
-        {"field": m.field, "message": m.message, "severity": m.severity}
-        for m in messages
-    ]
 
 
 def api_load(payload) -> dict:
@@ -653,61 +642,10 @@ document.getElementById("analyze_btn").onclick = function () {
 """
 
 
-def make_handler():
-    """Return a request handler class bound to the API functions and page."""
-
-    class _Handler(BaseHTTPRequestHandler):
-        def _send_json(self, obj, status=200):
-            body = json.dumps(obj).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _read_json(self):
-            length = int(self.headers.get("Content-Length", 0) or 0)
-            raw = self.rfile.read(length) if length else b""
-            try:
-                return json.loads(raw.decode("utf-8")) if raw else {}
-            except json.JSONDecodeError:
-                raise ValueError("request body must be valid JSON")
-
-        def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
-            if self.path in ("/", "/index.html"):
-                body = _PAGE.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                self._send_json({"ok": False, "error": "not found"}, 404)
-
-        def do_POST(self):  # noqa: N802 - BaseHTTPRequestHandler API
-            handler = _API.get(self.path)
-            if handler is None:
-                self._send_json({"ok": False, "error": "not found"}, 404)
-                return
-            try:
-                payload = self._read_json()
-                self._send_json(handler(payload))
-            except ValueError as exc:
-                # Expected, user-facing error: short message, no traceback.
-                self._send_json({"ok": False, "error": str(exc)}, 400)
-            except Exception:  # noqa: BLE001 - never leak a traceback to the client
-                self._send_json({"ok": False, "error": "internal error"}, 500)
-
-        def log_message(self, *_args):  # silence the default per-request logging
-            pass
-
-    return _Handler
-
-
 def build_server(host: str, port: int) -> ThreadingHTTPServer:
     """Create (but do not start) the local GUI server bound to ``host:port``."""
 
-    return ThreadingHTTPServer((host, port), make_handler())
+    return _build_server(host, port, _API, _PAGE)
 
 
 def _parse_args(argv):
