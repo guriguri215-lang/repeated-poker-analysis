@@ -1,0 +1,413 @@
+"""Tests for the equity-matrix scenario GUI prototype (serve_equity_matrix_gui)."""
+
+import json
+import sys
+import threading
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+import pytest
+
+_ROOT = Path(__file__).resolve().parents[1]
+_SCENARIOS = _ROOT / "examples" / "scenarios"
+_EQUITY_MATRIX = _SCENARIOS / "range_equity_steal_bet98.json"
+_SINGLE_HAND = _SCENARIOS / "nuts_chop_steal_bet98.json"
+_HERO_RANGE = _SCENARIOS / "abstract_range_steal_bet98.json"
+_SHOWDOWN_MATRIX = _SCENARIOS / "range_matrix_steal_bet98.json"
+_BETTING_TREE = _SCENARIOS / "range_equity_betting_tree_bet98.json"
+
+sys.path.insert(0, str(_ROOT / "src"))
+sys.path.insert(0, str(_ROOT / "scripts"))
+from repeated_poker import (  # noqa: E402
+    build_river_steal_game_from_scenario,
+    river_scenario_from_dict,
+)
+import serve_equity_matrix_gui as gui  # noqa: E402
+
+
+def _loaded_form() -> dict:
+    return gui.api_load({"path": str(_EQUITY_MATRIX)})["form"]
+
+
+def _assert_round_trips(data: dict) -> None:
+    build_river_steal_game_from_scenario(river_scenario_from_dict(data))
+
+
+# ---------------------------------------------------------------------------
+# api_load
+# ---------------------------------------------------------------------------
+
+
+def test_load_equity_matrix():
+    result = gui.api_load({"path": str(_EQUITY_MATRIX)})
+    assert result["ok"] is True
+    assert result["mode"] == "equity-matrix"
+    form = result["form"]
+    assert form["scenario_id"] == "range_equity_steal_bet98"
+    assert [b["hand_id"] for b in form["hero_buckets"]] == ["hero_medium", "hero_strong"]
+    assert [b["hand_id"] for b in form["villain_buckets"]] == [
+        "villain_weak",
+        "villain_strong",
+    ]
+    # Equity cells are numbers (Hero pot share before rake), kept as floats.
+    assert form["equity_matrix"]["hero_strong"]["villain_weak"] == 0.9
+    assert isinstance(form["equity_matrix"]["hero_medium"]["villain_weak"], float)
+
+
+@pytest.mark.parametrize(
+    "path", [_SINGLE_HAND, _HERO_RANGE, _SHOWDOWN_MATRIX, _BETTING_TREE]
+)
+def test_load_rejects_non_equity_matrix(path):
+    with pytest.raises(ValueError):
+        gui.api_load({"path": str(path)})
+
+
+def test_load_missing_path():
+    with pytest.raises(ValueError):
+        gui.api_load({})
+
+
+def test_load_missing_file():
+    with pytest.raises(ValueError):
+        gui.api_load({"path": str(_SCENARIOS / "does_not_exist.json")})
+
+
+def test_load_invalid_json(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ValueError):
+        gui.api_load({"path": str(bad)})
+
+
+# ---------------------------------------------------------------------------
+# api_validate
+# ---------------------------------------------------------------------------
+
+
+def test_validate_valid_form():
+    result = gui.api_validate({"form": _loaded_form()})
+    assert result["ok"] is True
+    assert result["valid"] is True
+    assert result["messages"] == []
+
+
+def test_validate_detects_non_positive_hero_weight():
+    form = _loaded_form()
+    form["hero_buckets"][0]["weight"] = "0"
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(m["field"] == "hero_buckets[0].weight" for m in result["messages"])
+
+
+def test_validate_detects_duplicate_hero_id():
+    form = _loaded_form()
+    form["hero_buckets"][1]["hand_id"] = form["hero_buckets"][0]["hand_id"]
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(m["field"] == "hero_buckets[1].hand_id" for m in result["messages"])
+
+
+def test_validate_detects_duplicate_villain_id():
+    form = _loaded_form()
+    form["villain_buckets"][1]["hand_id"] = form["villain_buckets"][0]["hand_id"]
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(m["field"] == "villain_buckets[1].hand_id" for m in result["messages"])
+
+
+def test_validate_detects_probability_sum_mismatch():
+    form = _loaded_form()
+    form["hero_buckets"][0]["baseline_call_probability"] = "0.4"
+    form["hero_buckets"][0]["baseline_fold_probability"] = "0.4"
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(
+        m["field"] == "hero_buckets[0].baseline_call_probability"
+        for m in result["messages"]
+    )
+
+
+def test_validate_detects_out_of_range_equity_cell():
+    form = _loaded_form()
+    form["equity_matrix"]["hero_medium"]["villain_weak"] = "1.5"  # > 1
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(
+        m["field"] == "equity_matrix[hero_medium][villain_weak]"
+        for m in result["messages"]
+    )
+
+
+def test_validate_detects_non_numeric_equity_cell():
+    form = _loaded_form()
+    form["equity_matrix"]["hero_medium"]["villain_weak"] = "abc"  # not a number
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(
+        m["field"] == "equity_matrix[hero_medium][villain_weak]"
+        for m in result["messages"]
+    )
+
+
+def test_validate_detects_missing_matrix_cell():
+    form = _loaded_form()
+    del form["equity_matrix"]["hero_medium"]["villain_strong"]
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is False
+    assert any(m["field"].startswith("equity_matrix") for m in result["messages"])
+
+
+def test_validate_malformed_hero_bucket_entry_is_message_not_exception():
+    form = _loaded_form()
+    form["hero_buckets"] = [None]
+    result = gui.api_validate({"form": form})
+    assert result["ok"] is True
+    assert result["valid"] is False
+    assert any(m["field"] == "hero_buckets[0]" for m in result["messages"])
+
+
+def test_validate_bad_bucket_value_is_error():
+    form = _loaded_form()
+    form["hero_buckets"][0]["weight"] = "abc"  # parse error, not a validation message
+    with pytest.raises(ValueError):
+        gui.api_validate({"form": form})
+
+
+def test_validate_boundary_equity_values_are_valid():
+    # 0.0 and 1.0 are valid Hero pot shares (Villain wins / Hero wins).
+    form = _loaded_form()
+    form["equity_matrix"]["hero_medium"]["villain_weak"] = "0.0"
+    form["equity_matrix"]["hero_strong"]["villain_strong"] = "1.0"
+    result = gui.api_validate({"form": form})
+    assert result["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# api_save
+# ---------------------------------------------------------------------------
+
+
+def test_save_new_file(tmp_path):
+    out = tmp_path / "out.json"
+    form = _loaded_form()
+    form["scenario_id"] = "edited_equity_matrix"
+    result = gui.api_save({"path": str(out), "form": form})
+    assert result["ok"] is True
+    data = json.loads(out.read_text(encoding="utf-8"))
+    _assert_round_trips(data)
+    assert data["scenario_id"] == "edited_equity_matrix"
+    assert [h["hand_id"] for h in data["hero_range"]] == ["hero_medium", "hero_strong"]
+    assert data["equity_matrix"]["hero_strong"]["villain_weak"] == 0.9
+
+
+def test_save_refuses_overwrite_without_force(tmp_path):
+    out = tmp_path / "out.json"
+    out.write_text("ORIGINAL", encoding="utf-8")
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(out), "form": _loaded_form()})
+    assert out.read_text(encoding="utf-8") == "ORIGINAL"
+
+
+def test_save_force_overwrites(tmp_path):
+    out = tmp_path / "out.json"
+    out.write_text("ORIGINAL", encoding="utf-8")
+    result = gui.api_save({"path": str(out), "form": _loaded_form(), "force": True})
+    assert result["ok"] is True
+    _assert_round_trips(json.loads(out.read_text(encoding="utf-8")))
+
+
+def test_save_strict_json(tmp_path):
+    out = tmp_path / "out.json"
+    result = gui.api_save({"path": str(out), "form": _loaded_form(), "strict_json": True})
+    assert result["ok"] is True
+    _assert_round_trips(json.loads(out.read_text(encoding="utf-8")))
+
+
+def test_save_invalid_form_does_not_write(tmp_path):
+    out = tmp_path / "out.json"
+    form = _loaded_form()
+    form["hero_buckets"][0]["weight"] = "0.5"
+    form["hero_buckets"][1]["weight"] = "0.2"  # weights no longer sum to 1
+    result = gui.api_save({"path": str(out), "form": form})
+    assert result["ok"] is False
+    assert result["messages"]
+    assert not out.exists()
+
+
+def test_save_force_string_is_rejected(tmp_path):
+    out = tmp_path / "out.json"
+    out.write_text("ORIGINAL", encoding="utf-8")
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(out), "form": _loaded_form(), "force": "false"})
+    assert out.read_text(encoding="utf-8") == "ORIGINAL"
+
+
+def test_save_strict_json_string_is_rejected(tmp_path):
+    out = tmp_path / "out.json"
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(out), "form": _loaded_form(), "strict_json": "true"})
+
+
+def test_save_missing_path():
+    with pytest.raises(ValueError):
+        gui.api_save({"form": _loaded_form()})
+
+
+def test_save_output_directory_errors(tmp_path):
+    with pytest.raises(ValueError):
+        gui.api_save({"path": str(tmp_path), "form": _loaded_form()})
+
+
+def test_save_preserves_invalid_format_version_for_parser(tmp_path):
+    # A numeric format_version is not coerced to "1"; the validator flags it, so the
+    # save returns ok False with messages rather than writing.
+    out = tmp_path / "out.json"
+    form = _loaded_form()
+    form["format_version"] = 1
+    result = gui.api_save({"path": str(out), "form": form})
+    assert result["ok"] is False
+    assert any(m["field"] == "format_version" for m in result["messages"])
+    assert not out.exists()
+
+
+def test_save_does_not_round_invalid_equity_cell(tmp_path):
+    # An out-of-range equity cell must not be silently rounded (for example to the
+    # default 0.5); the form is invalid and nothing is written.
+    out = tmp_path / "out.json"
+    form = _loaded_form()
+    form["equity_matrix"]["hero_medium"]["villain_weak"] = "1.5"
+    result = gui.api_save({"path": str(out), "form": form})
+    assert result["ok"] is False
+    assert any(
+        m["field"] == "equity_matrix[hero_medium][villain_weak]"
+        for m in result["messages"]
+    )
+    assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# HTML page
+# ---------------------------------------------------------------------------
+
+
+def test_page_contains_expected_elements():
+    page = gui._PAGE
+    assert "equity-matrix" in page.lower()
+    assert "equity_matrix" in page
+    assert "hero_buckets" in page
+    assert "villain_buckets" in page
+    assert "hero_body" in page
+    assert "villain_body" in page
+    assert "matrix_body" in page
+    assert "matrix_head" in page
+    assert "add_hero_btn" in page
+    assert "add_villain_btn" in page
+    assert ">Add hero bucket<" in page
+    assert ">Add villain bucket<" in page
+    assert "remove_bucket" in page
+    assert ">Rebuild matrix<" in page
+    assert ">Validate<" in page
+    assert ">Save JSON<" in page
+
+
+def test_page_has_no_innerhtml_injection():
+    # All DOM updates use createElement / textContent / appendChild / removeChild;
+    # the page must never assign innerHTML (no HTML-string injection path).
+    assert "innerHTML" not in gui._PAGE
+
+
+def test_page_has_matrix_rebuild_helper():
+    page = gui._PAGE
+    assert "function rebuildMatrix" in page
+    assert "function collectMatrix" in page
+
+
+def test_page_collects_matrix_into_payload():
+    page = gui._PAGE
+    # The form sent to the API carries the matrix collected from the grid.
+    assert "form.equity_matrix = collectMatrix()" in page
+    assert "form.hero_buckets = collectBuckets" in page
+    assert "form.villain_buckets = collectBuckets" in page
+
+
+def test_page_add_remove_handlers_rebuild_matrix():
+    page = gui._PAGE
+    # Adding a hero / villain bucket and removing a row rebuild the matrix grid.
+    assert "addHero(); rebuildMatrix();" in page
+    assert "addVillain(); rebuildMatrix();" in page
+    assert "rebuildMatrix();" in page  # also called from a row's Remove handler
+
+
+def test_page_matrix_cells_are_text_inputs():
+    page = gui._PAGE
+    # Equity cells are numeric text inputs (not select boxes).
+    assert "matrix_cell" in page
+
+
+# ---------------------------------------------------------------------------
+# Live HTTP server (ephemeral port)
+# ---------------------------------------------------------------------------
+
+
+def _serve_in_background():
+    server = gui.build_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, server.server_address[1]
+
+
+def _post(port, route, payload):
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{route}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:  # noqa: S310 - localhost only
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def test_http_server_serves_page_and_api():
+    server, thread, port = _serve_in_background()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/") as resp:  # noqa: S310
+            assert resp.status == 200
+            page = resp.read().decode("utf-8")
+        assert "Equity-matrix scenario editor" in page
+
+        loaded = _post(port, "/api/load", {"path": str(_EQUITY_MATRIX)})
+        assert loaded["ok"] is True
+        assert len(loaded["form"]["hero_buckets"]) == 2
+        assert len(loaded["form"]["villain_buckets"]) == 2
+
+        validated = _post(port, "/api/validate", {"form": loaded["form"]})
+        assert validated["valid"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_http_server_error_response_has_no_traceback():
+    server, thread, port = _serve_in_background()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/load",
+            data=json.dumps({"path": str(_SHOWDOWN_MATRIX)}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req)  # noqa: S310
+            raise AssertionError("expected an HTTP 400")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            body = json.loads(exc.read().decode("utf-8"))
+        assert body["ok"] is False
+        assert "equity_matrix" in body["error"]
+        assert "Traceback" not in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
