@@ -273,6 +273,26 @@ from the status and validation messages. It remains showdown-matrix-only and
 abstract; the equity-matrix and betting-tree editors, graphing, and any new solver
 or model remain future work.
 
+`scripts/serve_equity_matrix_gui.py [--host 127.0.0.1] [--port 8003]` is the equity
+flavour of that matrix editor: a local-only browser prototype of the `equity_matrix`
+load / edit-Hero-buckets / edit-Villain-buckets / edit-matrix-cells / validate /
+save flow. It serves a page (`GET /`) with the top-level fields, a table of weighted
+Hero buckets, a table of weighted Villain buckets (Add / Remove per row), and a
+Hero x Villain matrix whose cells are numeric text inputs holding the Hero pot share
+before rake (a number in [0, 1]), plus the same `POST /api/load`, `/api/validate`,
+`/api/save` API, reusing `EquityMatrixScenarioForm` / `validate_equity_matrix_form`
+/ `equity_matrix_form_to_dict`, the shared loader and safe writer, and the same
+safety rules (localhost only, raw `format_version`, boolean save options,
+`textContent` / DOM-only display with no `innerHTML`, no tracebacks). Numeric cell
+text is parsed to floats so out-of-range or non-numeric cells are reported by
+Validate rather than silently coerced (in particular never rounded to the default
+0.5). Adding / removing a bucket or pressing "Rebuild matrix" regenerates the grid,
+keeping cells for matching Hero/Villain ids and defaulting new cells to 0.5. The
+equity values are abstract Hero pot shares from the JSON, not computed from real
+cards. It rejects non-equity-matrix scenarios. It remains equity-matrix-only and
+abstract; the betting-tree editor, graphing, and running the analysis from the
+equity-matrix GUI remain future work.
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is
