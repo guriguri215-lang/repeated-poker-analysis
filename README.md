@@ -407,6 +407,19 @@ horizon and discount, and the Markdown summary (rendered as plain text). It rema
 showdown-matrix-only and abstract; equity-matrix and betting-tree editing,
 graphing, and any new solver or model are out of scope.
 
+An equity-matrix editor prototype is available with
+`python scripts/serve_equity_matrix_gui.py --port 8003` (open
+`http://127.0.0.1:8003/`). It loads an `equity_matrix` scenario JSON into top-level
+fields, a table of weighted Hero buckets, a table of weighted Villain buckets, and
+a Hero x Villain matrix whose cells are the Hero pot share before rake (a number in
+[0, 1]: 1.0 = Hero wins, 0.5 = chop, 0.0 = Villain wins); you can add / remove /
+edit buckets, rebuild the matrix (matching cells are kept, new cells default to
+0.5), validate, and save -- the same local-only, abstract, standard-library
+approach as the other editors. The equity values are abstract Hero pot shares taken
+from the JSON, not computed from real cards. It remains equity-matrix-only and
+abstract; betting-tree editing, graphing, and running the analysis from the
+equity-matrix GUI are not supported yet.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
