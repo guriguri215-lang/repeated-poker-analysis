@@ -416,9 +416,14 @@ a Hero x Villain matrix whose cells are the Hero pot share before rake (a number
 edit buckets, rebuild the matrix (matching cells are kept, new cells default to
 0.5), validate, and save -- the same local-only, abstract, standard-library
 approach as the other editors. The equity values are abstract Hero pot shares taken
-from the JSON, not computed from real cards. It remains equity-matrix-only and
-abstract; betting-tree editing, graphing, and running the analysis from the
-equity-matrix GUI are not supported yet.
+from the JSON, not computed from real cards. It now also runs the analysis from the
+current matrix form values (no file needed): the **Analyze** button posts the form
+to a local `/api/analyze` endpoint, exposing a horizon override, a discount override
+(both blank for the scenario default), and a "render Markdown summary" toggle, and
+shows the candidate counts (generated / kept / excluded), the resolved horizon and
+discount, and the Markdown summary (rendered as plain text). It remains
+equity-matrix-only and abstract; betting-tree editing, graphing, any new solver or
+model, and real-card equity calculation are out of scope.
 
 ### Public readiness
 
