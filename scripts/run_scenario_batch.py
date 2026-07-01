@@ -60,10 +60,31 @@ def _parse_args(argv):
         nargs="+",
         help="scenario JSON files, or a directory whose *.json files are read",
     )
-    parser.add_argument("--horizon", type=int, default=None)
-    parser.add_argument("--discount", type=float, default=None)
-    parser.add_argument("--rank-by", dest="rank_by", default=None)
-    parser.add_argument("--top-k", dest="top_k", type=int, default=None)
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=None,
+        help="repeated-game horizon for every scenario (default: each scenario's own)",
+    )
+    parser.add_argument(
+        "--discount",
+        type=float,
+        default=None,
+        help="repeated-game discount for every scenario (default: each scenario's own)",
+    )
+    parser.add_argument(
+        "--rank-by",
+        dest="rank_by",
+        default=None,
+        help="rank each scenario's report rows by this criterion (for example t_deadline)",
+    )
+    parser.add_argument(
+        "--top-k",
+        dest="top_k",
+        type=int,
+        default=None,
+        help="limit each scenario's ranking section to the top K rows",
+    )
     parser.add_argument(
         "--continue-on-error",
         dest="continue_on_error",
@@ -76,9 +97,24 @@ def _parse_args(argv):
         action="store_false",
         help="skip per-scenario Markdown generation",
     )
-    parser.add_argument("--output-json", dest="output_json", default=None)
-    parser.add_argument("--output-csv", dest="output_csv", default=None)
-    parser.add_argument("--output-markdown", dest="output_markdown", default=None)
+    parser.add_argument(
+        "--output-json",
+        dest="output_json",
+        default=None,
+        help="save the batch result (summary plus each scenario) as JSON to this path",
+    )
+    parser.add_argument(
+        "--output-csv",
+        dest="output_csv",
+        default=None,
+        help="save one CSV summary row per scenario to this path",
+    )
+    parser.add_argument(
+        "--output-markdown",
+        dest="output_markdown",
+        default=None,
+        help="save the comparison Markdown (overview plus table) to this path",
+    )
     parser.add_argument(
         "--strict-json",
         dest="strict_json",
