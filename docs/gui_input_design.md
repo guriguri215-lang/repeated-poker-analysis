@@ -299,6 +299,31 @@ text, separate from the status and validation messages. It remains equity-matrix
 and abstract; the betting-tree editor, graphing, any new solver or model, and
 real-card equity calculation remain out of scope.
 
+`scripts/serve_betting_tree_gui.py [--host 127.0.0.1] [--port 8004]` is the
+betting-tree editor: a local-only browser prototype of the river `betting_tree`
+load / edit / validate / save flow. It serves a page (`GET /`) with the top-level
+fields, the three betting-tree sizes (`oop_bet_size`, `ip_bet_after_check_size`,
+`ip_raise_size`), a `matrix_type` selector, a table of weighted Hero buckets with
+their two decision distributions (after an OOP check: check / bet; versus an OOP
+bet: call / fold / raise), a table of weighted Villain buckets, and a Hero x Villain
+matrix, plus the same `POST /api/load`, `/api/validate`, `/api/save` API, reusing
+`BettingTreeScenarioForm` / `validate_betting_tree_form` / `betting_tree_form_to_dict`
+and the shared `scripts/gui_common.py` scaffolding (HTTP handler / server builder /
+`messages_payload` / `as_text` / `require_bool`), with the same safety rules
+(localhost only, raw `format_version`, boolean save options, `textContent` /
+DOM-only display with no `innerHTML`, no tracebacks). The matrix cell editor
+follows the chosen `matrix_type`: a showdown cell is a hero / villain / chop select,
+an equity cell is a numeric text input parsed to a float (out-of-range or
+non-numeric cells are reported by Validate, never rounded to 0.5). Switching the
+matrix type rebuilds the grid with default cells (chop for showdown, 0.5 for
+equity) rather than trying to reinterpret existing values across types; adding /
+removing a bucket or pressing "Rebuild matrix" keeps cells for matching ids when
+the type is unchanged. It rejects non-betting-tree scenarios. This is the editor
+slice only: running the analysis from the betting-tree GUI is future work, and
+graphing, any new solver or model, and real-card equity calculation remain out of
+scope. (The equity cell soft-parse is currently duplicated from the equity-matrix
+GUI; consolidating it into `gui_common` is noted as future cleanup.)
+
 ## 10. Implementation phases after this doc
 
 The implementation phases below are deliberately incremental, so each step is

@@ -425,6 +425,24 @@ discount, and the Markdown summary (rendered as plain text). It remains
 equity-matrix-only and abstract; betting-tree editing, graphing, any new solver or
 model, and real-card equity calculation are out of scope.
 
+A betting-tree editor prototype is available with
+`python scripts/serve_betting_tree_gui.py --port 8004` (open
+`http://127.0.0.1:8004/`). It loads a river `betting_tree` scenario JSON into
+top-level fields, the three betting-tree sizes (`oop_bet_size`,
+`ip_bet_after_check_size`, `ip_raise_size`), a matrix-type selector, a table of
+weighted Hero buckets with their two decision-point distributions (after an OOP
+check: check / bet; versus an OOP bet: call / fold / raise), a table of weighted
+Villain buckets, and a Hero x Villain matrix; you can add / remove / edit buckets,
+switch the matrix type, rebuild the matrix, validate, and save -- reusing the shared
+`scripts/gui_common.py` scaffolding and the same local-only, abstract,
+standard-library approach as the other editors. The matrix is read as `showdown`
+(hero / villain / chop cells) or `equity` (Hero pot share before rake in [0, 1]);
+switching type rebuilds the grid with default cells. This is the editor slice only:
+running the analysis from the betting-tree GUI is not implemented yet, and
+graphing, any new solver or model, and real-card equity calculation remain out of
+scope. The abstract betting tree is river one-street (an IP stab after an OOP check
+and a single raise line); re-raises and multi-street trees are not supported.
+
 ### Public readiness
 
 See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
