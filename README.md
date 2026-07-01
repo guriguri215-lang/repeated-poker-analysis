@@ -176,9 +176,8 @@ The scenario JSON format is currently version `"1"`. New files should declare it
 with a top-level `"format_version": "1"`; the field is optional for backward
 compatibility, so a file without it is treated as `"1"`. Unknown versions (and a
 numeric `1`, `null`, a bool, or an empty string) are rejected. The format is
-still experimental and may get a v2 (GUI/form-based input is also still to come),
-so the version is recorded in the build metadata and in the analysis /
-validation / batch outputs.
+still experimental and may get a v2, so the version is recorded in the build
+metadata and in the analysis / validation / batch outputs.
 
 The input has three mutually exclusive modes:
 
@@ -318,18 +317,37 @@ troubleshooting.
 
 ### GUI/form input design
 
-See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of a
-future GUI/form input layer over the existing CLI workflow (screens, MVP scope,
-validation and results UX, and implementation phases). It is a design document
-only; no GUI is implemented yet. GUI-independent building blocks already exist in
-`repeated_poker.scenario_form`: `SingleHandScenarioForm`,
+See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of the
+GUI/form input layer over the existing CLI workflow (screens, MVP scope,
+validation and results UX, and implementation phases). Local-only prototype GUIs
+now exist for all five scenario modes (see the table below); the design document
+covers the intended shape and the parts still to come. The GUI-independent
+building blocks live in `repeated_poker.scenario_form`: `SingleHandScenarioForm`,
 `HeroRangeScenarioForm`, `ShowdownMatrixScenarioForm`, `EquityMatrixScenarioForm`,
 and `BettingTreeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
 `validate_*_form`), form <-> JSON bridges with field-level validation messages
 covering all five scenario modes (single-hand, Hero-range-only, discrete
 showdown-matrix, equity-matrix, and river betting-tree).
 
-To exercise the form models from the command line before any GUI exists, run
+The local GUI prototypes (standard library only, bound to `127.0.0.1`) are:
+
+| Scenario mode | Command | Port | Editor | Analyze |
+|---|---|---|---|---|
+| single-hand | `python scripts/serve_single_hand_gui.py` | 8000 | yes | yes |
+| Hero-range-only | `python scripts/serve_hero_range_gui.py` | 8001 | yes | yes |
+| showdown-matrix | `python scripts/serve_showdown_matrix_gui.py` | 8002 | yes | yes |
+| equity-matrix | `python scripts/serve_equity_matrix_gui.py` | 8003 | yes | yes |
+| river betting-tree | `python scripts/serve_betting_tree_gui.py` | 8004 | yes | yes |
+
+Each uses `--port` (defaulting to the value above) and `--host` (default
+`127.0.0.1`). Every prototype is local-only and abstract: it edits, validates,
+saves (only after a parser/build round-trip), and analyzes a scenario from the
+current form values. Graphing, real-card equity, external solver imports, result
+persistence, and any new solver or model are out of scope. The per-mode
+paragraphs below describe each one.
+
+To exercise the form models from the command line (a lower-level alternative to
+the GUIs), run
 `python scripts/inspect_scenario_form.py <scenario.json>`. It detects the mode,
 runs that mode's form `from_dict` / `validate` / `to_dict`, and re-parses and
 rebuilds the result, printing a short report (mode, form class, validation, and
