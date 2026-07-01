@@ -437,11 +437,16 @@ switch the matrix type, rebuild the matrix, validate, and save -- reusing the sh
 `scripts/gui_common.py` scaffolding and the same local-only, abstract,
 standard-library approach as the other editors. The matrix is read as `showdown`
 (hero / villain / chop cells) or `equity` (Hero pot share before rake in [0, 1]);
-switching type rebuilds the grid with default cells. This is the editor slice only:
-running the analysis from the betting-tree GUI is not implemented yet, and
-graphing, any new solver or model, and real-card equity calculation remain out of
-scope. The abstract betting tree is river one-street (an IP stab after an OOP check
-and a single raise line); re-raises and multi-street trees are not supported.
+switching type rebuilds the grid with default cells. It now also runs the analysis
+from the current form values (no file needed): the **Analyze** button posts the form
+to a local `/api/analyze` endpoint, exposing a horizon override, a discount override
+(both blank for the scenario default), and a "render Markdown summary" toggle, and
+shows the candidate counts (generated / kept / excluded), the resolved horizon and
+discount, and the Markdown summary (rendered as plain text). It remains
+betting-tree-only and abstract; graphing, any new solver or model, real-card equity
+calculation, and any betting-tree v2 expansion are out of scope. The abstract
+betting tree is river one-street (an IP stab after an OOP check and a single raise
+line); re-raises and multi-street trees are not supported.
 
 ### Public readiness
 
