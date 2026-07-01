@@ -749,7 +749,9 @@ document.getElementById("add_villain_btn").onclick = function () { addVillain();
 document.getElementById("rebuild_matrix_btn").onclick = function () { rebuildMatrix(); };
 
 document.getElementById("load_btn").onclick = function () {
-  showMessages([]);
+  // Loading a different scenario invalidates any earlier analysis result, so
+  // clear it (not just the messages) to avoid showing a stale scenario_id.
+  clearMessagesAndAnalysis();
   post("/api/load", {path: document.getElementById("load_path").value})
     .then(function (res) {
       if (!res.ok) { setStatus("error: " + res.error, true); return; }

@@ -487,3 +487,24 @@ def test_batch_markdown_escapes_pipe_and_newline(tmp_path):
     # so the literal pipes did not add extra columns.
     header = next(line for line in lines if line.startswith("| scenario_id"))
     assert data.count(" | ") == header.count(" | ")
+
+
+def test_cli_help_documents_options():
+    # The batch CLI --help exits 0 and documents its options (each used to have no
+    # help text); the output names the horizon/discount overrides and the outputs.
+    completed = subprocess.run(
+        [sys.executable, str(_SCRIPT), "--help"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    out = completed.stdout
+    assert "--horizon" in out
+    assert "--discount" in out
+    assert "--rank-by" in out
+    assert "--output-json" in out
+    assert "--output-csv" in out
+    assert "--output-markdown" in out
+    # A couple of the help strings themselves, not just the option names.
+    assert "every scenario" in out
+    assert "one CSV summary row per scenario" in out

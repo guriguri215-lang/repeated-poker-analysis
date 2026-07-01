@@ -137,7 +137,7 @@ The scenario JSON format is currently version `"1"`. New files should include a
 top-level `"format_version": "1"` (all the bundled samples now do); the field is
 optional for backward compatibility, so a file without it is read as `"1"`, while
 any unknown version is rejected. The format is still experimental and may get a
-v2 (GUI/form-based input is also still to come). The resolved version is
+v2. The resolved version is
 surfaced in the build metadata and in the analysis, validation, and batch outputs
 (JSON / CSV / Markdown / stdout), so you can tell at a glance which format a
 result came from.
