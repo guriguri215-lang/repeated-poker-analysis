@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """Shared helpers for the local scenario GUI prototypes.
 
-The single-hand, Hero-range, showdown-matrix, and equity-matrix GUI scripts
-(``scripts/serve_*_gui.py``) are all the same small local-only web app: a standard
--library ``http.server`` that serves one inline HTML page at ``GET /`` and
+The single-hand, Hero-range, showdown-matrix, equity-matrix, and betting-tree GUI
+scripts (``scripts/serve_*_gui.py``) are all the same small local-only web app: a
+standard-library ``http.server`` that serves one inline HTML page at ``GET /`` and
 dispatches a handful of JSON POST routes. This module factors out the parts that
-were byte-for-byte identical across those scripts so there is a single place to
-read and fix them, and so a new GUI (for example a future betting-tree editor) can
-reuse them instead of copying the scaffolding again.
+are shared across those scripts so there is a single place to read and fix them,
+and so a new GUI can reuse them instead of copying the scaffolding again.
 
 What lives here is deliberately small and mode-agnostic: the request-handler
-factory and server builder, plus a few tiny payload / option primitives. Each GUI
-keeps its own ``_PAGE`` (the inline HTML/CSS/JS) and its own ``_API`` mapping and
-``api_*`` functions -- those carry the per-mode form fields and validation and are
-not shared here. No new dependency: standard library only.
+factory and server builder, plus a few tiny payload / option primitives -- the
+JSON message shape, string coercion, the boolean-flag guard, the analyze-option
+horizon / discount validators, and the equity-cell soft-parse shared by the two
+equity matrices. Each GUI keeps its own ``_PAGE`` (the inline HTML/CSS/JS) and its
+own ``_API`` mapping and ``api_*`` functions -- those carry the per-mode form
+fields and validation and are not shared here. No new dependency: standard library
+only.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -47,6 +50,66 @@ def require_bool(value, name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{name} must be a boolean")
     return value
+
+
+def optional_horizon(value):
+    """Validate an optional horizon override (a positive int, ``None`` to skip).
+
+    The GUIs' analyze options share this so the accept/reject behaviour (a real
+    ``int`` at least 1; ``bool`` and ``float`` rejected) lives in one place.
+    """
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("horizon must be an integer")
+    if value < 1:
+        raise ValueError("horizon must be at least 1")
+    return value
+
+
+def optional_discount(value):
+    """Validate an optional discount override (a finite positive number).
+
+    The GUIs' analyze options share this so the accept/reject behaviour (a real
+    ``int`` / ``float`` that is finite and positive; ``bool`` rejected) lives in
+    one place.
+    """
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("discount must be a number")
+    discount = float(value)
+    if not math.isfinite(discount) or discount <= 0:
+        raise ValueError("discount must be a finite positive number")
+    return discount
+
+
+def equity_cell_value(raw):
+    """Convert one equity matrix cell to a float when possible, else keep it.
+
+    Equity cells are numbers (the Hero pot share before rake), so a numeric string
+    from the browser is parsed to ``float`` -- including ``"nan"`` / ``"inf"`` and
+    out-of-range values, which stay as floats so the form validator flags them. A
+    value that does not parse as a number (an empty string, ``"abc"``, a bool,
+    ``None``) is kept unchanged so the validator reports it as a bad cell rather
+    than the conversion raising or the value being silently coerced (in particular
+    it is never rounded to a default like ``0.5``).
+
+    Shared by the equity-matrix and betting-tree GUIs, whose matrices both hold
+    equity cells; keeping it here is the single source for that soft-parse.
+    """
+
+    if isinstance(raw, bool):
+        return raw  # keep so the validator rejects a boolean cell
+    if isinstance(raw, (int, float)):
+        return raw
+    text = as_text(raw).strip()
+    try:
+        return float(text)
+    except ValueError:
+        return raw
 
 
 def make_handler(api, page):
