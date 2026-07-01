@@ -319,6 +319,15 @@ def test_analyze_clears_before_client_side_parse_error():
     assert clear_idx < parse_idx
 
 
+def test_load_clears_stale_analysis_result():
+    # Loading a different scenario clears a prior analysis result (not just the
+    # messages), so a stale scenario_id from an earlier Analyze cannot linger.
+    page = gui._PAGE
+    start = page.index('getElementById("load_btn").onclick')
+    end = page.index("/api/load", start)
+    assert "clearMessagesAndAnalysis()" in page[start:end]
+
+
 def _serve_in_background():
     server = gui.build_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
