@@ -84,15 +84,16 @@ from inspect_scenario_form import _load_scenario_dict  # noqa: E402
 from roundtrip_scenario_form import _write_output  # noqa: E402
 from edit_scenario_form import _NO_CAP_VALUES, _to_float, _to_number_list  # noqa: E402
 
-# Reuse the optional horizon / discount validators from the single-hand GUI so the
-# analyze-option semantics live in a single source rather than being duplicated.
-from serve_single_hand_gui import _optional_discount, _optional_horizon  # noqa: E402
-
 # Shared local-GUI scaffolding (HTTP handler / server builder) and small payload
-# primitives, factored out of the sibling GUI scripts.
+# primitives, factored out of the sibling GUI scripts. The optional horizon /
+# discount validators and the equity-cell soft-parse live here too so those
+# semantics are a single source rather than being duplicated per GUI.
 from gui_common import as_text as _as_text  # noqa: E402
 from gui_common import build_server as _build_server  # noqa: E402
+from gui_common import equity_cell_value as _equity_cell_value  # noqa: E402
 from gui_common import messages_payload as _messages_payload  # noqa: E402
+from gui_common import optional_discount as _optional_discount  # noqa: E402
+from gui_common import optional_horizon as _optional_horizon  # noqa: E402
 from gui_common import require_bool as _require_bool  # noqa: E402
 
 # Top-level (non-bucket) flat fields shown in the form.
@@ -130,33 +131,6 @@ _VILLAIN_FIELDS = [
 ]
 # The float per-bucket fields (hand_id stays a string).
 _HERO_FLOAT_FIELDS = [f for f in _HERO_FIELDS if f != "hand_id"]
-
-
-def _equity_cell_value(raw):
-    """Convert one equity matrix cell to a float when possible, else keep it.
-
-    Equity cells are numbers (the Hero pot share before rake), so a numeric string
-    from the browser is parsed to ``float`` -- including ``"nan"`` / ``"inf"`` and
-    out-of-range values, which stay as floats so the validator flags them. A value
-    that does not parse as a number (an empty string, ``"abc"``, a bool, ``None``)
-    is kept unchanged so :func:`validate_betting_tree_form` reports it as a bad cell
-    rather than the conversion raising or the value being silently coerced (in
-    particular it is never rounded to a default like ``0.5``).
-
-    This mirrors the equity-matrix GUI's cell handling; see the repo-external memo
-    for the note that this small helper is a candidate to move into
-    ``gui_common`` once a third caller appears.
-    """
-
-    if isinstance(raw, bool):
-        return raw  # keep so the validator rejects a boolean cell
-    if isinstance(raw, (int, float)):
-        return raw
-    text = _as_text(raw).strip()
-    try:
-        return float(text)
-    except ValueError:
-        return raw
 
 
 def _hero_bucket_from_payload(raw, index: int) -> HeroBettingTreeBucketForm:

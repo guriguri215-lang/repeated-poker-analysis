@@ -75,15 +75,15 @@ from inspect_scenario_form import _load_scenario_dict  # noqa: E402
 from roundtrip_scenario_form import _write_output  # noqa: E402
 from edit_scenario_form import _NO_CAP_VALUES, _to_float, _to_number_list  # noqa: E402
 
-# Reuse the optional horizon / discount validators from the single-hand GUI so the
-# analyze-option semantics live in a single source rather than being duplicated.
-from serve_single_hand_gui import _optional_discount, _optional_horizon  # noqa: E402
-
 # Shared local-GUI scaffolding (HTTP handler / server builder) and small payload
-# primitives, factored out of the sibling GUI scripts.
+# primitives, factored out of the sibling GUI scripts. The optional horizon /
+# discount validators live here too so the analyze-option semantics are a single
+# source rather than being duplicated per GUI.
 from gui_common import as_text as _as_text  # noqa: E402
 from gui_common import build_server as _build_server  # noqa: E402
 from gui_common import messages_payload as _messages_payload  # noqa: E402
+from gui_common import optional_discount as _optional_discount  # noqa: E402
+from gui_common import optional_horizon as _optional_horizon  # noqa: E402
 from gui_common import require_bool as _require_bool  # noqa: E402
 
 # Top-level (non-bucket) flat fields shown in the form.

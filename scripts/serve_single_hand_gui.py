@@ -36,7 +36,6 @@ overwrite an existing file unless the overwrite box is checked, and returns shor
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -68,6 +67,8 @@ from edit_scenario_form import _KNOWN_FIELDS, _convert_field  # noqa: E402
 # primitives, factored out of the sibling GUI scripts.
 from gui_common import build_server as _build_server  # noqa: E402
 from gui_common import messages_payload as _messages_payload  # noqa: E402
+from gui_common import optional_discount as _optional_discount  # noqa: E402
+from gui_common import optional_horizon as _optional_horizon  # noqa: E402
 
 # The fields shown in the form, in display order (the flat SingleHandScenarioForm
 # fields). shift_amounts / horizons are edited as comma-separated text.
@@ -206,31 +207,6 @@ def api_save(payload) -> dict:
     text = _dump_json(out_dict, strict)
     _write_output(text, path.strip(), force, print_func=lambda *_args, **_kwargs: None)
     return {"ok": True, "path": path.strip()}
-
-
-def _optional_horizon(value):
-    """Validate an optional horizon override (a positive int, ``None`` to skip)."""
-
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError("horizon must be an integer")
-    if value < 1:
-        raise ValueError("horizon must be at least 1")
-    return value
-
-
-def _optional_discount(value):
-    """Validate an optional discount override (a finite positive number)."""
-
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("discount must be a number")
-    discount = float(value)
-    if not math.isfinite(discount) or discount <= 0:
-        raise ValueError("discount must be a finite positive number")
-    return discount
 
 
 def api_analyze(payload) -> dict:
