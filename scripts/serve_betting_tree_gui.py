@@ -24,12 +24,13 @@ matchup outcomes still come from a matrix whose ``matrix_type`` is ``"showdown"`
 (discrete hero / villain / chop) or ``"equity"`` (Hero pot share before rake in
 [0, 1]); equity values are abstract inputs from the JSON, not computed from cards.
 
-Scope (v1): betting-tree mode and editing only (load / edit buckets / edit sizes /
-edit matrix cells / validate / save). Single-hand, Hero-range-only, and plain
-showdown- / equity-matrix scenarios (without a ``betting_tree``) are rejected.
-Running the analysis pipeline, charts, real-card parsing, and external solver
-imports are all out of scope. It reuses the existing form model, parser, and game
-builder as the source of truth.
+Scope (v1): betting-tree mode, editing (load / edit buckets / edit sizes / edit
+matrix cells / validate / save), and running the candidate analysis for the current
+form. Single-hand, Hero-range-only, and plain showdown- / equity-matrix scenarios
+(without a ``betting_tree``) are rejected. Charts, real-card parsing, external
+solver imports, any export beyond the existing save, and any betting-tree v2
+expansion (re-raises / multi-street) are out of scope. It reuses the existing form
+model, parser, game builder, and analysis runner as the source of truth.
 
 Endpoints:
 
@@ -38,7 +39,10 @@ Endpoints:
   betting-tree scenario (a non-betting-tree scenario is rejected);
 * ``POST /api/validate``-- ``{"form": {...}}`` -> field-level validation messages;
 * ``POST /api/save``    -- ``{"path", "form", "force", "strict_json"}`` -> writes
-  the JSON only when the form validates and its ``to_dict`` re-parses and rebuilds.
+  the JSON only when the form validates and its ``to_dict`` re-parses and rebuilds;
+* ``POST /api/analyze`` -- ``{"form", "horizon", "discount", "render_markdown"}`` ->
+  runs the candidate analysis for the current form values (no file needed),
+  returning candidate counts and an optional Markdown summary.
 
 Security / safety: it binds to ``127.0.0.1`` by default and makes no external
 calls. It reads and writes only the local paths you type, refuses to overwrite an
@@ -62,12 +66,14 @@ from repeated_poker import (  # noqa: E402  (path is set up above)
     BettingTreeScenarioForm,
     BettingTreeSizingForm,
     HeroBettingTreeBucketForm,
+    RiverScenarioAnalysisConfig,
     VillainMatrixBucketForm,
     betting_tree_form_from_dict,
     betting_tree_form_to_dict,
     build_river_steal_game_from_scenario,
     detect_scenario_form_mode,
     river_scenario_from_dict,
+    run_river_scenario_analysis,
     validate_betting_tree_form,
 )
 from repeated_poker.report_export import _dump_json  # noqa: E402
@@ -77,6 +83,10 @@ from repeated_poker.report_export import _dump_json  # noqa: E402
 from inspect_scenario_form import _load_scenario_dict  # noqa: E402
 from roundtrip_scenario_form import _write_output  # noqa: E402
 from edit_scenario_form import _NO_CAP_VALUES, _to_float, _to_number_list  # noqa: E402
+
+# Reuse the optional horizon / discount validators from the single-hand GUI so the
+# analyze-option semantics live in a single source rather than being duplicated.
+from serve_single_hand_gui import _optional_discount, _optional_horizon  # noqa: E402
 
 # Shared local-GUI scaffolding (HTTP handler / server builder) and small payload
 # primitives, factored out of the sibling GUI scripts.
@@ -417,10 +427,62 @@ def api_save(payload) -> dict:
     return {"ok": True, "path": path.strip()}
 
 
+def api_analyze(payload) -> dict:
+    """Run the candidate analysis for the betting-tree form the browser sent.
+
+    Returns ``{"ok": False, ...}`` with messages when the form is invalid (the
+    analysis is not run). Raises :class:`ValueError` for a bad value or a bad
+    ``horizon`` / ``discount`` / ``render_markdown`` option; any other failure
+    propagates to the handler, which returns a generic "internal error" without a
+    traceback. The form supplies the default horizon (max of its horizons) and
+    discount; ``horizon`` / ``discount`` in the payload override them.
+    """
+
+    if not isinstance(payload, dict):
+        raise ValueError("request must be a JSON object")
+    render_markdown = payload.get("render_markdown", True)
+    if not isinstance(render_markdown, bool):
+        raise ValueError("render_markdown must be a boolean")
+    horizon = _optional_horizon(payload.get("horizon"))
+    discount = _optional_discount(payload.get("discount"))
+
+    form = _form_from_payload(payload.get("form"))
+    messages = validate_betting_tree_form(form)
+    if messages:
+        return {
+            "ok": False,
+            "valid": False,
+            "messages": _messages_payload(messages),
+            "error": "form has validation messages; not analyzed",
+        }
+
+    # A valid form re-parses and rebuilds; run_river_scenario_analysis does the
+    # build itself, so any structural problem surfaces as a clean ValueError.
+    scenario = river_scenario_from_dict(betting_tree_form_to_dict(form))
+    config = RiverScenarioAnalysisConfig(
+        horizon=horizon, discount=discount, markdown=render_markdown
+    )
+    result = run_river_scenario_analysis(scenario, config)
+
+    counts = result.pipeline_result.filter_result.summary_counts
+    return {
+        "ok": True,
+        "valid": True,
+        "scenario_id": result.scenario_id,
+        "horizon": result.horizon,
+        "discount": result.discount,
+        "generated_count": len(result.pipeline_result.generated_candidates),
+        "kept_count": counts.kept,
+        "excluded_count": counts.excluded,
+        "markdown_summary": result.markdown_summary,
+    }
+
+
 _API = {
     "/api/load": api_load,
     "/api/validate": api_validate,
     "/api/save": api_save,
+    "/api/analyze": api_analyze,
 }
 
 # Inline single-file page: HTML + CSS + vanilla JS, no external resources.
@@ -455,8 +517,8 @@ validate and save. Each Hero bucket has two decision points: after an OOP check
 (check / bet) and versus an OOP bet (call / fold / raise). The matrix is read as
 showdown (hero / villain / chop) or equity (Hero pot share before rake in [0, 1]),
 chosen by the matrix type; equity values are abstract inputs from the JSON, not
-computed from real cards. Only betting-tree scenarios are supported here, and the
-analysis pipeline is not run.</p>
+computed from real cards. You can also run the candidate analysis for the current
+form values. Only betting-tree scenarios are supported here.</p>
 
 <fieldset>
   <legend>Load</legend>
@@ -557,6 +619,23 @@ analysis pipeline is not run.</p>
   </div>
   <button id="validate_btn">Validate</button>
   <button id="save_btn">Save JSON</button>
+</fieldset>
+
+<fieldset>
+  <legend>Analyze</legend>
+  <p class="hint">Runs the candidate analysis for the current betting-tree form
+  values (no file needed). Betting-tree only; shows candidate counts and the
+  Markdown summary. Abstract model output, not real-money advice.</p>
+  <label><span>horizon override (blank = default)</span>
+    <input type="text" id="opt_horizon" placeholder="e.g. 100"></label>
+  <label><span>discount override (blank = default)</span>
+    <input type="text" id="opt_discount" placeholder="e.g. 1.0"></label>
+  <label><input type="checkbox" id="render_markdown" checked> render Markdown summary</label>
+  <button id="analyze_btn">Analyze</button>
+  <div id="analysis_result">
+    <div id="analysis_counts"></div>
+    <pre id="analysis_summary"></pre>
+  </div>
 </fieldset>
 
 <div id="status"></div>
@@ -778,6 +857,14 @@ function showMessages(messages) {
     return "[" + m.severity + "] " + m.field + ": " + m.message;
   }).join("\\n");
 }
+function clearAnalysisResult() {
+  document.getElementById("analysis_counts").textContent = "";
+  document.getElementById("analysis_summary").textContent = "";
+}
+function clearMessagesAndAnalysis() {
+  showMessages([]);
+  clearAnalysisResult();
+}
 function post(url, body) {
   return fetch(url, {
     method: "POST",
@@ -830,6 +917,63 @@ document.getElementById("save_btn").onclick = function () {
       }
       showMessages([]);
       setStatus("saved " + res.path, false);
+    })
+    .catch(function () { setStatus("request failed", true); });
+};
+
+// Parse an optional numeric override field: blank -> omit; otherwise a number.
+// A non-numeric entry is reported client-side so it is not silently dropped.
+function parseOption(elementId, label) {
+  var text = document.getElementById(elementId).value.trim();
+  if (text === "") { return {present: false}; }
+  var n = Number(text);
+  if (!isFinite(n)) { return {present: true, error: label + " must be a number"}; }
+  return {present: true, value: n};
+}
+
+document.getElementById("analyze_btn").onclick = function () {
+  // Clear stale validation messages and any previous analysis result up front, so
+  // a client-side parse-error return below or a re-run never leaves old output.
+  clearMessagesAndAnalysis();
+  setStatus("analyzing...", false);
+
+  var payload = {
+    form: collectForm(),
+    render_markdown: document.getElementById("render_markdown").checked
+  };
+  var horizon = parseOption("opt_horizon", "horizon");
+  if (horizon.present) {
+    if (horizon.error) { setStatus("error: " + horizon.error, true); return; }
+    payload.horizon = horizon.value;
+  }
+  var discount = parseOption("opt_discount", "discount");
+  if (discount.present) {
+    if (discount.error) { setStatus("error: " + discount.error, true); return; }
+    payload.discount = discount.value;
+  }
+
+  post("/api/analyze", payload)
+    .then(function (res) {
+      if (!res.ok) {
+        setStatus("error: " + (res.error || "not analyzed"), true);
+        showMessages(res.messages || []);
+        return;
+      }
+      showMessages([]);
+      // Analysis result is shown in its own area, separate from status/messages.
+      document.getElementById("analysis_counts").textContent =
+        "scenario_id=" + res.scenario_id +
+        "  |  horizon=" + res.horizon + "  discount=" + res.discount +
+        "  |  generated=" + res.generated_count +
+        "  kept=" + res.kept_count + "  excluded=" + res.excluded_count;
+      // Render the summary as text only (never as HTML) to avoid injection.
+      if (res.markdown_summary === null || res.markdown_summary === undefined) {
+        document.getElementById("analysis_summary").textContent =
+          "(Markdown summary not rendered; enable \\"render Markdown summary\\")";
+      } else {
+        document.getElementById("analysis_summary").textContent = res.markdown_summary;
+      }
+      setStatus("analyzed", false);
     })
     .catch(function () { setStatus("request failed", true); });
 };

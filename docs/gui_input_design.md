@@ -318,11 +318,23 @@ non-numeric cells are reported by Validate, never rounded to 0.5). Switching the
 matrix type rebuilds the grid with default cells (chop for showdown, 0.5 for
 equity) rather than trying to reinterpret existing values across types; adding /
 removing a bucket or pressing "Rebuild matrix" keeps cells for matching ids when
-the type is unchanged. It rejects non-betting-tree scenarios. This is the editor
-slice only: running the analysis from the betting-tree GUI is future work, and
-graphing, any new solver or model, and real-card equity calculation remain out of
-scope. (The equity cell soft-parse is currently duplicated from the equity-matrix
-GUI; consolidating it into `gui_common` is noted as future cleanup.)
+the type is unchanged. It rejects non-betting-tree scenarios. It also runs the
+analysis from the current form values via `POST /api/analyze` (reusing the
+single-hand GUI's optional horizon / discount validators and
+`run_river_scenario_analysis`): the **Analyze** section exposes a horizon override,
+a discount override, and a "render Markdown summary" toggle, and shows the candidate
+counts (generated / kept / excluded), the resolved horizon and discount, and the
+Markdown summary as plain text, separate from the status and validation messages;
+an invalid form (bad sizes, distributions, or matrix cells) reports messages and is
+not analyzed. It remains betting-tree-only and abstract; graphing, any new solver or
+model, real-card equity calculation, and any betting-tree v2 expansion (re-raises /
+multi-street) remain out of scope. (The equity cell soft-parse is currently
+duplicated from the equity-matrix GUI; consolidating it into `gui_common` is noted
+as future cleanup.)
+
+With this slice all five scenario modes (single-hand, Hero-range-only,
+showdown-matrix, equity-matrix, betting-tree) have a local GUI covering
+load / edit / validate / save and running the analysis from the current form.
 
 ## 10. Implementation phases after this doc
 
