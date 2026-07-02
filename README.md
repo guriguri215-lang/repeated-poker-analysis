@@ -218,6 +218,19 @@ and a short notes section, while the CSV stays machine-friendly. The
 batch runner is an analysis/reporting helper over the existing pipeline, not a
 new solver model.
 
+Every analysis run carries a **run manifest** for reproducibility: the SHA-256
+of the scenario file (`null` when the run started from an in-memory scenario),
+the scenario `format_version`, the package version, the git commit of the
+package source (best effort; `null` when git or a checkout is unavailable), a
+UTC timestamp, and the effective parameters (horizon, discount, response mode,
+tolerances, and so on). The manifest appears as a `manifest` object in the JSON
+exports (per scenario, plus a batch-level manifest with the requested overrides
+in batch JSON), as a single `# run_manifest: {...}` comment line before the
+header row in the CSV exports (skip `#` lines when parsing, for example pandas
+`comment="#"`), and as a `### Run manifest` section in the Markdown exports.
+It is descriptive metadata only and changes no analysis result; see
+`docs/scenario_format_reference.md` for the field list.
+
 To check that a scenario JSON is well formed *before* running any analysis, use
 `validate_river_scenario_inputs` or
 `python scripts/validate_river_scenario.py <dir-or-files>`. It loads, parses, and

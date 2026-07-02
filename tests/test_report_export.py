@@ -146,17 +146,21 @@ def test_write_csv_header_and_rows(tmp_path, result):
     write_analysis_csv(result, path)
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.reader(handle))
-    header = rows[0]
+    # The file starts with the run-manifest comment line, then the header.
+    assert rows[0][0].startswith("# run_manifest: ")
+    header = rows[1]
     assert "candidate_id" in header
     assert "t_deadline" in header
-    assert len(rows) - 1 == len(result.pipeline_result.analysis_report.rows)
-    assert len(rows) >= 2  # header + at least one candidate
+    assert len(rows) - 2 == len(result.pipeline_result.analysis_report.rows)
+    assert len(rows) >= 3  # manifest comment + header + at least one candidate
 
 
 def test_write_csv_formats_none_and_bool(tmp_path, result):
     path = tmp_path / "out.csv"
     write_analysis_csv(result, path)
     with path.open(encoding="utf-8", newline="") as handle:
+        manifest_line = handle.readline()
+        assert manifest_line.startswith("# run_manifest: ")
         reader = csv.DictReader(handle)
         first = next(reader)
     # is_eligible is a bool rendered as true/false.

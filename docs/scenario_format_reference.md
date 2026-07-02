@@ -261,3 +261,33 @@ Full samples (do not copy partial files; start from these):
 
 See also [`docs/examples_guide.md`](examples_guide.md) for how to run the
 analysis and batch tooling on these files.
+
+## 9. Run manifest (analysis output)
+
+Analysis outputs embed a reproducibility manifest. It is **output metadata**,
+not a scenario input field, and it changes no analysis result. Fields:
+
+- `scenario_sha256`: SHA-256 hex digest of the scenario file's raw bytes, or
+  `null` when the run started from an in-memory scenario (or on the
+  batch-level manifest, whose scenarios carry their own).
+- `scenario_format_version`: the scenario's `format_version` (`null` on the
+  batch-level manifest).
+- `package_version`: the `repeated_poker` package version.
+- `git_commit`: the commit hash of the package source checkout, best effort;
+  `null` when git or a checkout is unavailable. Never a network call.
+- `timestamp_utc`: run time as an ISO 8601 UTC string (`...Z`).
+- `parameters`: the effective analysis parameters (resolved horizon, discount,
+  response mode, tolerances, detection settings, ranking criterion). The
+  batch-level manifest records the *requested* overrides instead; each
+  per-scenario manifest records that scenario's resolved values.
+
+Where it appears:
+
+- JSON exports: a `manifest` object (single-scenario and per scenario inside
+  batch `scenario_results`, plus a batch-level `manifest`). Strict JSON
+  (`--strict-json`) applies to it like any other object.
+- CSV exports: one `# run_manifest: {...}` comment line before the header row.
+  The JSON after the prefix is always strict. Skip lines starting with `#`
+  when parsing (for example pandas `comment="#"`).
+- Markdown exports: a `### Run manifest` section after the summary
+  (single-scenario) or after the comparison table (batch).
