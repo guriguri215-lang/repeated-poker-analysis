@@ -227,9 +227,10 @@ Interpretation:
 
 ## Known limitations
 
-- The exact Villain response enumerates the whole pure-strategy space and is
-  intended for small abstract trees only; it is guarded by a configurable
-  `max_pure_strategies` limit.
+- The exact Villain response uses backward induction over Villain information
+  sets by default; the v0 enumerator (`method="enumerate"`) materialises the
+  whole pure-strategy space, is intended for small abstract trees only, and is
+  guarded by a configurable `max_pure_strategies` limit.
 - Utilities are net chips over the hand. With zero rake the game is zero-sum;
   rake makes it non-zero-sum.
 - Strategy-space L1 distance is not an observable behavioural distance.

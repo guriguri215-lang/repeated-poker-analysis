@@ -101,10 +101,13 @@ python examples/nuts_chop_river.py
 python examples/value_bluff_river.py
 ```
 
-The exact enumerator materialises the entire Villain pure-strategy space and is
-intended for small abstract trees only; it is guarded by a configurable
-`max_pure_strategies` limit and is not yet the scalable, range-based response
-engine described in the implementation plan.
+The exact Villain response is computed by lexicographic backward induction
+over Villain information sets by default (`solve_exact_response(...,
+method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
+kept as `method="enumerate"`: it materialises the entire Villain pure-strategy
+space, is guarded by a configurable `max_pure_strategies` limit, and serves as
+the small-tree oracle in the equivalence tests. Both methods compute Villain's
+best response to a fixed Hero strategy; neither is an equilibrium computation.
 
 ### Detection time (`T_detect`)
 
