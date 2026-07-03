@@ -56,6 +56,7 @@ work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
 | `bet_size` | required (simple modes) / optional (betting-tree mode) | all | number > 0 | The OOP bet size for the simple action tree. In betting-tree mode it defaults to `betting_tree.oop_bet_size`; if given it must equal it. |
 | `showdown` | required (single-hand) | single-hand | string | One of `"chop"`, `"hero"`, `"villain"`. Forbidden in range/matrix modes. |
 | `baseline_hero_strategy` | required (single-hand) | single-hand | object | `{ "IP_vs_bet": { "call": p, "fold": p } }`; probabilities must be non-negative and sum to 1. Forbidden in range/matrix modes. |
+| `baseline_villain_strategy` | optional | all | object | Explicit baseline Villain profile `{ villain_info_set: { action: p } }` over the built Villain information sets. When omitted, the baseline Villain is the automatic best response to baseline Hero (unchanged legacy behaviour). It is a chosen **comparison baseline, not an equilibrium claim** (see section 3a). |
 | `hero_range` | required (range modes) | Hero-range-only, matrix | array | Weighted Hero buckets (see section 4). |
 | `villain_range` | required (matrix modes) | matrix | array | Weighted Villain buckets (see section 4). |
 | `showdown_matrix` | one matrix required (matrix modes) | matrix | object | `[hero_id][villain_id]` -> `"chop"` / `"hero"` / `"villain"`. Mutually exclusive with `equity_matrix`. |
@@ -144,6 +145,51 @@ is rejected.
   arbitrary nested betting trees, street transitions, and side pots.
 - **Sample**: [`examples/scenarios/range_equity_betting_tree_bet98.json`](../examples/scenarios/range_equity_betting_tree_bet98.json).
 
+## 3a. Explicit baseline Villain profile (`baseline_villain_strategy`)
+
+By default the baseline Villain is derived automatically as the pure best
+response to the baseline Hero strategy. The optional top-level
+`baseline_villain_strategy` field lets a scenario instead pin the baseline
+Villain explicitly, so the reported baseline value and the candidate comparison
+are measured against a Villain profile you choose (for example one transcribed
+from an external solver, or a deliberately simple "always check" villain).
+
+- **Shape**: an object `{ villain_info_set: { action: probability } }` over the
+  scenario's built **Villain** information sets. Use the same information-set
+  names the build produces:
+  - single-hand mode: `OOP_river`;
+  - Hero-range-only mode: `OOP_river` (one, shared across Hero buckets);
+  - showdown/equity matrix mode: `OOP_river::<villain_id>` per Villain bucket;
+  - betting-tree mode: `OOP_first::<villain_id>`, `OOP_vs_IP_bet::<villain_id>`,
+    and `OOP_vs_IP_raise::<villain_id>` per Villain bucket.
+- **Absent vs `null`**: omit the field entirely to use the automatic baseline.
+  A present `null` (`"baseline_villain_strategy": null`) is **rejected**, not
+  treated as absent, so setting the field to `null` can never silently fall back
+  to the automatic baseline. An empty object `{}` is rejected for the same reason.
+- **Which information sets are required**: **every** Villain information set of
+  the built tree must be assigned. A missing information set is rejected rather
+  than quietly completed from the automatic baseline, so an incomplete explicit
+  profile never silently falls back.
+- **Missing actions within a distribution**: a legal action omitted from a
+  distribution is taken as probability `0`, matching the `baseline_hero_strategy`
+  parser. Each distribution's probabilities must be finite, non-negative,
+  non-boolean numbers that sum to `1` within tolerance.
+- **No equilibrium claim**: an explicit `baseline_villain_strategy` is **not**
+  required to be a best response to baseline Hero and asserts no equilibrium,
+  optimality, or profitability. It is only an explicitly chosen comparison
+  baseline. (The automatic best-response baseline is likewise a commitment-
+  analysis baseline, not an equilibrium; see `docs/assumptions_and_limitations.md`.)
+- **Provenance**: the build records the origin of the baseline Villain in
+  `baseline_villain_source` (`"explicit"` when this field is present, otherwise
+  `"auto_best_response"`). It appears in the JSON analysis export under
+  `build_metadata.baseline_villain_source`. The scenario file's SHA-256 in the
+  run manifest already captures the exact input, so no separate manifest field is
+  added.
+- **GUI/forms**: the scenario form models do not carry this field, so the form
+  helpers reject a scenario containing it (to avoid silently dropping it on a
+  form round-trip). Author and edit an explicit baseline Villain directly in the
+  JSON.
+
 ## 4. Ranges and buckets
 
 - Each `hero_range` / `villain_range` entry is `{ "hand_id": str, "weight":
@@ -229,6 +275,12 @@ Common errors and their causes:
   actions or does not sum to 1.
 - unknown information set: `baseline_hero_strategy` references an information set
   the tree does not have.
+- `baseline_villain_strategy` errors: it is present but `null` or an empty object
+  (omit the field to use the automatic baseline), references an unknown Villain
+  information set (or a Hero information set), omits a Villain information set the
+  tree has, uses an unknown action, has a non-finite / negative / boolean
+  probability, or does not sum to 1. The scenario form helpers also reject the
+  field outright (edit it in the JSON instead).
 
 ## 8. Minimal examples
 
@@ -250,6 +302,24 @@ A single-hand scenario (trimmed):
 
 An equity-matrix matchup cell looks like
 `"equity_matrix": { "hero_strong": { "villain_bluff": 1.0, "villain_value": 0.0 } }`.
+
+The same single-hand scenario with an explicit baseline Villain profile adds one
+top-level field (a mixed 70/30 check/bet villain here, instead of the automatic
+best response):
+
+```json
+{
+  "scenario_id": "nuts_chop_steal_bet98_explicit_villain",
+  "rake": { "rate": 0.05, "cap": 4.0 },
+  "initial_commitment": { "hero": 1.0, "villain": 1.0 },
+  "bet_size": 98.0,
+  "showdown": "chop",
+  "baseline_hero_strategy": { "IP_vs_bet": { "call": 0.0, "fold": 1.0 } },
+  "baseline_villain_strategy": { "OOP_river": { "check": 0.7, "bet": 0.3 } },
+  "candidate_generation": { "shift_amounts": [1.0] },
+  "repeated": { "horizons": [10, 100], "discount": 1.0 }
+}
+```
 
 Full samples (do not copy partial files; start from these):
 

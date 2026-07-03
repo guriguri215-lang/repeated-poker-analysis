@@ -196,6 +196,19 @@ The input has three mutually exclusive modes:
   Hero pot shares before rake in `[0, 1]` (see
   `examples/scenarios/range_equity_steal_bet98.json`).
 
+By default the baseline Villain is derived automatically as the exact best
+response to the baseline Hero strategy. Any mode may instead pin it explicitly
+with an optional top-level `baseline_villain_strategy`
+(`{ villain_info_set: { action: probability } }`). An explicit baseline Villain
+is a **chosen comparison profile, not an equilibrium claim**: it need not be a
+best response to baseline Hero, and it asserts no optimality or profitability --
+it only fixes the reference profile the baseline value and the candidate
+comparison are measured against. The build records the origin as
+`baseline_villain_source` (`explicit` or `auto_best_response`), and the scenario
+SHA-256 in the run manifest captures the exact input. The GUI/form editors do
+not carry this field and reject scenarios that use it, so edit it directly in the
+JSON. See `docs/scenario_format_reference.md` section 3a for the full field spec.
+
 To run a scenario all the way through the candidate-analysis pipeline and print
 the Markdown summary, use `run_river_scenario_analysis` or
 `python scripts/run_river_scenario_analysis.py <scenario.json>`. That script can

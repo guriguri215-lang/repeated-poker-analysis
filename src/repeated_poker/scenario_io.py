@@ -42,6 +42,19 @@ Mixing modes raises ``ValueError`` (for example ``hero_range`` together with a
 top-level ``showdown`` / ``baseline_hero_strategy``, ``villain_range`` without
 any matrix, or both ``showdown_matrix`` and ``equity_matrix`` at once).
 
+An optional top-level ``baseline_villain_strategy`` (available in every mode) may
+give the baseline Villain profile explicitly, as a ``{villain_info_set:
+{action: probability}}`` mapping over the *built* Villain information sets (for
+example ``OOP_river`` in single-hand mode or ``OOP_river::<villain_id>`` in
+matrix mode). When omitted, the baseline Villain is derived exactly as before, by
+the automatic pure best response to the baseline Hero strategy
+(:func:`_villain_baseline_best_response`). When given, that profile is used as the
+baseline Villain for the fixed-profile baseline value and the candidate
+comparison; it is **not** required to be a best response to baseline Hero and
+makes **no** equilibrium claim -- it is only an explicitly chosen comparison
+baseline. The build records its provenance as ``baseline_villain_source``
+(``"explicit"`` or ``"auto_best_response"``) in the build metadata.
+
 These ranges are not a real card range parser. The matchup outcomes (discrete
 results or equities) are given directly as abstract inputs -- for example an
 ``equity_matrix`` precomputed by an external tool -- with no real card or hand
@@ -77,9 +90,11 @@ from .game import (
     HeroStrategy,
     VillainNode,
     VillainStrategy,
+    collect_hero_info_sets,
     collect_villain_info_sets,
     require_finite,
     validate_hero_strategy,
+    validate_villain_strategy,
     validate_tree,
 )
 from .river_betting_tree import build_betting_tree_from_scenario
@@ -238,6 +253,12 @@ class RiverScenario:
     # Appended last for positional-constructor compatibility: a caller building a
     # RiverScenario with the original positional field order is unaffected.
     format_version: str = DEFAULT_FORMAT_VERSION
+    # Optional explicit baseline Villain profile (see the module docstring). Kept
+    # as the raw ``{info_set: {action: probability}}`` mapping because the Villain
+    # information-set names depend on the built tree; it is fully validated against
+    # that tree in :func:`build_river_steal_game_from_scenario`. ``None`` keeps the
+    # legacy behaviour of deriving the baseline Villain by automatic best response.
+    baseline_villain_strategy: Optional[Dict[str, Dict[str, float]]] = None
 
     @property
     def is_range_mode(self) -> bool:
@@ -256,9 +277,14 @@ class RiverScenario:
 class RiverScenarioBuildResult:
     """The game objects and pipeline inputs built from a scenario.
 
-    ``baseline_villain_strategy`` is the pure Villain best response to the
-    baseline Hero strategy, i.e. the single-hand-equilibrium aggressor policy, so
-    the result is directly usable as a baseline profile for the pipeline.
+    ``baseline_villain_strategy`` is the baseline Villain profile used by the
+    pipeline. By default (``baseline_villain_source == "auto_best_response"``) it
+    is the automatic pure Villain best response to the baseline Hero strategy. If
+    the scenario provided an explicit ``baseline_villain_strategy``, it is that
+    profile instead (``baseline_villain_source == "explicit"``); an explicit
+    profile is only a chosen comparison baseline and asserts no equilibrium or
+    best-response property. ``baseline_villain_source`` is also mirrored in
+    ``metadata["baseline_villain_source"]``.
     """
 
     scenario_id: str
@@ -269,6 +295,10 @@ class RiverScenarioBuildResult:
     shift_amounts: Optional[List[float]]
     repeated: Optional[RiverScenarioRepeatedConfig]
     metadata: dict
+    # Provenance of ``baseline_villain_strategy``: ``"auto_best_response"`` (the
+    # legacy automatic best response) or ``"explicit"`` (a profile supplied in the
+    # scenario). Defaulted so any other construction keeps the legacy provenance.
+    baseline_villain_source: str = "auto_best_response"
 
 
 # ---------------------------------------------------------------------------
@@ -644,6 +674,60 @@ def _parse_repeated(data) -> Optional[RiverScenarioRepeatedConfig]:
     return RiverScenarioRepeatedConfig(horizons=horizons, discount=discount)
 
 
+def _parse_baseline_villain_strategy(
+    data,
+) -> Dict[str, Dict[str, float]]:
+    """Structurally validate a *present* explicit ``baseline_villain_strategy``.
+
+    This is only called when the ``baseline_villain_strategy`` key is present in
+    the scenario; an absent key keeps the automatic best-response baseline and is
+    handled by the caller. Absence and a present ``null`` are therefore
+    distinguished: a present ``null`` is **rejected** rather than silently treated
+    as absent, so it can never cause a silent fallback to the automatic baseline.
+
+    Otherwise this checks the shape only -- a non-empty mapping of non-empty
+    information-set names to per-action mappings -- and returns the raw
+    distributions unchanged. The information-set names, legal actions, and numeric
+    probabilities are validated against the built Villain information sets later,
+    in :func:`build_river_steal_game_from_scenario`, because the Villain
+    information-set names depend on the scenario mode.
+
+    An empty mapping is likewise rejected rather than silently treated as "use the
+    automatic baseline": a present-but-empty explicit profile is a mistake, and
+    every Villain information set would be missing anyway.
+    """
+
+    if data is None:
+        raise ValueError(
+            "baseline_villain_strategy must not be null; omit the field entirely "
+            "to use the automatic best-response baseline"
+        )
+    if not isinstance(data, dict):
+        raise ValueError(
+            "baseline_villain_strategy must be an object mapping Villain "
+            "information sets to action distributions"
+        )
+    if not data:
+        raise ValueError(
+            "baseline_villain_strategy must not be empty when present; omit it to "
+            "use the automatic best-response baseline"
+        )
+    parsed: Dict[str, Dict[str, float]] = {}
+    for info_set, distribution in data.items():
+        if not isinstance(info_set, str) or not info_set:
+            raise ValueError(
+                "baseline_villain_strategy keys must be non-empty information-set "
+                f"names, got {info_set!r}"
+            )
+        if not isinstance(distribution, dict):
+            raise ValueError(
+                f"baseline_villain_strategy[{info_set!r}] must be a mapping of "
+                "action to probability"
+            )
+        parsed[info_set] = distribution
+    return parsed
+
+
 def _parse_format_version(data) -> str:
     """Validate and return the scenario's ``format_version``.
 
@@ -816,6 +900,15 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     shift_amounts = _parse_shift_amounts(data.get("candidate_generation"))
     repeated = _parse_repeated(data.get("repeated"))
+    # Distinguish an absent key (use the automatic best-response baseline) from a
+    # present key (parse it, rejecting a present ``null`` rather than silently
+    # falling back). ``data.get`` cannot tell those apart, so branch on ``in``.
+    if "baseline_villain_strategy" in data:
+        baseline_villain_strategy: Optional[Dict[str, Dict[str, float]]] = (
+            _parse_baseline_villain_strategy(data["baseline_villain_strategy"])
+        )
+    else:
+        baseline_villain_strategy = None
 
     return RiverScenario(
         scenario_id=scenario_id,
@@ -833,6 +926,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         showdown_matrix=showdown_matrix,
         equity_matrix=equity_matrix,
         betting_tree=betting_tree,
+        baseline_villain_strategy=baseline_villain_strategy,
     )
 
 
@@ -869,7 +963,18 @@ def build_river_steal_game_from_scenario(
         tree, baseline_hero_strategy, metadata = _build_single_hand_tree(scenario)
 
     validate_hero_strategy(tree, baseline_hero_strategy)
-    baseline_villain_strategy = _villain_baseline_best_response(tree, baseline_hero_strategy)
+
+    if scenario.baseline_villain_strategy is not None:
+        baseline_villain_strategy = _explicit_villain_baseline(
+            tree, scenario.baseline_villain_strategy
+        )
+        baseline_villain_source = "explicit"
+    else:
+        baseline_villain_strategy = _villain_baseline_best_response(
+            tree, baseline_hero_strategy
+        )
+        baseline_villain_source = "auto_best_response"
+    metadata["baseline_villain_source"] = baseline_villain_source
 
     return RiverScenarioBuildResult(
         scenario_id=scenario.scenario_id,
@@ -880,6 +985,7 @@ def build_river_steal_game_from_scenario(
         shift_amounts=scenario.shift_amounts,
         repeated=scenario.repeated,
         metadata=metadata,
+        baseline_villain_source=baseline_villain_source,
     )
 
 
@@ -1106,6 +1212,65 @@ def _villain_baseline_best_response(
             for info_set, actions in villain_info_sets.items()
         }
     )
+
+
+def _explicit_villain_baseline(
+    tree: GameTree, raw_strategy: Dict[str, Dict[str, float]]
+) -> VillainStrategy:
+    """Build a :class:`VillainStrategy` from an explicit baseline profile.
+
+    ``raw_strategy`` is the structurally-checked mapping stored on the scenario
+    (see :func:`_parse_baseline_villain_strategy`). This applies the same numeric
+    and information-set validation the Hero baseline gets, against the *built*
+    Villain information sets:
+
+    * every information-set name must be a Villain information set of ``tree``
+      (an unknown name -- including a Hero information set -- is rejected, so the
+      explicit profile can never silently miss part of the tree);
+    * every Villain information set must be assigned a distribution (a missing one
+      is rejected rather than silently defaulted, so an incomplete explicit
+      baseline never falls back to the automatic best response);
+    * within each distribution, actions must be legal, probabilities must be
+      finite, non-negative, and non-``bool`` numbers, and they must sum to 1
+      within tolerance. A legal action omitted from a distribution is taken as 0,
+      matching the Hero-strategy parser (:func:`_validate_action_distribution`).
+
+    This makes no equilibrium or best-response claim about the resulting profile;
+    it only validates and materialises the caller-chosen comparison baseline.
+    """
+
+    villain_info_sets = collect_villain_info_sets(tree)
+    unknown = set(raw_strategy) - set(villain_info_sets)
+    if unknown:
+        hero_named = sorted(set(raw_strategy) & set(collect_hero_info_sets(tree)))
+        if hero_named:
+            raise ValueError(
+                "baseline_villain_strategy must only assign Villain information "
+                f"sets; it references Hero information sets {hero_named}"
+            )
+        raise ValueError(
+            "baseline_villain_strategy has unknown Villain information sets "
+            f"{sorted(unknown)}; expected a subset of {sorted(villain_info_sets)}"
+        )
+
+    probabilities: Dict[str, Dict[str, float]] = {}
+    for info_set, legal_actions in villain_info_sets.items():
+        if info_set not in raw_strategy:
+            raise ValueError(
+                "baseline_villain_strategy is missing Villain information set "
+                f"{info_set!r}; an explicit baseline must assign every Villain "
+                "information set (it is not completed from the automatic baseline)"
+            )
+        probabilities[info_set] = _validate_action_distribution(
+            raw_strategy[info_set],
+            legal_actions,
+            f"baseline_villain_strategy[{info_set!r}]",
+        )
+
+    villain_strategy = VillainStrategy(probabilities=probabilities)
+    # Final guard mirroring the Hero path's validate_hero_strategy call.
+    validate_villain_strategy(tree, villain_strategy)
+    return villain_strategy
 
 
 def _build_betting_tree(scenario: RiverScenario):

@@ -278,10 +278,25 @@ def test_format_reference_is_ascii_only():
         "Hero pot share before rake",
         "validate_river_scenario.py",
         "not a full poker solver",
+        # The explicit baseline Villain profile (M2-T1) is a first-class input
+        # field, documented with its provenance token.
+        "baseline_villain_strategy",
+        "baseline_villain_source",
     ],
 )
 def test_format_reference_contains_key_phrase(phrase):
     assert phrase in _FORMAT_REFERENCE.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("doc", ["README", "FORMAT_REFERENCE"])
+def test_explicit_baseline_villain_is_not_claimed_to_be_equilibrium(doc):
+    # M2-T1: an explicit baseline_villain_strategy is a chosen comparison profile,
+    # not an equilibrium. Both docs must state that non-claim in so many words so a
+    # future edit cannot quietly upgrade it to an equilibrium assertion.
+    path = {"README": _README, "FORMAT_REFERENCE": _FORMAT_REFERENCE}[doc]
+    text = path.read_text(encoding="utf-8")
+    assert "baseline_villain_strategy" in text
+    assert "not an equilibrium claim" in text
 
 
 def test_docs_mention_template_generator_script():
