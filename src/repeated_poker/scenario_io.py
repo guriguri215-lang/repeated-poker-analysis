@@ -1084,10 +1084,11 @@ def _villain_baseline_best_response(
     :class:`VillainStrategy`.
 
     When several pure best responses tie, this deterministically picks the first
-    one returned by :func:`solve_exact_response` (its enumeration order). This is
-    only a stable, reproducible tie-break for building a concrete baseline
-    profile; it makes no equilibrium-selection claim and does not assert the
-    chosen response is preferred among the tied best responses.
+    one returned by :func:`solve_exact_response` (a stable order fixed by the
+    solver's method). This is only a stable, reproducible tie-break for building
+    a concrete baseline profile; it makes no equilibrium-selection claim and
+    does not assert the chosen response is preferred among the tied best
+    responses.
     """
 
     response = solve_exact_response(tree, baseline_hero_strategy)

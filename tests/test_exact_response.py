@@ -196,11 +196,38 @@ def test_enumeration_safety_limit_is_enforced():
     with pytest.raises(ValueError, match="safety limit"):
         enumerate_villain_pure_strategies(tree, max_pure_strategies=1)
     with pytest.raises(ValueError, match="safety limit"):
-        solve_exact_response(tree, hero_strategy, max_pure_strategies=1)
+        solve_exact_response(
+            tree, hero_strategy, max_pure_strategies=1, method="enumerate"
+        )
 
     # At or above the true size the enumeration proceeds.
-    result = solve_exact_response(tree, hero_strategy, max_pure_strategies=2)
+    result = solve_exact_response(
+        tree, hero_strategy, max_pure_strategies=2, method="enumerate"
+    )
     assert result.num_villain_pure_strategies == 2
+
+
+def test_dp_caps_materialisation_instead_of_raising():
+    tree, hero_strategy = _indifference_tree()  # two tied best responses
+
+    # The DP method is not limited by the pure-strategy space; the limit only
+    # caps how much of the correspondence is materialised.
+    result = solve_exact_response(tree, hero_strategy, max_pure_strategies=1)
+    assert result.num_villain_pure_strategies == 2
+    assert result.num_best_response_strategies == 2
+    # Beyond the cap a single deterministic representative is returned.
+    assert len(result.best_response_strategies) == 1
+    assert result.best_response_strategies[0]["V"] in {"call", "fold"}
+    # The EV fields are unaffected by the materialisation cap.
+    assert result.villain_max_ev == pytest.approx(-1.0)
+    assert result.ev_h_worst == pytest.approx(-1.0)
+    assert result.ev_h_best == pytest.approx(1.0)
+
+
+def test_invalid_method_is_rejected():
+    tree, hero_strategy = _indifference_tree()
+    with pytest.raises(ValueError, match="method"):
+        solve_exact_response(tree, hero_strategy, method="cfr")
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), -1.0])

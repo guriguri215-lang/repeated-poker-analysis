@@ -22,8 +22,11 @@
 - Rake makes the two-player payoff accounting non-zero-sum.
 - The house / rake account is accounting only; it is **not a strategic player**
   and chooses no actions.
-- The current exact response enumerates Villain's pure strategies and is
-  intended for small trees; it is guarded by a `max_pure_strategies` limit.
+- The exact response is solved by backward induction over Villain information
+  sets by default; the v0 pure-strategy enumerator remains available as
+  `method="enumerate"` for small trees, guarded by a `max_pure_strategies`
+  limit that also caps how large a tied best-response correspondence the
+  default method materialises.
 - Perfect recall is an input contract. The current structural guard rejects a
   repeated information set on a single path, but it is not a proof of complete
   game-tree correctness.
