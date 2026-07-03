@@ -265,11 +265,21 @@ def solve_exact_response(
     interval over the optima, the information sets whose action varies across
     optima, the off-path Villain information sets, and the expected rake at
     the Hero-EV extremes.  Ties are resolved with the shared
-    ``>= max - tolerance`` convention.  The two methods agree on trees whose
-    Villain-EV ties are exact; when distinct Villain EVs fall within
-    ``tolerance`` of each other, the enumerator's globally accumulated
-    tolerance and the DP's per-information-set tolerance may classify the
-    near-ties differently.
+    ``>= max - tolerance`` convention.
+
+    Tolerance semantics differ between the methods.  The enumerator applies
+    ``tolerance`` to the *global* Villain EV of each pure strategy; the DP
+    applies it *per Villain information set*.  The two agree on trees whose
+    Villain-EV ties are exact (the normal case: identical payoffs tie
+    exactly).  When distinct Villain EVs fall within ``tolerance`` of each
+    other, DP near-tie acceptance can chain across successive information
+    sets, so a strategy in the DP correspondence (and hence the Hero-EV
+    interval) may sit up to roughly ``depth * tolerance`` below the global
+    optimum, which the enumerator would exclude.  With the default
+    ``tolerance`` this needs distinct Villain EVs within ``1e-9`` of each
+    other.  When raising ``tolerance`` as a research judgment, prefer
+    ``method="enumerate"`` on small trees, or read the DP correspondence as
+    per-information-set near-optimality rather than a global EV band.
 
     This is Villain's best response to a fixed Hero strategy, not an
     equilibrium computation.

@@ -271,6 +271,62 @@ def test_dp_matches_enumeration_on_example_scenarios(path):
 
 
 # ---------------------------------------------------------------------------
+# Tolerance semantics: per-information-set (dp) vs global (enumerate)
+# ---------------------------------------------------------------------------
+
+
+def _chained_near_tie_tree():
+    """Two stacked Villain decisions whose near-ties accumulate past tolerance.
+
+    With the default tolerance 1e-9: at ``V2``, ``d`` is 0.6e-9 worse than
+    ``c`` (a local near-tie); at ``V1``, ``b`` is 0.6e-9 worse than ``a``
+    (another local near-tie).  The pure strategy ``(b, d)`` is 1.2e-9 below
+    the global optimum -- outside the global tolerance band -- while every
+    individual step stays inside the local band.
+    """
+
+    def leaf(node_id, villain_ev):
+        return TerminalNode(node_id, -villain_ev, villain_ev, 0.0)
+
+    v2 = VillainNode(
+        "v2",
+        "V2",
+        (("c", leaf("t_bc", 1.0 - 0.6e-9)), ("d", leaf("t_bd", 1.0 - 1.2e-9))),
+    )
+    root = VillainNode("v1", "V1", (("a", leaf("t_a", 1.0)), ("b", v2)))
+    return GameTree(root=root), HeroStrategy(probabilities={})
+
+
+def test_chained_near_ties_pin_the_documented_method_difference():
+    tree, hero_strategy = _chained_near_tie_tree()
+
+    enum = solve_exact_response(tree, hero_strategy, method="enumerate")
+    dp = solve_exact_response(tree, hero_strategy, method="dp")
+
+    # Both methods agree on the optimum itself.
+    assert enum.villain_max_ev == pytest.approx(1.0, abs=1e-12)
+    assert dp.villain_max_ev == pytest.approx(1.0, abs=1e-12)
+
+    # The enumerator's tolerance is global: (b, d) sits 1.2e-9 below the
+    # optimum and is excluded. The DP's tolerance is per information set:
+    # each step of (b, d) is a local near-tie, so the strategy stays in the
+    # correspondence. This asymmetry is the intended, documented semantics
+    # difference; it requires distinct Villain EVs within ``tolerance`` of
+    # each other, which the exact ties of real payoff trees do not produce.
+    assert {"V1": "b", "V2": "d"} not in enum.best_response_strategies
+    assert {"V1": "b", "V2": "d"} in dp.best_response_strategies
+    assert enum.num_best_response_strategies == 3
+    assert dp.num_best_response_strategies == 4
+
+    # The Hero-EV interval follows the same semantics: the DP's best end
+    # includes the chained near-tie strategy, the enumerator's does not.
+    assert enum.ev_h_best == pytest.approx(-1.0 + 0.6e-9, abs=1e-10)
+    assert dp.ev_h_best == pytest.approx(-1.0 + 1.2e-9, abs=1e-10)
+    assert enum.ev_h_worst == pytest.approx(-1.0, abs=1e-12)
+    assert dp.ev_h_worst == pytest.approx(-1.0, abs=1e-12)
+
+
+# ---------------------------------------------------------------------------
 # Perfect-recall guard
 # ---------------------------------------------------------------------------
 
