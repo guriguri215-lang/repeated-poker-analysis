@@ -16,7 +16,9 @@ and ``--output-csv`` flags save the result to the given paths, creating missing
 parent directories and overwriting existing files. ``--output-markdown`` forces
 Markdown generation even with ``--no-markdown`` (``--no-markdown`` then only
 suppresses the stdout summary, not the saved file). It uses only the package and
-the standard library, and it does no network or version-control work.
+the standard library, and it does no network work. Saved outputs embed a run
+manifest (scenario SHA-256, package version, best-effort local git commit or
+null, UTC timestamp, and effective parameters) for reproducibility.
 
 For a quick terminal-EV / baseline / ``T_deadline`` sanity check of a scenario
 without the full pipeline, use ``scripts/run_river_scenario.py`` instead.

@@ -27,6 +27,7 @@ from .pipeline import (
 )
 from .ranking import CandidateRankingResult, rank_candidate_rows
 from .repeated import RESPONSE_MODE_WORST
+from .run_manifest import RunManifest, build_run_manifest
 from .scenario_io import (
     RiverScenario,
     RiverScenarioBuildResult,
@@ -76,6 +77,10 @@ class RiverScenarioAnalysisResult:
     ``ranking_result`` is ``None`` unless a ranking criterion was requested.
     ``markdown_summary`` mirrors ``pipeline_result.markdown_summary`` for
     convenience and is ``None`` when Markdown rendering is disabled.
+    ``manifest`` is the reproducibility manifest of the run (scenario file
+    SHA-256 when run from a file, format version, package version, best-effort
+    git commit, UTC timestamp, and the effective parameters); it is
+    descriptive metadata only and changes no analysis result.
     """
 
     scenario: RiverScenario
@@ -85,6 +90,7 @@ class RiverScenarioAnalysisResult:
     pipeline_result: CandidateAnalysisPipelineResult
     ranking_result: Optional[CandidateRankingResult] = None
     markdown_summary: Optional[str] = field(default=None)
+    manifest: Optional[RunManifest] = field(default=None)
 
     @property
     def scenario_id(self) -> str:
@@ -97,6 +103,7 @@ class RiverScenarioAnalysisResult:
         return {
             "format_version": self.scenario.format_version,
             "scenario_id": self.scenario_id,
+            "manifest": self.manifest.to_dict() if self.manifest else None,
             "horizon": self.horizon,
             "discount": self.discount,
             "generated": len(self.pipeline_result.generated_candidates),
@@ -185,10 +192,18 @@ def run_river_scenario_analysis(
     ``config``. The remaining work is delegated to
     ``run_candidate_analysis_pipeline``; when ``config.ranking_criterion`` is
     given, the report rows are additionally ranked via ``rank_candidate_rows``.
+
+    The returned result carries a :class:`RunManifest` with the scenario file's
+    SHA-256 (``None`` when ``scenario`` is an in-memory :class:`RiverScenario`),
+    the scenario format version, the package version, a best-effort git commit
+    of the package source (``None`` when unavailable), a UTC timestamp, and the
+    resolved analysis parameters.  The manifest is reproducibility metadata
+    only; it changes no analysis result.
     """
 
     config = config or RiverScenarioAnalysisConfig()
     resolved_scenario = _resolve_scenario(scenario)
+    scenario_path = Path(scenario) if isinstance(scenario, (str, Path)) else None
     build = build_river_steal_game_from_scenario(resolved_scenario)
 
     if not build.shift_amounts:
@@ -200,6 +215,27 @@ def run_river_scenario_analysis(
     horizon = _resolve_horizon(resolved_scenario, config)
     discount = _resolve_discount(resolved_scenario, config)
     filtering = _build_filter_config(config)
+
+    manifest = build_run_manifest(
+        scenario_path=scenario_path,
+        scenario_format_version=resolved_scenario.format_version,
+        parameters={
+            "horizon": horizon,
+            "discount": discount,
+            "response_mode": config.response_mode,
+            "profit_tolerance": config.profit_tolerance,
+            "max_selection_l1_distance": config.max_selection_l1_distance,
+            "detection_log_likelihood_threshold": (
+                config.detection_log_likelihood_threshold
+            ),
+            "detection_occurrence_probability_per_opportunity": (
+                config.detection_occurrence_probability_per_opportunity
+            ),
+            "tolerance": config.tolerance,
+            "max_pure_strategies": config.max_pure_strategies,
+            "ranking_criterion": config.ranking_criterion,
+        },
+    )
 
     pipeline_result = run_candidate_analysis_pipeline(
         build.tree,
@@ -240,4 +276,5 @@ def run_river_scenario_analysis(
         pipeline_result=pipeline_result,
         ranking_result=ranking_result,
         markdown_summary=pipeline_result.markdown_summary,
+        manifest=manifest,
     )

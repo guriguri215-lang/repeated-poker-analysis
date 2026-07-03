@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from .run_manifest import RunManifest, build_run_manifest
 from .scenario_pipeline import (
     RiverScenarioAnalysisConfig,
     RiverScenarioAnalysisResult,
@@ -141,10 +142,17 @@ class BatchScenarioAnalysisResult:
     each successful scenario's display path to its
     :class:`RiverScenarioAnalysisResult`; failed scenarios are absent from
     ``results`` but still present in ``rows`` with an ``error``.
+
+    ``manifest`` is the batch-level reproducibility manifest (package version,
+    best-effort git commit, UTC timestamp, and the *requested* analysis
+    overrides). Scenario-specific fields (file SHA-256, format version,
+    resolved horizon/discount) live on each per-scenario result's own
+    manifest instead.
     """
 
     rows: List[BatchScenarioRow]
     results: Dict[str, RiverScenarioAnalysisResult]
+    manifest: Optional[RunManifest] = None
 
     @property
     def ok_count(self) -> int:
@@ -276,6 +284,26 @@ def run_batch_scenario_analysis(
     config = config or BatchScenarioAnalysisConfig()
     paths = expand_scenario_inputs(inputs)
 
+    manifest = build_run_manifest(
+        parameters={
+            "horizon": config.analysis.horizon,
+            "discount": config.analysis.discount,
+            "response_mode": config.analysis.response_mode,
+            "profit_tolerance": config.analysis.profit_tolerance,
+            "max_selection_l1_distance": config.analysis.max_selection_l1_distance,
+            "detection_log_likelihood_threshold": (
+                config.analysis.detection_log_likelihood_threshold
+            ),
+            "detection_occurrence_probability_per_opportunity": (
+                config.analysis.detection_occurrence_probability_per_opportunity
+            ),
+            "tolerance": config.analysis.tolerance,
+            "max_pure_strategies": config.analysis.max_pure_strategies,
+            "ranking_criterion": config.analysis.ranking_criterion,
+            "continue_on_error": config.continue_on_error,
+        },
+    )
+
     rows: List[BatchScenarioRow] = []
     results: Dict[str, RiverScenarioAnalysisResult] = {}
     for path in paths:
@@ -292,4 +320,4 @@ def run_batch_scenario_analysis(
         results[display] = result
         rows.append(_success_row(display, result))
 
-    return BatchScenarioAnalysisResult(rows=rows, results=results)
+    return BatchScenarioAnalysisResult(rows=rows, results=results, manifest=manifest)

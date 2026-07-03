@@ -21,11 +21,12 @@ import csv
 import json
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from .scenario_batch import BATCH_ROW_COLUMNS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .run_manifest import RunManifest
     from .scenario_batch import BatchScenarioAnalysisResult
     from .scenario_pipeline import RiverScenarioAnalysisResult
     from .scenario_validation import ScenarioValidationResult
@@ -89,13 +90,52 @@ def _dump_json(payload, strict: bool) -> str:
     return json.dumps(payload, indent=2)
 
 
+def _manifest_dict(manifest: Optional["RunManifest"]) -> Optional[dict]:
+    """Return the manifest payload, or ``None`` when a run carries none."""
+
+    return manifest.to_dict() if manifest is not None else None
+
+
+def _manifest_csv_comment(manifest: "RunManifest") -> str:
+    """One ``# run_manifest: {...}`` comment line for a CSV export.
+
+    The JSON after the prefix is strict (non-finite floats become ``null``), so
+    the line parses with ``json.loads`` after stripping the prefix. CSV readers
+    should skip lines starting with ``#`` (for example pandas ``comment="#"``).
+    """
+
+    payload = _strict_json_safe(manifest.to_dict())
+    return "# run_manifest: " + json.dumps(payload, allow_nan=False)
+
+
+def _manifest_markdown_lines(manifest: "RunManifest") -> List[str]:
+    """Render the manifest as a Markdown section (one bullet per field)."""
+
+    manifest_dict = manifest.to_dict()
+    parameters = manifest_dict.pop("parameters")
+    lines = ["### Run manifest", ""]
+    for key, value in manifest_dict.items():
+        lines.append(f"- {key}: {_markdown_cell(value)}")
+    if parameters is not None:
+        rendered = ", ".join(
+            f"{key}={_markdown_cell(value)}" for key, value in parameters.items()
+        )
+        lines.append(f"- parameters: {rendered}")
+    return lines
+
+
 def analysis_result_to_dict(result: "RiverScenarioAnalysisResult") -> dict:
-    """Return the full JSON-serialisable payload written by the JSON exporter."""
+    """Return the full JSON-serialisable payload written by the JSON exporter.
+
+    Includes the run's reproducibility ``manifest`` (``null`` on a manually
+    constructed result without one).
+    """
 
     counts = result.pipeline_result.filter_result.summary_counts
     payload = {
         "format_version": result.scenario.format_version,
         "scenario_id": result.scenario_id,
+        "manifest": _manifest_dict(result.manifest),
         "selected_horizon": result.horizon,
         "selected_discount": result.discount,
         "build_metadata": result.build.metadata,
@@ -147,7 +187,8 @@ def write_analysis_markdown(result: "RiverScenarioAnalysisResult", path: PathLik
 
     Raises :class:`ValueError` if the result has no Markdown summary (Markdown
     rendering was disabled); the caller should enable Markdown when requesting a
-    Markdown file.
+    Markdown file.  When the result carries a run manifest, a ``Run manifest``
+    section is appended after the summary.
     """
 
     if result.markdown_summary is None:
@@ -157,7 +198,13 @@ def write_analysis_markdown(result: "RiverScenarioAnalysisResult", path: PathLik
         )
     target = Path(path)
     _ensure_parent(target)
-    target.write_text(result.markdown_summary, encoding="utf-8")
+    text = result.markdown_summary
+    if result.manifest is not None:
+        lines = [text.rstrip("\n"), ""]
+        lines.extend(_manifest_markdown_lines(result.manifest))
+        lines.append("")
+        text = "\n".join(lines)
+    target.write_text(text, encoding="utf-8")
 
 
 def _csv_cell(value) -> str:
@@ -201,12 +248,19 @@ def _markdown_cell(value) -> str:
 
 
 def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) -> None:
-    """Write one CSV row per candidate (in report order) to ``path``."""
+    """Write one CSV row per candidate (in report order) to ``path``.
+
+    When the result carries a run manifest, the file starts with a single
+    ``# run_manifest: {...}`` comment line before the header row; skip lines
+    starting with ``#`` when parsing (for example pandas ``comment="#"``).
+    """
 
     target = Path(path)
     _ensure_parent(target)
     rows = result.pipeline_result.analysis_report.summary_rows()
     with target.open("w", encoding="utf-8", newline="") as handle:
+        if result.manifest is not None:
+            handle.write(_manifest_csv_comment(result.manifest) + "\r\n")
         writer = csv.writer(handle)
         writer.writerow(_CSV_COLUMNS)
         for row in rows:
@@ -245,10 +299,14 @@ def batch_result_to_dict(batch: "BatchScenarioAnalysisResult") -> dict:
     The payload keeps the comparison ``summary_rows`` plus the full per-scenario
     ``scenario_results`` (each via :func:`analysis_result_to_dict`, keyed by
     display path) so a batch file is self-contained for later comparison. Failed
-    scenarios appear only in ``summary_rows`` (with an ``error``).
+    scenarios appear only in ``summary_rows`` (with an ``error``). The
+    batch-level ``manifest`` carries the shared reproducibility metadata; each
+    per-scenario result additionally embeds its own manifest (with the scenario
+    file's SHA-256 and resolved parameters).
     """
 
     return {
+        "manifest": _manifest_dict(batch.manifest),
         "summary_rows": [row.to_dict() for row in batch.rows],
         "scenario_results": {
             path: analysis_result_to_dict(result)
@@ -273,11 +331,18 @@ def write_batch_json(
 
 
 def write_batch_csv(batch: "BatchScenarioAnalysisResult", path: PathLike) -> None:
-    """Write one CSV row per scenario (summary rows only) to ``path``."""
+    """Write one CSV row per scenario (summary rows only) to ``path``.
+
+    When the batch carries a run manifest, the file starts with a single
+    ``# run_manifest: {...}`` comment line before the header row; skip lines
+    starting with ``#`` when parsing (for example pandas ``comment="#"``).
+    """
 
     target = Path(path)
     _ensure_parent(target)
     with target.open("w", encoding="utf-8", newline="") as handle:
+        if batch.manifest is not None:
+            handle.write(_manifest_csv_comment(batch.manifest) + "\r\n")
         writer = csv.writer(handle)
         writer.writerow(BATCH_ROW_COLUMNS)
         for row in batch.rows:
@@ -342,6 +407,9 @@ def write_batch_markdown(batch: "BatchScenarioAnalysisResult", path: PathLike) -
         row_dict = row.to_dict()
         cells = [_markdown_cell(row_dict.get(column)) for column in _BATCH_MARKDOWN_COLUMNS]
         lines.append("| " + " | ".join(cells) + " |")
+    if batch.manifest is not None:
+        lines.append("")
+        lines.extend(_manifest_markdown_lines(batch.manifest))
     lines.extend(["", "### Notes", ""])
     lines.extend(f"- {note}" for note in _BATCH_MARKDOWN_NOTES)
     lines.append("")

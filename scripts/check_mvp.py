@@ -3,8 +3,10 @@
 
 This is a developer-facing helper. It runs the checks in sequence, stops at the
 first failure, and returns that failure's exit code (or 1). It uses only the
-Python standard library and performs no version-control, network, or
-file-output side effects.
+Python standard library and has no network or file-output side effects. The
+script itself makes no version-control calls; the commands it runs may read the
+local git-commit hash while building run manifests (best effort), and nothing
+writes version-control state.
 
 It can be run from any directory: the repository root is resolved from the
 script's own location, and every command runs with that root as the working

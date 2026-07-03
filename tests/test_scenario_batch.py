@@ -208,15 +208,19 @@ def test_batch_csv_header_and_rows(tmp_path, batch):
     write_batch_csv(batch, path)
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.reader(handle))
-    assert "scenario_id" in rows[0]
-    assert "top_candidate_t_deadline" in rows[0]
-    assert len(rows) - 1 == len(batch.rows)
+    # The file starts with the run-manifest comment line, then the header.
+    assert rows[0][0].startswith("# run_manifest: ")
+    assert "scenario_id" in rows[1]
+    assert "top_candidate_t_deadline" in rows[1]
+    assert len(rows) - 2 == len(batch.rows)
 
 
 def test_batch_csv_includes_important_columns(tmp_path, batch):
     path = tmp_path / "batch.csv"
     write_batch_csv(batch, path)
     with path.open(encoding="utf-8", newline="") as handle:
+        manifest_line = handle.readline()
+        assert manifest_line.startswith("# run_manifest: ")
         header = next(csv.reader(handle))
     for column in (
         "format_version",

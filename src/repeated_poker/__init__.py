@@ -1,5 +1,7 @@
 """Exact Villain best-response analysis against a fully fixed Hero strategy."""
 
+from .run_manifest import PACKAGE_VERSION as __version__  # noqa: N811
+
 from .exact_response import (
     DEFAULT_MAX_PURE_STRATEGIES,
     BestResponseResult,
@@ -162,6 +164,12 @@ from .scenario_validation import (
     ScenarioValidationRow,
     validate_river_scenario_inputs,
 )
+from .run_manifest import (
+    PACKAGE_VERSION,
+    RunManifest,
+    build_run_manifest,
+    sha256_of_file,
+)
 from .report_export import (
     analysis_result_to_dict,
     batch_result_to_dict,
@@ -279,6 +287,10 @@ __all__ = [
     "validate_betting_tree_form",
     "SCENARIO_FORM_MODES",
     "detect_scenario_form_mode",
+    "PACKAGE_VERSION",
+    "RunManifest",
+    "build_run_manifest",
+    "sha256_of_file",
     "analysis_result_to_dict",
     "write_analysis_csv",
     "write_analysis_json",
