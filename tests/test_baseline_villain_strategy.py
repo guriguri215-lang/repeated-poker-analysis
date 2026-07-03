@@ -10,7 +10,9 @@ These cover three things:
   gets, with no silent fallback, plus the scenario-form rejection.
 """
 
+import json
 import math
+from pathlib import Path
 
 import pytest
 
@@ -83,6 +85,12 @@ def _matrix(**overrides) -> dict:
 
 def _build(data: dict):
     return build_river_steal_game_from_scenario(river_scenario_from_dict(data))
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+_BETTING_TREE_SAMPLE = (
+    _ROOT / "examples" / "scenarios" / "range_equity_betting_tree_bet98.json"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +274,30 @@ def test_empty_profile_is_rejected_at_parse():
         river_scenario_from_dict(_single_hand(baseline_villain_strategy={}))
 
 
+def test_present_null_is_rejected_no_silent_fallback():
+    # Regression for the review's P1: a present-but-null field must NOT silently
+    # fall back to the automatic best-response baseline. Absence and null are
+    # distinguished -- only an absent key uses the automatic baseline.
+    with pytest.raises(ValueError, match="must not be null"):
+        river_scenario_from_dict(_single_hand(baseline_villain_strategy=None))
+
+
+def test_present_null_survives_a_json_round_trip():
+    # `"baseline_villain_strategy": null` in an actual JSON document is the real
+    # shape the review flagged; make sure it is rejected the same way.
+    text = json.dumps(_single_hand(baseline_villain_strategy=None))
+    with pytest.raises(ValueError, match="must not be null"):
+        river_scenario_from_dict(json.loads(text))
+
+
+def test_absent_key_and_null_are_distinguished():
+    # Absent key -> automatic baseline (unchanged); present null -> rejected.
+    absent = river_scenario_from_dict(_single_hand())
+    assert absent.baseline_villain_strategy is None
+    with pytest.raises(ValueError, match="must not be null"):
+        river_scenario_from_dict(_single_hand(baseline_villain_strategy=None))
+
+
 @pytest.mark.parametrize("bad", [[], "OOP_river", 3])
 def test_non_object_profile_is_rejected_at_parse(bad):
     with pytest.raises(ValueError, match="must be an object"):
@@ -292,6 +324,46 @@ def test_explicit_profile_supported_in_matrix_mode():
     probs = build.baseline_villain_strategy.probabilities
     assert probs["OOP_river::v1"] == {"check": 1.0, "bet": 0.0}
     assert probs["OOP_river::v2"] == {"check": 0.25, "bet": 0.75}
+
+
+def test_explicit_profile_supported_in_betting_tree_mode():
+    # The field is documented as available in every mode; betting-tree mode has
+    # three Villain information sets per bucket (OOP_first / OOP_vs_IP_bet /
+    # OOP_vs_IP_raise). Assign all of them explicitly and confirm the profile is
+    # used verbatim.
+    data = json.loads(_BETTING_TREE_SAMPLE.read_text(encoding="utf-8"))
+    villain_ids = [hand["hand_id"] for hand in data["villain_range"]]
+    profile = {}
+    for villain_id in villain_ids:
+        profile[f"OOP_first::{villain_id}"] = {"check": 0.6, "bet": 0.4}
+        profile[f"OOP_vs_IP_bet::{villain_id}"] = {"call": 0.5, "fold": 0.5}
+        profile[f"OOP_vs_IP_raise::{villain_id}"] = {"call": 1.0, "fold": 0.0}
+    data["baseline_villain_strategy"] = profile
+
+    build = _build(data)
+    assert build.baseline_villain_source == "explicit"
+    probs = build.baseline_villain_strategy.probabilities
+    first_bucket = villain_ids[0]
+    assert probs[f"OOP_first::{first_bucket}"] == {"check": 0.6, "bet": 0.4}
+    assert probs[f"OOP_vs_IP_raise::{first_bucket}"] == {"call": 1.0, "fold": 0.0}
+
+
+def test_betting_tree_explicit_profile_missing_one_info_set_is_rejected():
+    # A betting-tree profile that omits even one of the many Villain information
+    # sets must be rejected, not completed from the automatic baseline.
+    data = json.loads(_BETTING_TREE_SAMPLE.read_text(encoding="utf-8"))
+    villain_ids = [hand["hand_id"] for hand in data["villain_range"]]
+    profile = {}
+    for villain_id in villain_ids:
+        profile[f"OOP_first::{villain_id}"] = {"check": 0.6, "bet": 0.4}
+        profile[f"OOP_vs_IP_bet::{villain_id}"] = {"call": 0.5, "fold": 0.5}
+        profile[f"OOP_vs_IP_raise::{villain_id}"] = {"call": 1.0, "fold": 0.0}
+    # Drop one information set.
+    profile.pop(f"OOP_vs_IP_raise::{villain_ids[0]}")
+    data["baseline_villain_strategy"] = profile
+
+    with pytest.raises(ValueError, match="missing Villain information set"):
+        _build(data)
 
 
 # ---------------------------------------------------------------------------

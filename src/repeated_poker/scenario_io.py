@@ -676,24 +676,32 @@ def _parse_repeated(data) -> Optional[RiverScenarioRepeatedConfig]:
 
 def _parse_baseline_villain_strategy(
     data,
-) -> Optional[Dict[str, Dict[str, float]]]:
-    """Structurally validate an optional explicit ``baseline_villain_strategy``.
+) -> Dict[str, Dict[str, float]]:
+    """Structurally validate a *present* explicit ``baseline_villain_strategy``.
 
-    Returns ``None`` when the field is absent (the automatic best-response
-    baseline is used). Otherwise checks the shape only -- a non-empty mapping of
-    non-empty information-set names to per-action mappings -- and returns the raw
+    This is only called when the ``baseline_villain_strategy`` key is present in
+    the scenario; an absent key keeps the automatic best-response baseline and is
+    handled by the caller. Absence and a present ``null`` are therefore
+    distinguished: a present ``null`` is **rejected** rather than silently treated
+    as absent, so it can never cause a silent fallback to the automatic baseline.
+
+    Otherwise this checks the shape only -- a non-empty mapping of non-empty
+    information-set names to per-action mappings -- and returns the raw
     distributions unchanged. The information-set names, legal actions, and numeric
     probabilities are validated against the built Villain information sets later,
     in :func:`build_river_steal_game_from_scenario`, because the Villain
     information-set names depend on the scenario mode.
 
-    An empty mapping is rejected rather than silently treated as "use the
+    An empty mapping is likewise rejected rather than silently treated as "use the
     automatic baseline": a present-but-empty explicit profile is a mistake, and
     every Villain information set would be missing anyway.
     """
 
     if data is None:
-        return None
+        raise ValueError(
+            "baseline_villain_strategy must not be null; omit the field entirely "
+            "to use the automatic best-response baseline"
+        )
     if not isinstance(data, dict):
         raise ValueError(
             "baseline_villain_strategy must be an object mapping Villain "
@@ -892,9 +900,15 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     shift_amounts = _parse_shift_amounts(data.get("candidate_generation"))
     repeated = _parse_repeated(data.get("repeated"))
-    baseline_villain_strategy = _parse_baseline_villain_strategy(
-        data.get("baseline_villain_strategy")
-    )
+    # Distinguish an absent key (use the automatic best-response baseline) from a
+    # present key (parse it, rejecting a present ``null`` rather than silently
+    # falling back). ``data.get`` cannot tell those apart, so branch on ``in``.
+    if "baseline_villain_strategy" in data:
+        baseline_villain_strategy: Optional[Dict[str, Dict[str, float]]] = (
+            _parse_baseline_villain_strategy(data["baseline_villain_strategy"])
+        )
+    else:
+        baseline_villain_strategy = None
 
     return RiverScenario(
         scenario_id=scenario_id,

@@ -162,6 +162,10 @@ from an external solver, or a deliberately simple "always check" villain).
   - showdown/equity matrix mode: `OOP_river::<villain_id>` per Villain bucket;
   - betting-tree mode: `OOP_first::<villain_id>`, `OOP_vs_IP_bet::<villain_id>`,
     and `OOP_vs_IP_raise::<villain_id>` per Villain bucket.
+- **Absent vs `null`**: omit the field entirely to use the automatic baseline.
+  A present `null` (`"baseline_villain_strategy": null`) is **rejected**, not
+  treated as absent, so setting the field to `null` can never silently fall back
+  to the automatic baseline. An empty object `{}` is rejected for the same reason.
 - **Which information sets are required**: **every** Villain information set of
   the built tree must be assigned. A missing information set is rejected rather
   than quietly completed from the automatic baseline, so an incomplete explicit
@@ -271,7 +275,8 @@ Common errors and their causes:
   actions or does not sum to 1.
 - unknown information set: `baseline_hero_strategy` references an information set
   the tree does not have.
-- `baseline_villain_strategy` errors: it references an unknown Villain
+- `baseline_villain_strategy` errors: it is present but `null` or an empty object
+  (omit the field to use the automatic baseline), references an unknown Villain
   information set (or a Hero information set), omits a Villain information set the
   tree has, uses an unknown action, has a non-finite / negative / boolean
   probability, or does not sum to 1. The scenario form helpers also reject the
