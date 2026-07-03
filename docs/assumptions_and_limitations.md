@@ -85,8 +85,14 @@
 - Human opponent modeling
 - Strategy recommendation for real-money play
 - STT / ICM / push-fold implementation
-- CLI / file output / web app
+- Publicly hosted web service (the GUIs are local-only prototypes)
+- New GUI features (the five local editor/analyze prototypes are frozen;
+  bug fixes only)
 - Commercial paid product
+
+CLI runners, file exports (JSON / CSV / Markdown), and local-only GUI
+prototypes exist and are therefore no longer non-goals; they remain thin
+input/output layers over the same small-tree analysis core.
 
 ## Responsible publication notes
 

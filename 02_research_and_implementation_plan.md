@@ -173,7 +173,9 @@ repeated-poker-analysis/
     unit/ integration/ regression/ property/
 ```
 
-Generated results, commercial solver exports, and private hand histories are not committed. Every run writes a `run_manifest.json` containing input hashes, code revision, dependency lock, seed, utility units, rake rule, horizon assumptions, adaptation model, and solver/optimiser status.
+Implementation status note: the current implementation intentionally keeps a flat module layout (one module per concern directly under `src/repeated_poker/`, with CLI and GUI scripts under `scripts/`) instead of the subpackage split above. The flat layout is a deliberate choice while modules stay reviewable in isolation; the split remains the long-term shape and will be revisited when module size or coupling forces it.
+
+Generated results, commercial solver exports, and private hand histories are not committed. Every run writes a `run_manifest.json` containing input hashes, code revision, dependency lock, seed, utility units, rake rule, horizon assumptions, adaptation model, and solver/optimiser status. (Status: implemented as a `manifest` block embedded in the analysis exports -- scenario file SHA-256, format version, package version, best-effort git commit, UTC timestamp, and effective parameters -- rather than a separate `run_manifest.json`; dependency lock and seed are not applicable to the standard-library-only, deterministic analysis.)
 
 ## Development phases
 

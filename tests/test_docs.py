@@ -353,3 +353,60 @@ def test_gui_design_form_model_heading_is_not_stale():
     assert "Scenario form model (single-hand and hero-range)" not in _GUI_DESIGN.read_text(
         encoding="utf-8"
     )
+
+
+# ---------------------------------------------------------------------------
+# Scope consistency: docs must match the implemented feature set
+# ---------------------------------------------------------------------------
+
+_PLAN = _ROOT / "02_research_and_implementation_plan.md"
+
+
+def test_non_goals_do_not_list_implemented_features():
+    # CLI runners, file exports, and local GUI prototypes exist, so the old
+    # blanket "CLI / file output / web app" non-goal must not linger.
+    text = _ASSUMPTIONS.read_text(encoding="utf-8")
+    assert "## Current non-goals" in text
+    assert "CLI / file output / web app" not in text
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        # The web surface that remains out of scope is public hosting.
+        "Publicly hosted web service",
+        # The GUI freeze is an explicit current non-goal.
+        "New GUI features",
+        "bug fixes only",
+    ],
+)
+def test_non_goals_reflect_current_scope(phrase):
+    assert phrase in _ASSUMPTIONS.read_text(encoding="utf-8")
+
+
+def test_readme_gui_section_is_table_plus_design_doc_reference():
+    text = _README.read_text(encoding="utf-8")
+    # The five-mode port table stays as the single GUI overview...
+    assert "| Scenario mode | Command | Port | Editor | Analyze |" in text
+    # ...while the repetitive per-mode paragraphs live in the design doc now.
+    for stale in (
+        "A separate Hero-range editor prototype is available",
+        "A showdown-matrix editor prototype is available",
+        "An equity-matrix editor prototype is available",
+        "A betting-tree editor prototype is available",
+    ):
+        assert stale not in text
+
+
+def test_readme_and_gui_design_note_gui_freeze():
+    assert "frozen (bug fixes only)" in _README.read_text(encoding="utf-8")
+    assert "frozen at this slice" in _GUI_DESIGN.read_text(encoding="utf-8")
+
+
+def test_plan_architecture_notes_flat_layout_is_deliberate():
+    # The planned subpackage split is documented as long-term shape; the
+    # implemented flat layout must be flagged as a deliberate current choice.
+    text = _PLAN.read_text(encoding="utf-8")
+    assert "## Planned architecture" in text
+    assert "flat module layout" in text
+    assert "deliberate" in text
