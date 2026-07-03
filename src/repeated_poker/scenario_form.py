@@ -14,6 +14,12 @@ mode (:class:`EquityMatrixScenarioForm`), and the river betting-tree mode
 (:class:`BettingTreeScenarioForm`). All five JSON scenario modes now have a form
 model; the ``*_from_dict`` helpers each reject the other modes.
 
+The optional top-level ``baseline_villain_strategy`` (an explicit baseline
+Villain profile) is intentionally *not* modelled by these forms. Because the
+forms would drop any field they do not carry on a round-trip, every
+``*_from_dict`` helper rejects a scenario that contains it rather than losing it
+silently; such scenarios must be edited directly in the JSON.
+
 JSON stays the source of truth. The ``*_from_dict`` helpers reuse the existing
 :func:`repeated_poker.scenario_io.river_scenario_from_dict` parser (so loading a
 scenario into a form applies the same structural validation, with no duplicated
@@ -48,6 +54,26 @@ _NON_SINGLE_HAND_KEYS = (
     "equity_matrix",
     "betting_tree",
 )
+
+
+def _reject_baseline_villain_strategy(data: dict) -> None:
+    """Reject a scenario dict that carries an explicit ``baseline_villain_strategy``.
+
+    The form models (and their ``*_to_dict`` writers) do not carry the optional
+    top-level ``baseline_villain_strategy`` field, so a form round-trip
+    (``*_from_dict`` -> edit -> ``*_to_dict``) would silently drop it. Rather than
+    lose that data quietly, the form layer rejects the field outright: the GUI is
+    frozen and gains no control for it, and an explicit baseline Villain profile
+    must be authored and kept in the JSON directly. JSON stays the source of
+    truth (see ``docs/scenario_format_reference.md``).
+    """
+
+    if isinstance(data, dict) and "baseline_villain_strategy" in data:
+        raise ValueError(
+            "the scenario form does not support 'baseline_villain_strategy'; edit "
+            "it directly in the JSON scenario (the form would otherwise drop it on "
+            "save)"
+        )
 
 
 @dataclass(frozen=True)
@@ -101,6 +127,7 @@ def single_hand_form_from_dict(data: dict) -> SingleHandScenarioForm:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+    _reject_baseline_villain_strategy(data)
     forbidden = [key for key in _NON_SINGLE_HAND_KEYS if key in data]
     if forbidden:
         raise ValueError(
@@ -345,6 +372,7 @@ def hero_range_form_from_dict(data: dict) -> HeroRangeScenarioForm:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+    _reject_baseline_villain_strategy(data)
     if "hero_range" not in data:
         raise ValueError(
             "hero-range form requires a 'hero_range'; this is not a "
@@ -579,6 +607,7 @@ def showdown_matrix_form_from_dict(data: dict) -> ShowdownMatrixScenarioForm:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+    _reject_baseline_villain_strategy(data)
     if "villain_range" not in data or "showdown_matrix" not in data:
         raise ValueError(
             "showdown-matrix form requires both 'villain_range' and "
@@ -962,6 +991,7 @@ def equity_matrix_form_from_dict(data: dict) -> EquityMatrixScenarioForm:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+    _reject_baseline_villain_strategy(data)
     if "villain_range" not in data or "equity_matrix" not in data:
         raise ValueError(
             "equity-matrix form requires both 'villain_range' and "
@@ -1179,6 +1209,7 @@ def betting_tree_form_from_dict(data: dict) -> BettingTreeScenarioForm:
 
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
+    _reject_baseline_villain_strategy(data)
     if "betting_tree" not in data:
         raise ValueError(
             "betting-tree form requires a 'betting_tree'; this is not a "
