@@ -494,8 +494,9 @@ posture and wording guidelines.
 
 Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It runs
 the test suite and the key examples. The script uses only the Python standard
-library and does not perform version-control, network, or file-output
-operations.
+library and has no network or file-output side effects; the commands it runs may
+read the local git commit while building run manifests (never writing
+version-control state).
 
 ### Ranking report rows
 
