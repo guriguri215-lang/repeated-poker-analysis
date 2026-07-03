@@ -335,9 +335,9 @@ troubleshooting.
 
 See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of the
 GUI/form input layer over the existing CLI workflow (screens, MVP scope,
-validation and results UX, and implementation phases). Local-only prototype GUIs
-now exist for all five scenario modes (see the table below); the design document
-covers the intended shape and the parts still to come. The GUI-independent
+validation and results UX, implementation phases, and the per-mode details of
+the current prototypes). Local-only prototype GUIs exist for all five scenario
+modes (see the table below). The GUI-independent
 building blocks live in `repeated_poker.scenario_form`: `SingleHandScenarioForm`,
 `HeroRangeScenarioForm`, `ShowdownMatrixScenarioForm`, `EquityMatrixScenarioForm`,
 and `BettingTreeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
@@ -355,12 +355,20 @@ The local GUI prototypes (standard library only, bound to `127.0.0.1`) are:
 | equity-matrix | `python scripts/serve_equity_matrix_gui.py` | 8003 | yes | yes |
 | river betting-tree | `python scripts/serve_betting_tree_gui.py` | 8004 | yes | yes |
 
-Each uses `--port` (defaulting to the value above) and `--host` (default
-`127.0.0.1`). Every prototype is local-only and abstract: it edits, validates,
-saves (only after a parser/build round-trip), and analyzes a scenario from the
-current form values. Graphing, real-card equity, external solver imports, result
-persistence, and any new solver or model are out of scope. The per-mode
-paragraphs below describe each one.
+All five prototypes share the same shape and limits. Each uses `--port`
+(defaulting to the value above) and `--host` (default `127.0.0.1`), is built on
+the standard library only (no framework), and makes no external calls. Each
+loads a scenario JSON of its mode into an editable form, validates it, saves
+only after the form validates and a parser/build round-trip succeeds (with an
+overwrite checkbox and a strict-JSON option), and runs the analysis from the
+current form values via a local `/api/analyze` endpoint (horizon and discount
+overrides plus a Markdown toggle; the result shows the candidate counts, the
+resolved horizon/discount, and the Markdown summary). Everything stays
+local-only and abstract: graphing, real-card equity, external solver imports,
+result persistence, public serving, and any new solver or model are out of
+scope. The GUI surface is currently frozen (bug fixes only) while the research
+core is prioritised; per-mode editor details live in the design document
+linked above.
 
 To exercise the form models from the command line (a lower-level alternative to
 the GUIs), run
@@ -387,100 +395,6 @@ aliases such as `rake.rate` and `baseline.call`; the result is only written when
 the edited form validates and round-trips. Non-single-hand scenarios, unknown
 fields, and bad values are rejected with a clean `error:` message. The three form
 CLIs compose: `edit` -> stdout -> `inspect` / `roundtrip`.
-
-For a browser version of that single-hand edit-and-save flow, run
-`python scripts/serve_single_hand_gui.py --port 8000` and open
-`http://127.0.0.1:8000/`. This is a local-only prototype built on the standard
-library (no framework or dependency): load a single-hand scenario JSON into a
-form, edit the fields, **Validate**, and **Save JSON** (with an overwrite
-checkbox and a strict-JSON option). It binds to `127.0.0.1`, makes no external
-calls, reads/writes only the paths you type, refuses to overwrite without the
-checkbox, and saves only after the form validates and round-trips. Matrix and
-betting-tree editing are out of scope for the prototype (Hero-range editing has
-its own editor below).
-
-A separate Hero-range editor prototype is available with
-`python scripts/serve_hero_range_gui.py --port 8001` (open
-`http://127.0.0.1:8001/`). It loads a Hero-range-only scenario JSON into top-level
-fields plus a table of weighted Hero buckets, lets you add / remove / edit buckets,
-validates, and saves -- the same local-only, abstract, standard-library approach
-as the single-hand GUI. It now also runs the analysis from the current bucket form
-values (no file needed): the **Analyze** button posts the form to a local
-`/api/analyze` endpoint, exposing a horizon override, a discount override (both
-blank for the scenario default), and a "render Markdown summary" toggle, and shows
-the candidate counts (generated / kept / excluded), the resolved horizon and
-discount, and the Markdown summary (rendered as plain text). It remains
-Hero-range-only and abstract; matrix / betting-tree editing, graphing, and any new
-solver or model are out of scope.
-
-The single-hand prototype can also run the analysis from the current form values
-(no file needed): the **Analyze** button posts the form to a local `/api/analyze`
-endpoint,
-which validates it and runs `run_river_scenario_analysis`, then shows the
-candidate counts (generated / kept / excluded), the resolved horizon and discount,
-and the Markdown summary (rendered as plain text). The Analyze section also
-exposes options -- a horizon override, a discount override (both blank for the
-scenario default), and a "render Markdown summary" toggle -- and shows the result
-(scenario id, horizon/discount, and counts on one line) separately from the
-status and validation messages. It adds no graphing and no new solver or model,
-and remains single-hand only.
-
-A showdown-matrix editor prototype is available with
-`python scripts/serve_showdown_matrix_gui.py --port 8002` (open
-`http://127.0.0.1:8002/`). It loads a discrete `showdown_matrix` scenario JSON into
-top-level fields, a table of weighted Hero buckets, a table of weighted Villain
-buckets, and a Hero x Villain matrix of hero / villain / chop cells; you can add /
-remove / edit buckets, rebuild the matrix (matching cells are kept, new cells
-default to chop), validate, and save -- the same local-only, abstract,
-standard-library approach as the other editors. It now also runs the analysis from
-the current matrix form values (no file needed): the **Analyze** button posts the
-form to a local `/api/analyze` endpoint, exposing a horizon override, a discount
-override (both blank for the scenario default), and a "render Markdown summary"
-toggle, and shows the candidate counts (generated / kept / excluded), the resolved
-horizon and discount, and the Markdown summary (rendered as plain text). It remains
-showdown-matrix-only and abstract; equity-matrix and betting-tree editing,
-graphing, and any new solver or model are out of scope.
-
-An equity-matrix editor prototype is available with
-`python scripts/serve_equity_matrix_gui.py --port 8003` (open
-`http://127.0.0.1:8003/`). It loads an `equity_matrix` scenario JSON into top-level
-fields, a table of weighted Hero buckets, a table of weighted Villain buckets, and
-a Hero x Villain matrix whose cells are the Hero pot share before rake (a number in
-[0, 1]: 1.0 = Hero wins, 0.5 = chop, 0.0 = Villain wins); you can add / remove /
-edit buckets, rebuild the matrix (matching cells are kept, new cells default to
-0.5), validate, and save -- the same local-only, abstract, standard-library
-approach as the other editors. The equity values are abstract Hero pot shares taken
-from the JSON, not computed from real cards. It now also runs the analysis from the
-current matrix form values (no file needed): the **Analyze** button posts the form
-to a local `/api/analyze` endpoint, exposing a horizon override, a discount override
-(both blank for the scenario default), and a "render Markdown summary" toggle, and
-shows the candidate counts (generated / kept / excluded), the resolved horizon and
-discount, and the Markdown summary (rendered as plain text). It remains
-equity-matrix-only and abstract; betting-tree editing, graphing, any new solver or
-model, and real-card equity calculation are out of scope.
-
-A betting-tree editor prototype is available with
-`python scripts/serve_betting_tree_gui.py --port 8004` (open
-`http://127.0.0.1:8004/`). It loads a river `betting_tree` scenario JSON into
-top-level fields, the three betting-tree sizes (`oop_bet_size`,
-`ip_bet_after_check_size`, `ip_raise_size`), a matrix-type selector, a table of
-weighted Hero buckets with their two decision-point distributions (after an OOP
-check: check / bet; versus an OOP bet: call / fold / raise), a table of weighted
-Villain buckets, and a Hero x Villain matrix; you can add / remove / edit buckets,
-switch the matrix type, rebuild the matrix, validate, and save -- reusing the shared
-`scripts/gui_common.py` scaffolding and the same local-only, abstract,
-standard-library approach as the other editors. The matrix is read as `showdown`
-(hero / villain / chop cells) or `equity` (Hero pot share before rake in [0, 1]);
-switching type rebuilds the grid with default cells. It now also runs the analysis
-from the current form values (no file needed): the **Analyze** button posts the form
-to a local `/api/analyze` endpoint, exposing a horizon override, a discount override
-(both blank for the scenario default), and a "render Markdown summary" toggle, and
-shows the candidate counts (generated / kept / excluded), the resolved horizon and
-discount, and the Markdown summary (rendered as plain text). It remains
-betting-tree-only and abstract; graphing, any new solver or model, real-card equity
-calculation, and any betting-tree v2 expansion are out of scope. The abstract
-betting tree is river one-street (an IP stab after an OOP check and a single raise
-line); re-raises and multi-street trees are not supported.
 
 ### Public readiness
 

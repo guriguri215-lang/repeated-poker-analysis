@@ -335,6 +335,9 @@ as future cleanup.)
 With this slice all five scenario modes (single-hand, Hero-range-only,
 showdown-matrix, equity-matrix, betting-tree) have a local GUI covering
 load / edit / validate / save and running the analysis from the current form.
+The GUI surface is frozen at this slice for now (bug fixes only, no new GUI
+features) while the research core is prioritised; the phases below describe
+the intended long-term shape, not scheduled work.
 
 ## 10. Implementation phases after this doc
 
