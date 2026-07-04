@@ -10,7 +10,14 @@ from .exact_response import (
     enumerate_villain_pure_strategies,
     solve_exact_response,
 )
-from .candidates import HeroStrategyCandidate, generate_shift_candidates
+from .candidates import (
+    DEFAULT_MAX_CANDIDATES,
+    HeroStrategyCandidate,
+    ShiftComponent,
+    generate_candidate_library,
+    generate_multi_shift_candidates,
+    generate_shift_candidates,
+)
 from .candidate_filters import (
     INFO_SET_NOT_ALLOWED,
     REQUIRED_OBSERVATIONS_BELOW_LIMIT,
@@ -32,11 +39,13 @@ from .analysis_report import (
     SelectionConfiguration,
     SelectionSummaryCounts,
     build_candidate_analysis_report,
+    ev_observation_deadline_pareto_ids,
 )
 from .detection import (
     DetectionResult,
     calculate_candidate_local_detection,
     calculate_detection_time,
+    candidate_observation_distance,
     validate_detection_parameters,
 )
 from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
@@ -207,7 +216,11 @@ __all__ = [
     "FixedProfileValue",
     "evaluate_fixed_profile",
     "HeroStrategyCandidate",
+    "ShiftComponent",
+    "DEFAULT_MAX_CANDIDATES",
     "generate_shift_candidates",
+    "generate_multi_shift_candidates",
+    "generate_candidate_library",
     "INFO_SET_NOT_ALLOWED",
     "REQUIRED_OBSERVATIONS_BELOW_LIMIT",
     "CandidateFilterResult",
@@ -232,6 +245,7 @@ __all__ = [
     "SelectionConfiguration",
     "SelectionSummaryCounts",
     "build_candidate_analysis_report",
+    "ev_observation_deadline_pareto_ids",
     "format_candidate_analysis_markdown",
     "validate_markdown_max_rows",
     "CandidateAnalysisPipelineResult",
@@ -324,6 +338,7 @@ __all__ = [
     "DetectionConfiguration",
     "DetectionResult",
     "calculate_candidate_local_detection",
+    "candidate_observation_distance",
     "calculate_detection_time",
     "validate_detection_parameters",
     "L1_DISTANCE_EXCEEDS_LIMIT",

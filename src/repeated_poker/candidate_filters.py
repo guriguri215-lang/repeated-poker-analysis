@@ -169,7 +169,12 @@ def filter_candidates(
     for candidate in candidates:
         reasons: List[str] = []
 
-        if allowed is not None and candidate.info_set not in allowed:
+        # A multi-shift candidate changes several information sets; it is allowed
+        # only when every changed information set is in ``allowed`` (a single-shift
+        # candidate has exactly one, so this matches the original behaviour).
+        if allowed is not None and any(
+            info_set not in allowed for info_set in candidate.info_sets
+        ):
             reasons.append(INFO_SET_NOT_ALLOWED)
 
         if (

@@ -14,7 +14,11 @@ from typing import List, Optional, Sequence, Set
 
 from .analysis_report import CandidateAnalysisReport, build_candidate_analysis_report
 from .candidate_filters import CandidateFilterResult, filter_candidates
-from .candidates import HeroStrategyCandidate, generate_shift_candidates
+from .candidates import (
+    DEFAULT_MAX_CANDIDATES,
+    HeroStrategyCandidate,
+    generate_candidate_library,
+)
 from .comparison import CandidateComparisonReport, compare_candidates
 from .exact_response import DEFAULT_MAX_PURE_STRATEGIES
 from .game import GameTree, HeroStrategy, VillainStrategy
@@ -24,9 +28,17 @@ from .summary import format_candidate_analysis_markdown, validate_markdown_max_r
 
 @dataclass(frozen=True)
 class CandidateGenerationConfig:
-    """Configuration for the candidate-generation stage."""
+    """Configuration for the candidate-generation stage.
+
+    ``max_simultaneous_info_sets`` selects the candidate families: ``1`` (the
+    default) generates only single-information-set shifts, exactly as before;
+    ``2`` additionally generates the simultaneous two-information-set shift
+    candidates (M2-T2). Only ``1`` and ``2`` are supported for now.
+    """
 
     shift_amounts: Sequence[float]
+    max_simultaneous_info_sets: int = 1
+    max_candidates: int = DEFAULT_MAX_CANDIDATES
 
 
 @dataclass(frozen=True)
@@ -77,7 +89,7 @@ def run_candidate_analysis_pipeline(
 ) -> CandidateAnalysisPipelineResult:
     """Run candidate generation through to an optional Markdown summary.
 
-    Stages, in order: ``generate_shift_candidates`` -> ``filter_candidates``
+    Stages, in order: ``generate_candidate_library`` -> ``filter_candidates``
     (no-op when ``filtering`` is ``None``) -> ``compare_candidates`` over the
     kept candidates -> ``build_candidate_analysis_report`` (detection integrated
     when ``detection_log_likelihood_threshold`` is given) ->
@@ -105,8 +117,13 @@ def run_candidate_analysis_pipeline(
             "filtering.min_required_observations is given"
         )
 
-    generated_candidates = generate_shift_candidates(
-        tree, baseline_hero_strategy, generation.shift_amounts, tolerance=tolerance
+    generated_candidates = generate_candidate_library(
+        tree,
+        baseline_hero_strategy,
+        generation.shift_amounts,
+        max_simultaneous_info_sets=generation.max_simultaneous_info_sets,
+        tolerance=tolerance,
+        max_candidates=generation.max_candidates,
     )
 
     if filtering is None:

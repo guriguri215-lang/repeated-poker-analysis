@@ -76,6 +76,28 @@ def _reject_baseline_villain_strategy(data: dict) -> None:
         )
 
 
+def _reject_multi_shift_generation(data: dict) -> None:
+    """Reject a scenario whose ``candidate_generation`` requests multi-shift.
+
+    The form models carry only ``candidate_generation.shift_amounts``, so a form
+    round-trip would silently drop ``max_simultaneous_info_sets`` and revert the
+    analysis to single-information-set shifts. Rather than lose that setting
+    quietly, the form layer rejects it: the GUI is frozen and gains no control for
+    it, and a ``max_simultaneous_info_sets = 2`` scenario must be authored and kept
+    in the JSON directly.
+    """
+
+    if not isinstance(data, dict):
+        return
+    generation = data.get("candidate_generation")
+    if isinstance(generation, dict) and "max_simultaneous_info_sets" in generation:
+        raise ValueError(
+            "the scenario form does not support "
+            "'candidate_generation.max_simultaneous_info_sets'; edit it directly in "
+            "the JSON scenario (the form would otherwise drop it on save)"
+        )
+
+
 @dataclass(frozen=True)
 class FormValidationMessage:
     """One field-level validation message for display in a form.
@@ -128,6 +150,7 @@ def single_hand_form_from_dict(data: dict) -> SingleHandScenarioForm:
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
     _reject_baseline_villain_strategy(data)
+    _reject_multi_shift_generation(data)
     forbidden = [key for key in _NON_SINGLE_HAND_KEYS if key in data]
     if forbidden:
         raise ValueError(
@@ -373,6 +396,7 @@ def hero_range_form_from_dict(data: dict) -> HeroRangeScenarioForm:
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
     _reject_baseline_villain_strategy(data)
+    _reject_multi_shift_generation(data)
     if "hero_range" not in data:
         raise ValueError(
             "hero-range form requires a 'hero_range'; this is not a "
@@ -608,6 +632,7 @@ def showdown_matrix_form_from_dict(data: dict) -> ShowdownMatrixScenarioForm:
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
     _reject_baseline_villain_strategy(data)
+    _reject_multi_shift_generation(data)
     if "villain_range" not in data or "showdown_matrix" not in data:
         raise ValueError(
             "showdown-matrix form requires both 'villain_range' and "
@@ -992,6 +1017,7 @@ def equity_matrix_form_from_dict(data: dict) -> EquityMatrixScenarioForm:
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
     _reject_baseline_villain_strategy(data)
+    _reject_multi_shift_generation(data)
     if "villain_range" not in data or "equity_matrix" not in data:
         raise ValueError(
             "equity-matrix form requires both 'villain_range' and "
@@ -1210,6 +1236,7 @@ def betting_tree_form_from_dict(data: dict) -> BettingTreeScenarioForm:
     if not isinstance(data, dict):
         raise ValueError("scenario must be a JSON object")
     _reject_baseline_villain_strategy(data)
+    _reject_multi_shift_generation(data)
     if "betting_tree" not in data:
         raise ValueError(
             "betting-tree form requires a 'betting_tree'; this is not a "

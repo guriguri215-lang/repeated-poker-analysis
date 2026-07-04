@@ -195,28 +195,13 @@ def calculate_detection_time(
     )
 
 
-def calculate_candidate_local_detection(
+def _candidate_info_set_distributions(
     baseline_hero_strategy: HeroStrategy,
     candidate: HeroStrategyCandidate,
-    log_likelihood_threshold: float,
-    occurrence_probability_per_opportunity: Optional[float] = None,
-    tolerance: float = 1e-9,
-) -> DetectionResult:
-    """Estimate local detection at the candidate's own information set.
+    info_set: str,
+) -> tuple:
+    """Return the ``(baseline, candidate)`` action distributions at ``info_set``."""
 
-    The baseline and candidate Hero action distributions at
-    ``candidate.info_set`` are treated as the observable event distributions,
-    and :func:`calculate_detection_time` is applied to them.
-
-    This is a *local* model: it is conditional on reaching that information set
-    and observing an action there.  It deliberately ignores tree reach
-    probabilities (how often the information set is actually reached).  The
-    distribution distances computed here are observable-distribution distances,
-    which are a different concept from the strategy-space L1 distance carried by
-    the candidate.
-    """
-
-    info_set = candidate.info_set
     if info_set not in baseline_hero_strategy.probabilities:
         raise ValueError(
             f"baseline Hero strategy is missing information set {info_set!r}"
@@ -225,14 +210,115 @@ def calculate_candidate_local_detection(
         raise ValueError(
             f"candidate Hero strategy is missing information set {info_set!r}"
         )
-
-    baseline_distribution = baseline_hero_strategy.probabilities[info_set]
-    candidate_distribution = candidate.hero_strategy.probabilities[info_set]
-
-    return calculate_detection_time(
-        baseline=baseline_distribution,
-        candidate=candidate_distribution,
-        log_likelihood_threshold=log_likelihood_threshold,
-        occurrence_probability_per_opportunity=occurrence_probability_per_opportunity,
-        tolerance=tolerance,
+    return (
+        baseline_hero_strategy.probabilities[info_set],
+        candidate.hero_strategy.probabilities[info_set],
     )
+
+
+def _earliest_detection(results: "list[DetectionResult]") -> DetectionResult:
+    """Return the result for the information set detected earliest.
+
+    "Earliest" is the fewest ``required_observations`` (an information set whose
+    distribution is unchanged, ``required_observations is None``, sorts last as
+    never distinguished); ties break to the larger total-variation distance so
+    the choice is deterministic.
+    """
+
+    def sort_key(result: DetectionResult):
+        required = result.required_observations
+        required_rank = required if required is not None else math.inf
+        return (required_rank, -result.total_variation_distance)
+
+    return min(results, key=sort_key)
+
+
+def calculate_candidate_local_detection(
+    baseline_hero_strategy: HeroStrategy,
+    candidate: HeroStrategyCandidate,
+    log_likelihood_threshold: float,
+    occurrence_probability_per_opportunity: Optional[float] = None,
+    tolerance: float = 1e-9,
+) -> DetectionResult:
+    """Estimate local detection at the candidate's changed information set(s).
+
+    The baseline and candidate Hero action distributions at each information set
+    the candidate changes are treated as observable event distributions, and
+    :func:`calculate_detection_time` is applied to them.  A single-shift candidate
+    has one changed information set, so this reduces to the local estimate at that
+    set.  A multi-shift candidate (M2-T2) changes several information sets; this
+    reports the one detected *earliest* (fewest required observations), i.e. the
+    first information set at which the deviation becomes observable under this v0
+    local model.
+
+    This is a *local* model: it is conditional on reaching an information set and
+    observing an action there.  It deliberately ignores tree reach probabilities
+    (how often each information set is actually reached) and does not combine
+    evidence across information sets -- a reach-weighted / sequential model is
+    deferred to ``T_detect`` v1.  The distribution distances computed here are
+    observable-distribution distances, which are a different concept from the
+    strategy-space L1 distance carried by the candidate.
+    """
+
+    results = []
+    for info_set in candidate.info_sets:
+        baseline_distribution, candidate_distribution = (
+            _candidate_info_set_distributions(baseline_hero_strategy, candidate, info_set)
+        )
+        results.append(
+            calculate_detection_time(
+                baseline=baseline_distribution,
+                candidate=candidate_distribution,
+                log_likelihood_threshold=log_likelihood_threshold,
+                occurrence_probability_per_opportunity=(
+                    occurrence_probability_per_opportunity
+                ),
+                tolerance=tolerance,
+            )
+        )
+    return _earliest_detection(results)
+
+
+def candidate_observation_distance(
+    baseline_hero_strategy: HeroStrategy,
+    candidate: HeroStrategyCandidate,
+    tolerance: float = 1e-9,
+) -> float:
+    """Return an always-available observable distance for a candidate.
+
+    This is the total-variation distance between the baseline and candidate Hero
+    action distributions at the candidate's changed information set(s), and unlike
+    :func:`calculate_candidate_local_detection` it needs no detection threshold,
+    so it is defined for every candidate regardless of whether the (optional)
+    detection-time analysis is enabled.  It is used as the "observation distance"
+    axis of the M2-T2 trade-off Pareto frontier.
+
+    For a single-shift candidate it is the total-variation distance at the changed
+    information set.  For a multi-shift candidate it is the **maximum** over the
+    changed information sets -- the largest single-information-set observable
+    change.  This is an observable-distribution distance (a different concept from
+    the strategy-space L1 distance), and it uses no tree reach probabilities.
+    """
+
+    require_valid_tolerance(tolerance)
+    distances = []
+    for info_set in candidate.info_sets:
+        baseline_distribution, candidate_distribution = (
+            _candidate_info_set_distributions(baseline_hero_strategy, candidate, info_set)
+        )
+        if set(baseline_distribution) != set(candidate_distribution):
+            raise ValueError(
+                "baseline and candidate must cover the same event set at "
+                f"{info_set!r}; baseline events {sorted(baseline_distribution)} != "
+                f"candidate events {sorted(candidate_distribution)}"
+            )
+        _validate_distribution(baseline_distribution, "baseline", tolerance)
+        _validate_distribution(candidate_distribution, "candidate", tolerance)
+        distances.append(
+            0.5
+            * math.fsum(
+                abs(candidate_distribution[event] - baseline_distribution[event])
+                for event in baseline_distribution
+            )
+        )
+    return max(distances) if distances else 0.0

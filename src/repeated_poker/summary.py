@@ -21,11 +21,13 @@ _TABLE_HEADERS = [
     "info_set",
     "shift",
     "l1_distance",
+    "observation_distance",
     "fixed_hero_ev",
     "post_response_hero_ev_worst",
     "post_response_hero_ev_worst_diff",
     "robustly_profitable",
     "is_eligible",
+    "is_ev_obs_deadline_pareto",
     "t_deadline",
     "t_detect_estimated_opportunities",
     "detected_adaptation_delta_from_baseline",
@@ -62,24 +64,47 @@ def _format_value(value) -> str:
     return _escape(str(value))
 
 
-def _format_shift(row: CandidateAnalysisRow) -> str:
+def _format_component(component: dict) -> str:
     return (
-        f"{_escape(row.source_action)} -> {_escape(row.target_action)} "
-        f"({row.shift_amount:+g})"
+        f"{_escape(str(component['info_set']))}: "
+        f"{_escape(str(component['source_action']))} -> "
+        f"{_escape(str(component['target_action']))} "
+        f"({component['shift_amount']:+g})"
     )
+
+
+def _format_info_set(row: CandidateAnalysisRow) -> str:
+    """Information set cell: the single info set, or the joined multi-shift sets."""
+
+    if row.info_set is not None:
+        return _format_value(row.info_set)
+    return _escape(" + ".join(str(component["info_set"]) for component in row.shifts))
+
+
+def _format_shift(row: CandidateAnalysisRow) -> str:
+    """Shift cell: the single shift, or the joined multi-shift components."""
+
+    if row.shift_amount is not None:
+        return (
+            f"{_escape(str(row.source_action))} -> {_escape(str(row.target_action))} "
+            f"({row.shift_amount:+g})"
+        )
+    return " + ".join(_format_component(component) for component in row.shifts)
 
 
 def _row_cells(row: CandidateAnalysisRow) -> List[str]:
     return [
         _format_value(row.candidate_id),
-        _format_value(row.info_set),
+        _format_info_set(row),
         _format_shift(row),
         _format_value(row.l1_distance),
+        _format_value(row.observation_distance),
         _format_value(row.fixed_hero_ev),
         _format_value(row.post_response_hero_ev_worst),
         _format_value(row.post_response_hero_ev_worst_diff),
         _format_value(row.robustly_profitable),
         _format_value(row.is_eligible),
+        _format_value(row.is_ev_observation_deadline_pareto_candidate),
         _format_value(row.t_deadline),
         _format_value(row.t_detect_estimated_opportunities),
         _format_value(row.detected_adaptation_delta_from_baseline),
@@ -160,6 +185,10 @@ def format_candidate_analysis_markdown(
     lines.append(f"- excluded: {_format_value(counts.excluded)}")
     lines.append(f"- minimum_villain_ev: {_format_value(counts.minimum_villain_ev)}")
     lines.append(f"- pareto_frontier: {_format_value(counts.pareto_frontier)}")
+    lines.append(
+        "- ev_observation_deadline_pareto_frontier: "
+        f"{_format_value(counts.ev_observation_deadline_pareto_frontier)}"
+    )
     lines.append("")
 
     lines.append("### Candidate Rows")
@@ -195,6 +224,21 @@ def format_candidate_analysis_markdown(
     lines.append(
         "- The summary does not model full tree reach, real learning speed, or "
         "actual opponent adaptation."
+    )
+    lines.append(
+        "- `observation_distance` is the observable-distribution (total-variation) "
+        "distance at the changed information set(s); it is not a strategy-space "
+        "distance."
+    )
+    lines.append(
+        "- `is_ev_obs_deadline_pareto` marks the trade-off frontier over "
+        "post-response worst-case Hero EV (higher better), observation distance "
+        "(lower better), and `T_deadline` (higher better); it is a trade-off "
+        "surface, not an equilibrium or optimality claim."
+    )
+    lines.append(
+        "- For a multi-shift candidate the `info_set` / `shift` cells list every "
+        "changed information set; `candidate_id` also encodes the full combination."
     )
 
     return "\n".join(lines)
