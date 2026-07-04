@@ -75,6 +75,12 @@
 - `reach_weighted_v1` supports `actions_only` and `showdown_reveal`. The reveal
   model uses only builder-supplied public showdown annotations; fold terminals do
   not reveal private buckets.
+- Because `reach_weighted_v1` does not use private buckets unless they are
+  publicly revealed, it can be slower than a real observer with more
+  information. Because it assumes the candidate distribution `P1` is known
+  exactly, it can also be faster than a real observer that must estimate the
+  alternative. It is therefore neither an upper nor a lower bound on real
+  detection time.
 - A `t_detect_hands` value of `None` means no signal under the chosen observation
   model, not safety and not real-world undetectability.
 - It does not model real learning, memory, or statistical sophistication.

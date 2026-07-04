@@ -1,22 +1,27 @@
-"""Detection time ``T_detect`` v0: a small observable-distribution model.
+"""Detection-time diagnostics ``T_detect`` v0 and v1.
 
-``T_detect`` estimates how many observations Villain needs before it can
-statistically tell a candidate Hero policy apart from the baseline, using only
-*observable event distributions* (for example, action-frequency maps).  It is a
-sensitivity analysis, not a psychological model, not a real learning-speed
-estimate, and not a full opponent-adaptation model.  It is entirely separate
-from ``T_deadline`` (the economic adaptation deadline).
+``local_v0`` compares local observable event distributions at the candidate's
+changed information set. It is conditional on reaching that information set and
+does not use tree reach probabilities.
 
-The model compares two distributions over the same event set with the total
-variation distance and the Kullback-Leibler divergence ``D(candidate ||
-baseline)`` in nats, then turns the divergence into a required number of
-observations via a log-likelihood threshold.
+``reach_weighted_v1`` builds per-hand public observation distributions from
+root-to-terminal path probabilities under the baseline Villain profile and
+baseline or candidate Hero. It therefore includes within-spot reach in the
+one-hand distribution before applying the same KL direction,
+``D(candidate || baseline)``.
+
+Both methods are sensitivity analyses, not psychological models, not real
+learning-speed estimates, and not full opponent-adaptation models. They are
+entirely separate from ``T_deadline`` (the economic adaptation deadline).
+``reach_weighted_v1`` can be slower than a real observer with more information
+because it does not use private buckets, but it can also be faster because it
+assumes the candidate distribution ``P1`` is known exactly. It is therefore
+neither an upper nor a lower bound on real detection time.
 
 Strategy-space L1 distance and observable-distribution distance are different
 concepts: the L1 distance reported elsewhere measures how far two strategy
 vectors are, while the distances here measure how distinguishable two observed
-event distributions are.  This module does not use tree reach probabilities,
-CFR, or any learning simulation.
+event distributions are. This module does not use CFR or learning simulation.
 """
 
 from __future__ import annotations
@@ -104,7 +109,10 @@ class ReachWeightedDetectionResult:
     already includes reach probabilities. ``t_detect_hands`` is a rough
     diagnostic of an expected detection-time scale under the stated idealized
     sequential likelihood-ratio assumptions; it is not a real opponent-learning
-    model or a claim about actual detection.
+    model or a claim about actual detection. Since the public observer does not
+    use private buckets, v1 can be slower than a real observer with more
+    information; since it assumes ``P1`` is known exactly, it can also be faster.
+    It is neither an upper nor a lower bound on real detection time.
     """
 
     event_count: int
@@ -438,6 +446,9 @@ def calculate_candidate_reach_weighted_detection(
     ``occurrence_probability_per_opportunity`` is intentionally absent: one v1
     observation is already one hand/opportunity, so the returned
     ``t_detect_hands`` flows directly into the downstream timing comparison.
+    The estimate is neither an upper nor a lower bound on real detection time:
+    it omits private buckets unless revealed at showdown but assumes the
+    candidate distribution ``P1`` is known exactly.
     """
 
     resolved_model = resolve_detection_observation_model(

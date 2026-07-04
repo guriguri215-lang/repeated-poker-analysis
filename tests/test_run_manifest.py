@@ -10,6 +10,7 @@ import pytest
 
 import repeated_poker
 from repeated_poker import (
+    BatchScenarioAnalysisConfig,
     PACKAGE_VERSION,
     RESPONSE_MODE_WORST,
     RiverScenarioAnalysisConfig,
@@ -92,6 +93,24 @@ def test_manifest_parameters_follow_overrides():
     )
     assert overridden.manifest.parameters["horizon"] == 7
     assert overridden.horizon == 7
+
+
+def test_single_manifest_records_resolved_v1_observation_model():
+    result = run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+            markdown=False,
+        ),
+    )
+
+    assert (
+        result.pipeline_result.analysis_report.detection_configuration.observation_model
+        == "actions_only"
+    )
+    assert result.manifest.parameters["detection_method"] == "reach_weighted_v1"
+    assert result.manifest.parameters["detection_observation_model"] == "actions_only"
 
 
 def test_run_from_memory_has_null_sha256():
@@ -181,6 +200,25 @@ def test_batch_run_carries_batch_level_manifest(batch):
     # The per-scenario result still carries its own full manifest.
     (scenario_result,) = batch.results.values()
     assert scenario_result.manifest.scenario_sha256 == sha256_of_file(_SAMPLE)
+
+
+def test_batch_manifest_records_resolved_v1_observation_model():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+            markdown=False,
+        )
+    )
+    batch = run_batch_scenario_analysis(_SAMPLE, config)
+
+    assert batch.manifest.parameters["detection_method"] == "reach_weighted_v1"
+    assert batch.manifest.parameters["detection_observation_model"] == "actions_only"
+    (scenario_result,) = batch.results.values()
+    assert (
+        scenario_result.manifest.parameters["detection_observation_model"]
+        == "actions_only"
+    )
 
 
 def test_batch_json_export_contains_manifests(tmp_path, batch):

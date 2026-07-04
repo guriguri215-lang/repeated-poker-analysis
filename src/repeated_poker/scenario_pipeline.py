@@ -18,7 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Union
 
-from .detection import DEFAULT_MAX_DETECTION_TERMINALS, DETECTION_METHOD_LOCAL_V0
+from .detection import (
+    DEFAULT_MAX_DETECTION_TERMINALS,
+    DETECTION_METHOD_LOCAL_V0,
+    resolve_detection_observation_model,
+)
 from .exact_response import DEFAULT_MAX_PURE_STRATEGIES
 from .pipeline import (
     CandidateAnalysisPipelineResult,
@@ -219,6 +223,9 @@ def run_river_scenario_analysis(
     horizon = _resolve_horizon(resolved_scenario, config)
     discount = _resolve_discount(resolved_scenario, config)
     filtering = _build_filter_config(config)
+    resolved_detection_observation_model = resolve_detection_observation_model(
+        config.detection_method, config.detection_observation_model
+    )
 
     manifest = build_run_manifest(
         scenario_path=scenario_path,
@@ -236,7 +243,7 @@ def run_river_scenario_analysis(
                 config.detection_occurrence_probability_per_opportunity
             ),
             "detection_method": config.detection_method,
-            "detection_observation_model": config.detection_observation_model,
+            "detection_observation_model": resolved_detection_observation_model,
             "max_detection_terminals": config.max_detection_terminals,
             "tolerance": config.tolerance,
             "max_pure_strategies": config.max_pure_strategies,

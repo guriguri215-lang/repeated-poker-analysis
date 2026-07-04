@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from .detection import resolve_detection_observation_model
 from .run_manifest import RunManifest, build_run_manifest
 from .scenario_pipeline import (
     RiverScenarioAnalysisConfig,
@@ -283,6 +284,10 @@ def run_batch_scenario_analysis(
 
     config = config or BatchScenarioAnalysisConfig()
     paths = expand_scenario_inputs(inputs)
+    resolved_detection_observation_model = resolve_detection_observation_model(
+        config.analysis.detection_method,
+        config.analysis.detection_observation_model,
+    )
 
     manifest = build_run_manifest(
         parameters={
@@ -298,9 +303,7 @@ def run_batch_scenario_analysis(
                 config.analysis.detection_occurrence_probability_per_opportunity
             ),
             "detection_method": config.analysis.detection_method,
-            "detection_observation_model": (
-                config.analysis.detection_observation_model
-            ),
+            "detection_observation_model": resolved_detection_observation_model,
             "max_detection_terminals": config.analysis.max_detection_terminals,
             "tolerance": config.analysis.tolerance,
             "max_pure_strategies": config.analysis.max_pure_strategies,
