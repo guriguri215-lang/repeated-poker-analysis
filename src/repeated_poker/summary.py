@@ -30,6 +30,10 @@ _TABLE_HEADERS = [
     "is_ev_obs_deadline_pareto",
     "t_deadline",
     "t_detect_estimated_opportunities",
+    "t_detect_hands",
+    "detection_kl_per_hand_nats",
+    "detection_tv_per_hand",
+    "detection_time_basis",
     "detected_adaptation_delta_from_baseline",
     "detected_adaptation_is_at_least_baseline",
     "exclusion_reasons",
@@ -107,6 +111,10 @@ def _row_cells(row: CandidateAnalysisRow) -> List[str]:
         _format_value(row.is_ev_observation_deadline_pareto_candidate),
         _format_value(row.t_deadline),
         _format_value(row.t_detect_estimated_opportunities),
+        _format_value(row.t_detect_hands),
+        _format_value(row.detection_kl_per_hand_nats),
+        _format_value(row.detection_tv_per_hand),
+        _format_value(row.detection_time_basis),
         _format_value(row.detected_adaptation_delta_from_baseline),
         _format_value(row.detected_adaptation_is_at_least_baseline),
         _format_value(row.exclusion_reasons),
@@ -168,6 +176,8 @@ def format_candidate_analysis_markdown(
     lines.append("")
     lines.append("**Detection**")
     lines.append(f"- enabled: {_format_value(detection.enabled)}")
+    lines.append(f"- method: {_format_value(detection.method)}")
+    lines.append(f"- observation_model: {_format_value(detection.observation_model)}")
     lines.append(
         f"- log_likelihood_threshold: "
         f"{_format_value(detection.log_likelihood_threshold)}"
@@ -210,7 +220,7 @@ def format_candidate_analysis_markdown(
     lines.append("### Notes")
     lines.append("- `T_deadline` is an economic adaptation deadline.")
     lines.append(
-        "- `T_detect` is a local observable-distribution sensitivity estimate."
+        "- `T_detect` is a rough diagnostic of an expected detection-time scale."
     )
     lines.append(
         "- `t_detect_is_no_later_than_t_deadline` is only a timing comparison and "
@@ -222,8 +232,9 @@ def format_candidate_analysis_markdown(
         "estimated detection timing."
     )
     lines.append(
-        "- The summary does not model full tree reach, real learning speed, or "
-        "actual opponent adaptation."
+        "- `reach_weighted_v1` includes within-spot tree reach in the per-hand "
+        "observation distribution; cross-spot observation and real opponent "
+        "learning remain outside this summary."
     )
     lines.append(
         "- `observation_distance` is the observable-distribution (total-variation) "

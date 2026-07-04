@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Union
 
+from .detection import DEFAULT_MAX_DETECTION_TERMINALS, DETECTION_METHOD_LOCAL_V0
 from .exact_response import DEFAULT_MAX_PURE_STRATEGIES
 from .pipeline import (
     CandidateAnalysisPipelineResult,
@@ -56,6 +57,9 @@ class RiverScenarioAnalysisConfig:
     max_selection_l1_distance: Optional[float] = None
     detection_log_likelihood_threshold: Optional[float] = None
     detection_occurrence_probability_per_opportunity: Optional[float] = None
+    detection_method: str = DETECTION_METHOD_LOCAL_V0
+    detection_observation_model: Optional[str] = None
+    max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS
     filter_allowed_info_sets: Optional[List[str]] = None
     filter_max_l1_distance: Optional[float] = None
     filter_min_required_observations: Optional[int] = None
@@ -231,6 +235,9 @@ def run_river_scenario_analysis(
             "detection_occurrence_probability_per_opportunity": (
                 config.detection_occurrence_probability_per_opportunity
             ),
+            "detection_method": config.detection_method,
+            "detection_observation_model": config.detection_observation_model,
+            "max_detection_terminals": config.max_detection_terminals,
             "tolerance": config.tolerance,
             "max_pure_strategies": config.max_pure_strategies,
             "ranking_criterion": config.ranking_criterion,
@@ -254,10 +261,14 @@ def run_river_scenario_analysis(
         detection_occurrence_probability_per_opportunity=(
             config.detection_occurrence_probability_per_opportunity
         ),
+        detection_method=config.detection_method,
+        detection_observation_model=config.detection_observation_model,
+        terminal_reveals=build.terminal_reveals,
         filtering=filtering,
         render_markdown=config.markdown,
         markdown_max_rows=config.markdown_max_rows,
         tolerance=config.tolerance,
+        max_detection_terminals=config.max_detection_terminals,
         max_pure_strategies=config.max_pure_strategies,
     )
 

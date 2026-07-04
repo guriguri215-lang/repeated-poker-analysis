@@ -13,8 +13,13 @@ from repeated_poker import (
     CandidateComparison,
     CandidateComparisonReport,
     FixedProfileValue,
+    GameTree,
     HeroStrategy,
     HeroStrategyCandidate,
+    HeroNode,
+    TerminalNode,
+    VillainNode,
+    VillainStrategy,
     build_candidate_analysis_report,
     calculate_candidate_adaptation_deadline,
     compare_candidates,
@@ -361,6 +366,11 @@ _DETECTION_KEYS = [
     "detection_kl_divergence_nats",
     "detection_required_observations",
     "detection_estimated_opportunities",
+    "detection_kl_per_hand_nats",
+    "detection_tv_per_hand",
+    "detection_baseline_impossible_mass_per_hand",
+    "t_detect_hands",
+    "detection_time_basis",
     "t_detect_estimated_opportunities",
     "t_detect_is_no_later_than_t_deadline",
     "detected_adaptation_opportunity",
@@ -469,6 +479,174 @@ def test_to_dict_includes_detection_configuration():
     as_dict = json.loads(json.dumps(report.to_dict()))
     assert as_dict["detection_configuration"]["enabled"] is True
     assert as_dict["detection_configuration"]["log_likelihood_threshold"] == 3.0
+    assert as_dict["detection_configuration"]["method"] == "local_v0"
+    assert as_dict["detection_configuration"]["observation_model"] is None
+
+
+def _v1_report_fixture(horizon=3):
+    check = TerminalNode("T_check", 0.0, 0.0, 0.0)
+    call = TerminalNode("T_bet_call", 0.0, 0.0, 0.0)
+    fold = TerminalNode("T_bet_fold", 0.0, 0.0, 0.0)
+    hero = HeroNode(
+        node_id="ip",
+        info_set="IP_vs_bet",
+        actions=(("call", call), ("fold", fold)),
+    )
+    tree = GameTree(
+        root=VillainNode(
+            node_id="oop",
+            info_set="OOP",
+            actions=(("check", check), ("bet", hero)),
+        )
+    )
+    baseline_hero = HeroStrategy({"IP_vs_bet": {"call": 0.5, "fold": 0.5}})
+    comparison = _detection_comparison(
+        "c",
+        "IP_vs_bet",
+        {"call": 0.7, "fold": 0.3},
+        fixed_hero_ev=2.0,
+        ev_h_worst=0.0,
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    villain = VillainStrategy({"OOP": {"check": 0.5, "bet": 0.5}})
+    terminal_reveals = {"T_check": (), "T_bet_call": (), "T_bet_fold": None}
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=horizon,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=baseline_hero,
+        tree=tree,
+        baseline_villain_strategy=villain,
+        detection_log_likelihood_threshold=3.0,
+        detection_method="reach_weighted_v1",
+        terminal_reveals=terminal_reveals,
+    )
+    return report
+
+
+def test_reach_weighted_v1_report_fields_and_downstream_clamp():
+    report = _v1_report_fixture(horizon=3)
+    row = report.rows[0]
+
+    assert report.detection_configuration.enabled is True
+    assert report.detection_configuration.method == "reach_weighted_v1"
+    assert report.detection_configuration.observation_model == "actions_only"
+    # v0 local fields are intentionally blank under v1.
+    assert row.detection_total_variation_distance is None
+    assert row.detection_kl_divergence_nats is None
+    assert row.detection_required_observations is None
+    assert row.detection_estimated_opportunities is None
+    # v1 per-hand fields are populated and drive the downstream comparison.
+    assert row.detection_kl_per_hand_nats == pytest.approx(
+        0.04114143925252589, abs=1e-12
+    )
+    assert row.detection_tv_per_hand == pytest.approx(0.1)
+    assert row.detection_baseline_impossible_mass_per_hand == pytest.approx(0.0)
+    assert row.t_detect_hands == 73
+    assert row.detection_time_basis == "sprt_kl"
+    assert row.t_detect_estimated_opportunities == row.t_detect_hands
+    assert row.detected_adaptation_opportunity == 4  # horizon + 1 clamp
+
+
+def test_reach_weighted_v1_validation_rejections():
+    comparison_report = _report(
+        [_detection_comparison("c", "H", {"check": 0.5, "bet": 0.5}, 2.0, 0.0)]
+    )
+    baseline = HeroStrategy({"H": {"check": 1.0, "bet": 0.0}})
+
+    with pytest.raises(ValueError, match="occurrence_probability"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            baseline_hero_strategy=baseline,
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_method="reach_weighted_v1",
+        )
+
+    with pytest.raises(ValueError, match="detection_observation_model"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            detection_observation_model="actions_only",
+        )
+
+    with pytest.raises(ValueError, match="tree is required"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            baseline_hero_strategy=baseline,
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+        )
+
+    report = _v1_report_fixture(horizon=3)
+    # Reuse the known-valid report's comparison objects to exercise the remaining
+    # guards without duplicating the tree fixture here.
+    comparison_report = CandidateComparisonReport(
+        baseline_value=report.baseline_value,
+        comparisons=[
+            _detection_comparison(
+                "c",
+                "IP_vs_bet",
+                {"call": 0.7, "fold": 0.3},
+                fixed_hero_ev=2.0,
+                ev_h_worst=0.0,
+            )
+        ],
+    )
+    check = TerminalNode("T_check", 0.0, 0.0, 0.0)
+    call = TerminalNode("T_bet_call", 0.0, 0.0, 0.0)
+    fold = TerminalNode("T_bet_fold", 0.0, 0.0, 0.0)
+    tree = GameTree(
+        root=VillainNode(
+            "oop",
+            "OOP",
+            (
+                ("check", check),
+                (
+                    "bet",
+                    HeroNode("ip", "IP_vs_bet", (("call", call), ("fold", fold))),
+                ),
+            ),
+        )
+    )
+    villain = VillainStrategy({"OOP": {"check": 0.5, "bet": 0.5}})
+    baseline_hero = HeroStrategy({"IP_vs_bet": {"call": 0.5, "fold": 0.5}})
+
+    with pytest.raises(ValueError, match="baseline_villain_strategy"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+        )
+
+    with pytest.raises(ValueError, match="terminal_reveals"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            baseline_villain_strategy=villain,
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+            detection_observation_model="showdown_reveal",
+        )
+
+    with pytest.raises(ValueError, match="max_detection_terminals"):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            baseline_villain_strategy=villain,
+            detection_log_likelihood_threshold=3.0,
+            detection_method="reach_weighted_v1",
+            max_detection_terminals=2,
+        )
 
 
 def test_t_detect_no_later_than_deadline_is_not_economic_safety():

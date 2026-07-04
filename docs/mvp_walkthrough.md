@@ -16,7 +16,7 @@ tutorial on poker strategy and not promotional material.
   - post-response Hero EV worst/best
   - selection labels
   - `T_deadline`
-  - local `T_detect`
+  - `T_detect` (`local_v0` by default, `reach_weighted_v1` opt-in)
 - Can render a Markdown summary.
 - Provides a high-level pipeline API.
 
@@ -24,7 +24,9 @@ tutorial on poker strategy and not promotional material.
 
 - It is **not a full poker solver**.
 - It does not import real solver ranges yet.
-- It does not model full tree reach for detection.
+- It does not model cross-spot detection or real opponent learning. Within one
+  analysed spot, opt-in `reach_weighted_v1` does include root-to-terminal reach
+  in a per-hand public observation distribution.
 - It does not model real opponent psychology or learning speed.
 - It does not guarantee profitable poker play.
 - It does not provide gambling, bankroll, or financial advice.
@@ -122,8 +124,10 @@ table row per *kept* candidate. The key fields:
   adapt while the locked policy stays at least as valuable as baseline, or `-`
   when no such opportunity exists.
 - **t_detect_estimated_opportunities**: the estimated number of opportunities
-  before the candidate is statistically distinguishable from baseline at its own
-  information set (only present when an occurrence probability is supplied).
+  before the candidate is statistically distinguishable from baseline under the
+  selected `T_detect` method. With `local_v0`, this is present only when an
+  occurrence probability is supplied; with `reach_weighted_v1`, it equals
+  `t_detect_hands`.
 - **detected_adaptation_delta_from_baseline**: the Hero total-EV gap from
   baseline if Villain adapts at the estimated detection opportunity.
 - **detected_adaptation_is_at_least_baseline**: whether Hero is at least at
@@ -137,9 +141,10 @@ These two measures answer different questions and must not be conflated:
 
 - `T_deadline` is an **economic adaptation deadline**: how late Villain can
   switch before the locked policy stops beating baseline.
-- `T_detect` is a **local observable-distribution sensitivity estimate**: how
-  many observations Villain plausibly needs to tell the candidate apart from
-  baseline at the candidate's own information set.
+- `T_detect` is a rough diagnostic of an expected detection-time scale.
+  `local_v0` is conditional on reaching the candidate's own information set.
+  `reach_weighted_v1` is opt-in and builds a per-hand public observation
+  distribution from root-to-terminal path probabilities.
 - `t_detect_is_no_later_than_t_deadline` is **only a timing comparison**
   (`estimated_opportunities <= t_deadline`). Because `t_deadline` is just the
   latest passing opportunity and Hero EV need not be monotone in the switching
@@ -148,9 +153,8 @@ These two measures answer different questions and must not be conflated:
   - `detected_adaptation_delta_from_baseline`
   - `detected_adaptation_is_at_least_baseline`
 
-`T_detect` here is a local model conditional on reaching the candidate's
-information set; it ignores tree reach probability and does not model real
-opponent learning.
+`T_detect` is not a real opponent-learning model. A `None` detection estimate
+means no signal under the chosen observation model, not real-world safety.
 
 ## Motivating nuts-chop steal regression
 

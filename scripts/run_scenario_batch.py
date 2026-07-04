@@ -86,6 +86,41 @@ def _parse_args(argv):
         help="limit each scenario's ranking section to the top K rows",
     )
     parser.add_argument(
+        "--detection-log-likelihood-threshold",
+        dest="detection_log_likelihood_threshold",
+        type=float,
+        default=None,
+        help="enable T_detect with this log-likelihood threshold in nats",
+    )
+    parser.add_argument(
+        "--detection-occurrence-probability-per-opportunity",
+        dest="detection_occurrence_probability_per_opportunity",
+        type=float,
+        default=None,
+        help="local_v0 only: convert required observations to opportunities",
+    )
+    parser.add_argument(
+        "--detection-method",
+        dest="detection_method",
+        default="local_v0",
+        choices=("local_v0", "reach_weighted_v1"),
+        help="T_detect method (default: local_v0)",
+    )
+    parser.add_argument(
+        "--detection-observation-model",
+        dest="detection_observation_model",
+        default=None,
+        choices=("actions_only", "showdown_reveal"),
+        help="reach_weighted_v1 observation model (default: actions_only)",
+    )
+    parser.add_argument(
+        "--max-detection-terminals",
+        dest="max_detection_terminals",
+        type=int,
+        default=100000,
+        help="safety limit for reach_weighted_v1 terminal enumeration",
+    )
+    parser.add_argument(
         "--continue-on-error",
         dest="continue_on_error",
         action="store_true",
@@ -162,6 +197,13 @@ def main(argv) -> int:
         markdown=args.markdown,
         ranking_criterion=args.rank_by,
         ranking_top_k=args.top_k,
+        detection_log_likelihood_threshold=args.detection_log_likelihood_threshold,
+        detection_occurrence_probability_per_opportunity=(
+            args.detection_occurrence_probability_per_opportunity
+        ),
+        detection_method=args.detection_method,
+        detection_observation_model=args.detection_observation_model,
+        max_detection_terminals=args.max_detection_terminals,
     )
     config = BatchScenarioAnalysisConfig(
         analysis=analysis, continue_on_error=args.continue_on_error

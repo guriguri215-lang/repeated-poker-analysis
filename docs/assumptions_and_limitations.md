@@ -62,10 +62,21 @@
 
 ## T_detect assumptions
 
-- `T_detect` is based on local observable event distributions.
-- The current local candidate detection is conditional on reaching the
-  candidate's information set and observing an action there.
-- It does not model full tree reach probability.
+- `T_detect` is a rough diagnostic of an expected detection-time scale, not a
+  real opponent-learning model.
+- The default `local_v0` model is based on local observable event distributions.
+  It is conditional on reaching the candidate's information set and observing an
+  action there.
+- The opt-in `reach_weighted_v1` model builds a per-hand public observation
+  distribution from root-to-terminal path probabilities, using the baseline
+  Villain profile and either baseline Hero or candidate Hero. One observation is
+  one hand, so `t_detect_hands` is directly comparable to `T_deadline`
+  opportunities.
+- `reach_weighted_v1` supports `actions_only` and `showdown_reveal`. The reveal
+  model uses only builder-supplied public showdown annotations; fold terminals do
+  not reveal private buckets.
+- A `t_detect_hands` value of `None` means no signal under the chosen observation
+  model, not safety and not real-world undetectability.
 - It does not model real learning, memory, or statistical sophistication.
 - KL-based estimates depend on the chosen log-likelihood threshold.
 
@@ -84,7 +95,8 @@
 - Full poker solver
 - Real solver range import
 - Large-scale range solving
-- Full tree reach detection
+- Cross-spot reach detection and real opponent-learning models (within-spot
+  reach-weighted `T_detect` v1 is implemented)
 - Human opponent modeling
 - Strategy recommendation for real-money play
 - STT / ICM / push-fold implementation

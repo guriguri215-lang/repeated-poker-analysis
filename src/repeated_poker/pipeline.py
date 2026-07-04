@@ -20,6 +20,11 @@ from .candidates import (
     generate_candidate_library,
 )
 from .comparison import CandidateComparisonReport, compare_candidates
+from .detection import (
+    DEFAULT_MAX_DETECTION_TERMINALS,
+    DETECTION_METHOD_LOCAL_V0,
+    TerminalReveals,
+)
 from .exact_response import DEFAULT_MAX_PURE_STRATEGIES
 from .game import GameTree, HeroStrategy, VillainStrategy
 from .repeated import DEFAULT_MAX_HORIZON, RESPONSE_MODE_WORST
@@ -80,11 +85,15 @@ def run_candidate_analysis_pipeline(
     max_selection_l1_distance: Optional[float] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
     detection_occurrence_probability_per_opportunity: Optional[float] = None,
+    detection_method: str = DETECTION_METHOD_LOCAL_V0,
+    detection_observation_model: Optional[str] = None,
+    terminal_reveals: Optional[TerminalReveals] = None,
     filtering: Optional[CandidateFilterConfig] = None,
     render_markdown: bool = True,
     markdown_max_rows: Optional[int] = None,
     tolerance: float = 1e-9,
     max_horizon: int = DEFAULT_MAX_HORIZON,
+    max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
     max_pure_strategies: int = DEFAULT_MAX_PURE_STRATEGIES,
 ) -> CandidateAnalysisPipelineResult:
     """Run candidate generation through to an optional Markdown summary.
@@ -158,10 +167,16 @@ def run_candidate_analysis_pipeline(
         tolerance=tolerance,
         max_horizon=max_horizon,
         baseline_hero_strategy=baseline_hero_strategy,
+        tree=tree,
+        baseline_villain_strategy=baseline_villain_strategy,
         detection_log_likelihood_threshold=detection_log_likelihood_threshold,
         detection_occurrence_probability_per_opportunity=(
             detection_occurrence_probability_per_opportunity
         ),
+        detection_method=detection_method,
+        detection_observation_model=detection_observation_model,
+        terminal_reveals=terminal_reveals,
+        max_detection_terminals=max_detection_terminals,
     )
 
     markdown_summary: Optional[str]

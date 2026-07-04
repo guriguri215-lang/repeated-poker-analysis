@@ -23,13 +23,43 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional, Tuple
 
 from .candidates import HeroStrategyCandidate
-from .game import HeroStrategy, require_finite, require_valid_tolerance
+from .game import (
+    ChanceNode,
+    GameTree,
+    HeroNode,
+    HeroStrategy,
+    TerminalNode,
+    VillainNode,
+    VillainStrategy,
+    iter_terminals,
+    require_finite,
+    require_valid_tolerance,
+    validate_hero_strategy,
+    validate_villain_strategy,
+)
 
 # A distribution over observable events (e.g. action name -> probability).
 EventDistribution = Dict[str, float]
+ObservationKey = Tuple[object, ...]
+ObservationDistribution = Dict[ObservationKey, float]
+TerminalReveals = Mapping[str, Optional[Tuple[str, ...]]]
+
+DETECTION_METHOD_LOCAL_V0 = "local_v0"
+DETECTION_METHOD_REACH_WEIGHTED_V1 = "reach_weighted_v1"
+DETECTION_METHODS = (DETECTION_METHOD_LOCAL_V0, DETECTION_METHOD_REACH_WEIGHTED_V1)
+
+OBSERVATION_MODEL_ACTIONS_ONLY = "actions_only"
+OBSERVATION_MODEL_SHOWDOWN_REVEAL = "showdown_reveal"
+OBSERVATION_MODELS = (OBSERVATION_MODEL_ACTIONS_ONLY, OBSERVATION_MODEL_SHOWDOWN_REVEAL)
+
+DETECTION_TIME_BASIS_SPRT_KL = "sprt_kl"
+DETECTION_TIME_BASIS_BASELINE_IMPOSSIBLE = "baseline_impossible_event"
+DEFAULT_MAX_DETECTION_TERMINALS = 100_000
+
+_OBSERVATION_MODEL_TERMINAL_PATH = "_terminal_path"
 
 
 @dataclass(frozen=True)
@@ -64,6 +94,45 @@ class DetectionResult:
         }
 
 
+@dataclass(frozen=True)
+class ReachWeightedDetectionResult:
+    """The opt-in reach-weighted per-hand ``T_detect`` v1 estimate.
+
+    One observation is one hand: the full root-to-terminal public observation
+    distribution is built under the baseline Villain profile and either the
+    baseline or candidate Hero profile. The KL value is therefore per hand and
+    already includes reach probabilities. ``t_detect_hands`` is a rough
+    diagnostic of an expected detection-time scale under the stated idealized
+    sequential likelihood-ratio assumptions; it is not a real opponent-learning
+    model or a claim about actual detection.
+    """
+
+    event_count: int
+    total_variation_per_hand: float
+    kl_per_hand_nats: float
+    log_likelihood_threshold: float
+    baseline_impossible_mass_per_hand: float
+    t_detect_hands: Optional[int]
+    detection_time_basis: Optional[str]
+    observation_model: str
+
+    def to_dict(self) -> dict:
+        """Return a summary dict with English keys."""
+
+        return {
+            "event_count": self.event_count,
+            "total_variation_per_hand": self.total_variation_per_hand,
+            "kl_per_hand_nats": self.kl_per_hand_nats,
+            "log_likelihood_threshold": self.log_likelihood_threshold,
+            "baseline_impossible_mass_per_hand": (
+                self.baseline_impossible_mass_per_hand
+            ),
+            "t_detect_hands": self.t_detect_hands,
+            "detection_time_basis": self.detection_time_basis,
+            "observation_model": self.observation_model,
+        }
+
+
 def _validate_distribution(
     distribution: EventDistribution, name: str, tolerance: float
 ) -> None:
@@ -78,6 +147,70 @@ def _validate_distribution(
     total = math.fsum(distribution.values())
     if abs(total - 1.0) > tolerance:
         raise ValueError(f"{name} sums to {total}, expected 1")
+
+
+def validate_detection_method(method: str) -> None:
+    """Validate the detection method selector."""
+
+    if not isinstance(method, str):
+        raise ValueError(f"detection_method must be a string, got {method!r}")
+    if method not in DETECTION_METHODS:
+        raise ValueError(
+            "detection_method must be one of "
+            f"{DETECTION_METHODS}, got {method!r}"
+        )
+
+
+def resolve_detection_observation_model(
+    method: str, observation_model: Optional[str]
+) -> Optional[str]:
+    """Validate and resolve the observation-model selector.
+
+    ``local_v0`` does not use an observation-model switch, so any non-``None``
+    value is rejected. ``reach_weighted_v1`` defaults ``None`` to
+    ``actions_only`` and otherwise accepts ``actions_only`` or
+    ``showdown_reveal``.
+    """
+
+    validate_detection_method(method)
+    if method == DETECTION_METHOD_LOCAL_V0:
+        if observation_model is not None:
+            raise ValueError(
+                "detection_observation_model is only valid with "
+                "detection_method='reach_weighted_v1'"
+            )
+        return None
+
+    if observation_model is None:
+        return OBSERVATION_MODEL_ACTIONS_ONLY
+    if not isinstance(observation_model, str):
+        raise ValueError(
+            "detection_observation_model must be a string or None, got "
+            f"{observation_model!r}"
+        )
+    if observation_model not in OBSERVATION_MODELS:
+        raise ValueError(
+            "detection_observation_model must be one of "
+            f"{OBSERVATION_MODELS}, got {observation_model!r}"
+        )
+    return observation_model
+
+
+def validate_max_detection_terminals(max_detection_terminals: int) -> None:
+    """Validate the terminal-count guard for reach-weighted detection."""
+
+    if isinstance(max_detection_terminals, bool) or not isinstance(
+        max_detection_terminals, int
+    ):
+        raise ValueError(
+            "max_detection_terminals must be an int, got "
+            f"{max_detection_terminals!r}"
+        )
+    if max_detection_terminals < 1:
+        raise ValueError(
+            "max_detection_terminals must be at least 1, got "
+            f"{max_detection_terminals}"
+        )
 
 
 def validate_detection_parameters(
@@ -277,6 +410,291 @@ def calculate_candidate_local_detection(
             )
         )
     return _earliest_detection(results)
+
+
+def calculate_candidate_reach_weighted_detection(
+    tree: GameTree,
+    baseline_hero_strategy: HeroStrategy,
+    candidate: HeroStrategyCandidate,
+    baseline_villain_strategy: VillainStrategy,
+    log_likelihood_threshold: float,
+    observation_model: Optional[str] = None,
+    terminal_reveals: Optional[TerminalReveals] = None,
+    max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
+    tolerance: float = 1e-9,
+) -> ReachWeightedDetectionResult:
+    """Estimate opt-in reach-weighted per-hand detection for one candidate.
+
+    The model builds two one-hand observation distributions over terminal paths:
+    ``P0`` under the baseline Hero strategy and ``P1`` under the candidate Hero
+    strategy, with the same fixed baseline Villain profile in both. Public
+    observations are selected by ``observation_model``:
+
+    * ``actions_only`` (the default) groups paths by public action sequence.
+    * ``showdown_reveal`` additionally refines showdown terminal classes by the
+      builder-supplied ``terminal_reveals`` annotation. Fold terminals must have
+      ``None`` and reveal tuples are used exactly as supplied by the builder.
+
+    ``occurrence_probability_per_opportunity`` is intentionally absent: one v1
+    observation is already one hand/opportunity, so the returned
+    ``t_detect_hands`` flows directly into the downstream timing comparison.
+    """
+
+    resolved_model = resolve_detection_observation_model(
+        DETECTION_METHOD_REACH_WEIGHTED_V1, observation_model
+    )
+    validate_detection_parameters(log_likelihood_threshold, None, tolerance)
+    validate_max_detection_terminals(max_detection_terminals)
+    _require_terminal_count_within_limit(tree, max_detection_terminals)
+    validate_hero_strategy(tree, baseline_hero_strategy, tolerance=tolerance)
+    validate_hero_strategy(tree, candidate.hero_strategy, tolerance=tolerance)
+    validate_villain_strategy(tree, baseline_villain_strategy, tolerance=tolerance)
+
+    baseline, shifted = _candidate_observation_distributions(
+        tree,
+        baseline_hero_strategy,
+        candidate.hero_strategy,
+        baseline_villain_strategy,
+        observation_model=resolved_model,
+        terminal_reveals=terminal_reveals,
+        tolerance=tolerance,
+    )
+    return calculate_reach_weighted_detection_time_from_distributions(
+        baseline,
+        shifted,
+        log_likelihood_threshold=log_likelihood_threshold,
+        observation_model=resolved_model,
+        tolerance=tolerance,
+    )
+
+
+def calculate_reach_weighted_detection_time_from_distributions(
+    baseline: ObservationDistribution,
+    candidate: ObservationDistribution,
+    log_likelihood_threshold: float,
+    observation_model: str = OBSERVATION_MODEL_ACTIONS_ONLY,
+    tolerance: float = 1e-9,
+) -> ReachWeightedDetectionResult:
+    """Compute per-hand TV/KL and the v1 ``T_detect`` estimate.
+
+    Unlike the v0 helper, the two distributions may be sparse over different
+    observation keys. Missing keys are treated as exact zero probability, which
+    is required for the baseline-impossible-event branch.
+    """
+
+    if observation_model not in OBSERVATION_MODELS and (
+        observation_model != _OBSERVATION_MODEL_TERMINAL_PATH
+    ):
+        raise ValueError(f"unknown observation_model {observation_model!r}")
+    validate_detection_parameters(log_likelihood_threshold, None, tolerance)
+    _validate_observation_distribution(baseline, "baseline", tolerance)
+    _validate_observation_distribution(candidate, "candidate", tolerance)
+
+    events = sorted(set(baseline) | set(candidate), key=repr)
+    total_variation = 0.5 * math.fsum(
+        abs(candidate.get(event, 0.0) - baseline.get(event, 0.0))
+        for event in events
+    )
+
+    baseline_impossible_mass = math.fsum(
+        candidate.get(event, 0.0)
+        for event in events
+        if baseline.get(event, 0.0) == 0.0 and candidate.get(event, 0.0) > 0.0
+    )
+
+    if baseline_impossible_mass > 0.0:
+        kl_per_hand = math.inf
+        t_detect_hands = math.ceil(1.0 / baseline_impossible_mass)
+        detection_time_basis: Optional[str] = DETECTION_TIME_BASIS_BASELINE_IMPOSSIBLE
+    else:
+        kl_per_hand = 0.0
+        for event in events:
+            candidate_p = candidate.get(event, 0.0)
+            if candidate_p == 0.0:
+                continue
+            baseline_p = baseline.get(event, 0.0)
+            kl_per_hand += candidate_p * math.log(candidate_p / baseline_p)
+        if -tolerance <= kl_per_hand < 0.0:
+            kl_per_hand = 0.0
+        if kl_per_hand < 0.0:
+            raise ValueError(
+                f"per-hand KL was negative beyond tolerance: {kl_per_hand}"
+            )
+        if kl_per_hand == 0.0:
+            t_detect_hands = None
+            detection_time_basis = None
+        else:
+            t_detect_hands = math.ceil(log_likelihood_threshold / kl_per_hand)
+            detection_time_basis = DETECTION_TIME_BASIS_SPRT_KL
+
+    return ReachWeightedDetectionResult(
+        event_count=len(events),
+        total_variation_per_hand=total_variation,
+        kl_per_hand_nats=kl_per_hand,
+        log_likelihood_threshold=log_likelihood_threshold,
+        baseline_impossible_mass_per_hand=baseline_impossible_mass,
+        t_detect_hands=t_detect_hands,
+        detection_time_basis=detection_time_basis,
+        observation_model=observation_model,
+    )
+
+
+def _validate_observation_distribution(
+    distribution: ObservationDistribution, name: str, tolerance: float
+) -> None:
+    if not distribution:
+        raise ValueError(f"{name} must be a non-empty distribution")
+    for event, probability in distribution.items():
+        require_finite(probability, f"{name}[{event!r}]")
+        if probability < 0:
+            raise ValueError(
+                f"{name}[{event!r}] must be non-negative, got {probability!r}"
+            )
+    total = math.fsum(distribution.values())
+    if abs(total - 1.0) > tolerance:
+        raise ValueError(f"{name} sums to {total}, expected 1")
+
+
+def _require_terminal_count_within_limit(
+    tree: GameTree, max_detection_terminals: int
+) -> None:
+    terminal_count = sum(1 for _ in iter_terminals(tree.root))
+    if terminal_count > max_detection_terminals:
+        raise ValueError(
+            f"tree has {terminal_count} terminals, exceeding "
+            f"max_detection_terminals={max_detection_terminals}"
+        )
+
+
+def _candidate_observation_distributions(
+    tree: GameTree,
+    baseline_hero_strategy: HeroStrategy,
+    candidate_hero_strategy: HeroStrategy,
+    baseline_villain_strategy: VillainStrategy,
+    observation_model: str,
+    terminal_reveals: Optional[TerminalReveals] = None,
+    tolerance: float = 1e-9,
+) -> Tuple[ObservationDistribution, ObservationDistribution]:
+    """Return ``(P0, P1)`` observation distributions for tests and v1."""
+
+    if observation_model == OBSERVATION_MODEL_SHOWDOWN_REVEAL:
+        _validate_terminal_reveals(tree, terminal_reveals)
+    elif observation_model not in (
+        OBSERVATION_MODEL_ACTIONS_ONLY,
+        _OBSERVATION_MODEL_TERMINAL_PATH,
+    ):
+        raise ValueError(f"unknown observation_model {observation_model!r}")
+
+    baseline = _observation_distribution_for_strategy(
+        tree,
+        baseline_hero_strategy,
+        baseline_villain_strategy,
+        observation_model=observation_model,
+        terminal_reveals=terminal_reveals,
+    )
+    candidate = _observation_distribution_for_strategy(
+        tree,
+        candidate_hero_strategy,
+        baseline_villain_strategy,
+        observation_model=observation_model,
+        terminal_reveals=terminal_reveals,
+    )
+    _validate_observation_distribution(baseline, "baseline", tolerance)
+    _validate_observation_distribution(candidate, "candidate", tolerance)
+    return baseline, candidate
+
+
+def _validate_terminal_reveals(
+    tree: GameTree, terminal_reveals: Optional[TerminalReveals]
+) -> None:
+    if terminal_reveals is None:
+        raise ValueError(
+            "terminal_reveals are required when "
+            "detection_observation_model='showdown_reveal'"
+        )
+    terminal_ids = {terminal.node_id for terminal in iter_terminals(tree.root)}
+    reveal_ids = set(terminal_reveals)
+    missing = sorted(terminal_ids - reveal_ids)
+    extra = sorted(reveal_ids - terminal_ids)
+    if missing:
+        raise ValueError(f"terminal_reveals missing terminal ids {missing}")
+    if extra:
+        raise ValueError(f"terminal_reveals has unknown terminal ids {extra}")
+    for terminal_id, reveal in terminal_reveals.items():
+        if reveal is None:
+            continue
+        if not isinstance(reveal, tuple) or any(
+            not isinstance(item, str) for item in reveal
+        ):
+            raise ValueError(
+                "terminal_reveals entries must be None or tuple[str, ...]; "
+                f"{terminal_id!r} has {reveal!r}"
+            )
+
+
+def _observation_distribution_for_strategy(
+    tree: GameTree,
+    hero_strategy: HeroStrategy,
+    villain_strategy: VillainStrategy,
+    observation_model: str,
+    terminal_reveals: Optional[TerminalReveals],
+) -> ObservationDistribution:
+    distribution: ObservationDistribution = {}
+
+    def visit(node, probability: float, actions: Tuple[Tuple[str, str], ...]) -> None:
+        if probability == 0.0:
+            return
+        if isinstance(node, TerminalNode):
+            key = _observation_key(node, actions, observation_model, terminal_reveals)
+            distribution[key] = distribution.get(key, 0.0) + probability
+            return
+        if isinstance(node, ChanceNode):
+            for chance_probability, child in node.children:
+                visit(child, probability * chance_probability, actions)
+            return
+        if isinstance(node, HeroNode):
+            for action, child in node.actions:
+                action_probability = hero_strategy.action_probability(
+                    node.info_set, action
+                )
+                visit(
+                    child,
+                    probability * action_probability,
+                    actions + (("H", action),),
+                )
+            return
+        if isinstance(node, VillainNode):
+            for action, child in node.actions:
+                action_probability = villain_strategy.action_probability(
+                    node.info_set, action
+                )
+                visit(
+                    child,
+                    probability * action_probability,
+                    actions + (("V", action),),
+                )
+            return
+        raise TypeError(f"unknown node type: {type(node)!r}")
+
+    visit(tree.root, 1.0, ())
+    return distribution
+
+
+def _observation_key(
+    terminal: TerminalNode,
+    actions: Tuple[Tuple[str, str], ...],
+    observation_model: str,
+    terminal_reveals: Optional[TerminalReveals],
+) -> ObservationKey:
+    if observation_model == _OBSERVATION_MODEL_TERMINAL_PATH:
+        return (terminal.node_id,)
+    if observation_model == OBSERVATION_MODEL_ACTIONS_ONLY:
+        return (actions, None)
+    if observation_model == OBSERVATION_MODEL_SHOWDOWN_REVEAL:
+        reveal = terminal_reveals[terminal.node_id]  # validated earlier
+        normalised_reveal: Optional[Tuple[str, ...]] = reveal if reveal else None
+        return (actions, normalised_reveal)
+    raise ValueError(f"unknown observation_model {observation_model!r}")
 
 
 def candidate_observation_distance(

@@ -21,7 +21,7 @@ Recommended phrasing:
 
 - "An experimental Python toolkit for small abstract repeated-poker analysis."
 - "A research / learning project about Hero commitment candidates, exact
-  response diagnostics, `T_deadline`, and local `T_detect`."
+  response diagnostics, `T_deadline`, and `T_detect` diagnostics."
 - "A small MVP for exploring modelling assumptions, not a full poker solver."
 
 Avoid phrasing:
@@ -37,7 +37,7 @@ Avoid phrasing:
 - Do not present outputs as gambling, bankroll, financial, legal, or real-money
   advice.
 - Do not imply that positive model EV guarantees profitable poker play.
-- Do not imply that local `T_detect` predicts real opponent learning.
+- Do not imply that `T_detect` predicts real opponent learning.
 - Do not imply that `T_deadline` predicts actual human adaptation timing.
 - Link to `docs/assumptions_and_limitations.md` when writing public
   explanations.

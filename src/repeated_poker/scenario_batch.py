@@ -297,6 +297,11 @@ def run_batch_scenario_analysis(
             "detection_occurrence_probability_per_opportunity": (
                 config.analysis.detection_occurrence_probability_per_opportunity
             ),
+            "detection_method": config.analysis.detection_method,
+            "detection_observation_model": (
+                config.analysis.detection_observation_model
+            ),
+            "max_detection_terminals": config.analysis.max_detection_terminals,
             "tolerance": config.analysis.tolerance,
             "max_pure_strategies": config.analysis.max_pure_strategies,
             "ranking_criterion": config.analysis.ranking_criterion,
