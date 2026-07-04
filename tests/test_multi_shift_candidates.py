@@ -386,6 +386,27 @@ def test_markdown_summary_renders_multi_shift_and_new_count():
     assert " + " in markdown
 
 
+@pytest.mark.parametrize(
+    "from_dict_name",
+    [
+        "single_hand_form_from_dict",
+        "hero_range_form_from_dict",
+        "showdown_matrix_form_from_dict",
+        "equity_matrix_form_from_dict",
+        "betting_tree_form_from_dict",
+    ],
+)
+def test_scenario_forms_reject_multi_shift_generation(from_dict_name):
+    from repeated_poker import scenario_form as sf
+
+    data = _two_info_set_scenario(
+        candidate_generation={"shift_amounts": [0.25], "max_simultaneous_info_sets": 2}
+    )
+    from_dict = getattr(sf, from_dict_name)
+    with pytest.raises(ValueError, match="max_simultaneous_info_sets"):
+        from_dict(data)
+
+
 def test_betting_tree_scenario_supports_multi_shift():
     data = json.loads(_BETTING_TREE_SAMPLE.read_text(encoding="utf-8"))
     data["candidate_generation"]["max_simultaneous_info_sets"] = 2
