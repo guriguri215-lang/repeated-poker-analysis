@@ -55,6 +55,11 @@ _CSV_COLUMNS: List[str] = [
     "t_detect_estimated_opportunities",
     "detected_adaptation_delta_from_baseline",
     "detected_adaptation_is_at_least_baseline",
+    "detection_kl_per_hand_nats",
+    "detection_tv_per_hand",
+    "detection_baseline_impossible_mass_per_hand",
+    "t_detect_hands",
+    "detection_time_basis",
 ]
 
 

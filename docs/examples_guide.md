@@ -113,14 +113,25 @@ python examples/value_bluff_river.py
 - **t_deadline**: the latest opportunity at which Villain may adapt while the
   locked policy stays at least as valuable as baseline (or `-` when none).
 - **t_detect_estimated_opportunities**: estimated opportunities before the
-  candidate is statistically distinguishable from baseline at its information
-  set (only when an occurrence probability is supplied).
+  candidate is statistically distinguishable from baseline under the selected
+  `T_detect` method. With `local_v0`, this is populated only when an occurrence
+  probability is supplied. With `reach_weighted_v1`, it equals `t_detect_hands`.
+- **t_detect_hands**: the opt-in `reach_weighted_v1` estimate in hands. One v1
+  observation is one hand/opportunity.
+- **detection_kl_per_hand_nats** / **detection_tv_per_hand**: `reach_weighted_v1`
+  per-hand KL and total variation over the selected public observation model.
+- **detection_baseline_impossible_mass_per_hand**: v1 candidate mass on public
+  observations the baseline assigns zero probability to. When positive,
+  `detection_time_basis` is `baseline_impossible_event` and `t_detect_hands` is
+  based on the expected wait for that event.
+- **detection_time_basis**: `sprt_kl`, `baseline_impossible_event`, or `null`.
 - **detected_adaptation_is_at_least_baseline**: whether Hero is at least at
   baseline EV at the estimated detection timing (the economic read).
 - **observation_distance**: the observable-distribution (total-variation)
   distance between the baseline and candidate Hero action distributions at the
   changed information set(s) (the maximum over sets for a multi-shift candidate).
-  It is an observable distance, distinct from the strategy-space `l1_distance`.
+  It is the M2-T2 local Pareto axis, distinct from both the strategy-space
+  `l1_distance` and the v1 per-hand `detection_tv_per_hand`.
 - **is_ev_observation_deadline_pareto_candidate**: whether the candidate is on the
   trade-off Pareto frontier over `post_response_hero_ev_worst` (higher better),
   `observation_distance` (lower better), and `t_deadline` (higher better). It is a
@@ -257,11 +268,18 @@ python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal
 ```
 
 The analysis script accepts `--horizon`, `--discount`, `--rank-by`, `--top-k`,
-and `--no-markdown`. It can also save the result to files with `--output-json`,
-`--output-markdown`, and `--output-csv`:
+and `--no-markdown`. Detection is enabled with
+`--detection-log-likelihood-threshold`; the default method is `local_v0`, and
+`reach_weighted_v1` can be selected with `--detection-method` plus
+`--detection-observation-model actions_only|showdown_reveal`. The v0-only
+`--detection-occurrence-probability-per-opportunity` converts local observations
+to opportunities, while v1 already uses hands/opportunities. It can also save
+the result to files with `--output-json`, `--output-markdown`, and
+`--output-csv`:
 
 ```powershell
 python scripts/run_river_scenario_analysis.py examples/scenarios/range_equity_betting_tree_bet98.json --output-json reports/result.json --output-markdown reports/result.md --output-csv reports/result.csv
+python scripts/run_river_scenario_analysis.py examples/scenarios/range_matrix_steal_bet98.json --detection-log-likelihood-threshold 3 --detection-method reach_weighted_v1 --detection-observation-model showdown_reveal
 ```
 
 Each output flag creates missing parent directories and overwrites an existing

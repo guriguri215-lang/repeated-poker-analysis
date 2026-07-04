@@ -254,6 +254,13 @@ from an external solver, or a deliberately simple "always check" villain).
   guarantees: they describe when a locked policy stops being at least as good as
   baseline, and when a deviation becomes statistically distinguishable. They are
   not promises of profitable play.
+- Detection settings are analysis-run options, not scenario JSON fields. Use
+  `RiverScenarioAnalysisConfig` or the runner flags
+  `--detection-log-likelihood-threshold`, `--detection-method`,
+  `--detection-observation-model`, and `--max-detection-terminals`. The default
+  method is `local_v0`; `reach_weighted_v1` is opt-in and supports
+  `actions_only` or `showdown_reveal`. The v1 `showdown_reveal` labels are
+  internal builder annotations (`build.terminal_reveals`), not JSON fields.
 
 ## 7. Validation and troubleshooting
 
@@ -357,7 +364,8 @@ not a scenario input field, and it changes no analysis result. Fields:
   `null` when git or a checkout is unavailable. Never a network call.
 - `timestamp_utc`: run time as an ISO 8601 UTC string (`...Z`).
 - `parameters`: the effective analysis parameters (resolved horizon, discount,
-  response mode, tolerances, detection settings, ranking criterion). The
+  response mode, tolerances, detection settings including method / observation
+  model / terminal cap, ranking criterion). The
   batch-level manifest records the *requested* overrides instead; each
   per-scenario manifest records that scenario's resolved values.
 

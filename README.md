@@ -3,7 +3,7 @@
 This is an experimental research / learning project for analyzing small abstract
 poker subgames as repeated-game commitment problems. It focuses on candidate
 Hero commitment strategies, exact Villain responses in small finite trees,
-`T_deadline`, local `T_detect`, and readable summaries.
+`T_deadline`, `T_detect`, and readable summaries.
 
 ## What this project is
 
@@ -54,7 +54,7 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 ## Current working state
 
 - The project is tracked in Git and developed through small pull requests.
-- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, local `T_detect`, analysis reports, Markdown summaries, and a high-level pipeline API.
+- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, `T_detect` (`local_v0` by default, `reach_weighted_v1` opt-in), analysis reports, Markdown summaries, and a high-level pipeline API.
 - The main end-to-end entry point is `run_candidate_analysis_pipeline`.
 - The quickest local sanity check is `python scripts/check_mvp.py`.
 - The project remains experimental and intended for small abstract games; see the assumptions and limitations document before interpreting outputs.
@@ -111,11 +111,11 @@ best response to a fixed Hero strategy; neither is an equilibrium computation.
 
 ### Detection time (`T_detect`)
 
-`repeated_poker.detection` provides a v0 detection-time estimate
-(`calculate_detection_time`, `calculate_candidate_local_detection`). It compares
-two observable event distributions (for example, action frequencies) with the
-total variation distance and the KL divergence in nats, then converts the
-divergence into a required number of observations via a log-likelihood
+`repeated_poker.detection` provides the default `local_v0` detection-time
+estimate (`calculate_detection_time`, `calculate_candidate_local_detection`). It
+compares two observable event distributions (for example, action frequencies)
+with the total variation distance and the KL divergence in nats, then converts
+the divergence into a required number of observations via a log-likelihood
 threshold.
 
 `T_detect` is a sensitivity analysis based on observable event distributions. It
@@ -125,11 +125,15 @@ economic adaptation deadline, while `T_detect` is a behavioural-identification
 estimate. Strategy-space L1 distance and observable-distribution distance are
 different concepts and must not be conflated.
 
-`build_candidate_analysis_report` can optionally include a per-candidate local
+`build_candidate_analysis_report` can optionally include per-candidate
 `T_detect`: pass `baseline_hero_strategy` together with
-`detection_log_likelihood_threshold` (and optionally
-`detection_occurrence_probability_per_opportunity`). Each row then carries the
-detection distances and two distinct detection-vs-deadline reads:
+`detection_log_likelihood_threshold`. The default `local_v0` method can also use
+`detection_occurrence_probability_per_opportunity`. The opt-in
+`reach_weighted_v1` method additionally takes the tree, baseline Villain
+strategy, and an observation model (`actions_only` or `showdown_reveal`), then
+builds per-hand public observation distributions from root-to-terminal path
+probabilities. Each row then carries detection fields and two distinct
+detection-vs-deadline reads:
 
 - `t_detect_is_no_later_than_t_deadline` is a pure time comparison
   (`estimated_opportunities <= t_deadline`). It does **not** mean Hero is
@@ -140,9 +144,10 @@ detection distances and two distinct detection-vs-deadline reads:
   (clamped to the `m = N+1` never-adapts row beyond the horizon) and reports
   whether Hero is at least at baseline EV if Villain adapts exactly then.
 
-This local model is conditional on reaching the candidate's information set,
-ignores tree reach probability, and does not guarantee real opponent learning
-or adaptation.
+The default local model is conditional on reaching the candidate's information
+set and does not include tree reach probability. The opt-in v1 model includes
+within-spot reach in its per-hand observation distribution. Neither model is a
+real opponent-learning model.
 
 ### Markdown summary
 
@@ -155,9 +160,8 @@ change analysis results, and it does not write files (it returns a string).
 `filter_candidates` is a lightweight pre-comparison pruning helper for generated
 candidates (by allowed information set, strategy-space L1 distance, or a local
 detection minimum). It does not replace `compare_candidates` or
-`select_candidates`. The detection-based filter uses local observable
-distributions and does not model tree reach probability or real opponent
-learning.
+`select_candidates`. The detection-based filter remains tied to the local
+observable-distribution model; v1 filtering is left for a later task.
 
 ### Analysis pipeline
 

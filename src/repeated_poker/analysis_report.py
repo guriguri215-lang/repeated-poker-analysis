@@ -7,7 +7,7 @@ consistent, JSON-serialisable structure per candidate:
 * the selection labels (eligible, exclusion reasons, minimum-Villain-EV,
   Pareto frontier);
 * the adaptation deadline ``T_deadline`` for the candidate; and
-* an optional local detection-time ``T_detect`` for the candidate.
+* an optional detection-time ``T_detect`` diagnostic for the candidate.
 
 It runs :func:`~repeated_poker.selection.select_candidates` and
 :func:`~repeated_poker.repeated.calculate_candidate_adaptation_deadlines` with
@@ -20,13 +20,13 @@ observable behavioural distance.  ``t_deadline`` is a sensitivity analysis over
 an assumed switching opportunity ``m`` (when Villain adapts to the locked
 candidate); it is not ``T_detect`` and not an opponent learning probability.
 
-When detection is enabled, the report also carries a *local* ``T_detect`` for
-each candidate, computed from the Hero action distributions at the candidate's
-own information set (see :mod:`repeated_poker.detection`).  This is conditional
-on reaching that information set and observing an action there; it ignores tree
-reach probability, and it does not guarantee how a real opponent learns or
-adapts.  ``T_detect`` and ``T_deadline`` are distinct measures and must not be
-conflated.
+When detection is enabled, the report carries either the default local
+``local_v0`` estimate or the opt-in per-hand ``reach_weighted_v1`` estimate (see
+:mod:`repeated_poker.detection`). ``local_v0`` is conditional on reaching the
+candidate's information set; ``reach_weighted_v1`` builds public observation
+distributions from root-to-terminal path probabilities. Neither is a real
+opponent-learning model. ``T_detect`` and ``T_deadline`` are distinct measures
+and must not be conflated.
 
 Two different detection-vs-deadline reads are reported, and they must not be
 confused:
@@ -50,13 +50,21 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .comparison import CandidateComparison, CandidateComparisonReport
 from .detection import (
+    DEFAULT_MAX_DETECTION_TERMINALS,
+    DETECTION_METHOD_LOCAL_V0,
+    DETECTION_METHOD_REACH_WEIGHTED_V1,
     DetectionResult,
+    ReachWeightedDetectionResult,
+    TerminalReveals,
     calculate_candidate_local_detection,
+    calculate_candidate_reach_weighted_detection,
     candidate_observation_distance,
+    resolve_detection_observation_model,
     validate_detection_parameters,
+    validate_max_detection_terminals,
 )
 from .fixed_profile import FixedProfileValue
-from .game import HeroStrategy, require_valid_tolerance
+from .game import GameTree, HeroStrategy, VillainStrategy, require_valid_tolerance
 from .repeated import (
     DEFAULT_MAX_HORIZON,
     RESPONSE_MODE_WORST,
@@ -113,17 +121,22 @@ class DetectionConfiguration:
     """The local detection-time parameters used to build the report.
 
     When ``enabled`` is ``False`` no detection information is computed and every
-    row's detection fields are ``None``.
+    row's detection fields are ``None``. ``method`` defaults to the historical
+    local model; ``reach_weighted_v1`` is opt-in and reports per-hand fields.
     """
 
     enabled: bool
     log_likelihood_threshold: Optional[float]
     occurrence_probability_per_opportunity: Optional[float]
     tolerance: float
+    method: str = DETECTION_METHOD_LOCAL_V0
+    observation_model: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
             "enabled": self.enabled,
+            "method": self.method,
+            "observation_model": self.observation_model,
             "log_likelihood_threshold": self.log_likelihood_threshold,
             "occurrence_probability_per_opportunity": (
                 self.occurrence_probability_per_opportunity
@@ -232,6 +245,12 @@ class CandidateAnalysisRow:
     # detection opportunity. This is the economic-safety read, not the pure time
     # comparison above.
     detected_adaptation_is_at_least_baseline: Optional[bool]
+    # Reach-weighted v1 detection values (all ``None`` for local_v0 / disabled).
+    detection_kl_per_hand_nats: Optional[float] = None
+    detection_tv_per_hand: Optional[float] = None
+    detection_baseline_impossible_mass_per_hand: Optional[float] = None
+    t_detect_hands: Optional[int] = None
+    detection_time_basis: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -273,6 +292,13 @@ class CandidateAnalysisRow:
             "detection_estimated_opportunities": (
                 self.detection_estimated_opportunities
             ),
+            "detection_kl_per_hand_nats": self.detection_kl_per_hand_nats,
+            "detection_tv_per_hand": self.detection_tv_per_hand,
+            "detection_baseline_impossible_mass_per_hand": (
+                self.detection_baseline_impossible_mass_per_hand
+            ),
+            "t_detect_hands": self.t_detect_hands,
+            "detection_time_basis": self.detection_time_basis,
             "t_detect_estimated_opportunities": self.t_detect_estimated_opportunities,
             "t_detect_is_no_later_than_t_deadline": (
                 self.t_detect_is_no_later_than_t_deadline
@@ -393,7 +419,7 @@ def _require_unique_candidate_ids(report: CandidateComparisonReport) -> None:
 def _build_row(
     comparison: CandidateComparison,
     deadline: CandidateAdaptationDeadline,
-    detection: Optional[DetectionResult],
+    detection: Optional[object],
     observation_distance: Optional[float],
     eligible_ids,
     exclusion_reasons_by_id: Dict[str, List[str]],
@@ -413,31 +439,56 @@ def _build_row(
         detection_kl: Optional[float] = None
         detection_required: Optional[int] = None
         detection_estimated: Optional[int] = None
+        t_detect_estimated: Optional[int] = None
+        detection_kl_per_hand: Optional[float] = None
+        detection_tv_per_hand: Optional[float] = None
+        detection_baseline_impossible_mass: Optional[float] = None
+        t_detect_hands: Optional[int] = None
+        detection_time_basis: Optional[str] = None
+    elif isinstance(detection, ReachWeightedDetectionResult):
+        detection_tv = None
+        detection_kl = None
+        detection_required = None
+        detection_estimated = None
+        t_detect_estimated = detection.t_detect_hands
+        detection_kl_per_hand = detection.kl_per_hand_nats
+        detection_tv_per_hand = detection.total_variation_per_hand
+        detection_baseline_impossible_mass = (
+            detection.baseline_impossible_mass_per_hand
+        )
+        t_detect_hands = detection.t_detect_hands
+        detection_time_basis = detection.detection_time_basis
     else:
         detection_tv = detection.total_variation_distance
         detection_kl = detection.kl_divergence_nats
         detection_required = detection.required_observations
         detection_estimated = detection.estimated_opportunities
+        t_detect_estimated = detection.estimated_opportunities
+        detection_kl_per_hand = None
+        detection_tv_per_hand = None
+        detection_baseline_impossible_mass = None
+        t_detect_hands = None
+        detection_time_basis = None
 
     t_deadline = result.t_deadline
 
     # Pure time comparison only; it does not say whether Hero is at baseline.
-    if t_deadline is not None and detection_estimated is not None:
-        t_detect_is_no_later: Optional[bool] = detection_estimated <= t_deadline
+    if t_deadline is not None and t_detect_estimated is not None:
+        t_detect_is_no_later: Optional[bool] = t_detect_estimated <= t_deadline
     else:
         t_detect_is_no_later = None
 
     # Map the estimated detection opportunity onto the deadline timing rows.
     # Beyond the horizon it becomes the m = N+1 never-adapts diagnostic row.
-    if detection_estimated is None:
+    if t_detect_estimated is None:
         detected_opportunity: Optional[int] = None
         detected_delta: Optional[float] = None
         detected_at_least_baseline: Optional[bool] = None
     else:
-        if detection_estimated > result.horizon:
+        if t_detect_estimated > result.horizon:
             detected_opportunity = result.horizon + 1
         else:
-            detected_opportunity = detection_estimated
+            detected_opportunity = t_detect_estimated
         timing_row = result.timing[detected_opportunity - 1]
         detected_delta = timing_row.delta_from_baseline
         detected_at_least_baseline = timing_row.is_at_least_baseline
@@ -481,7 +532,14 @@ def _build_row(
         detection_kl_divergence_nats=detection_kl,
         detection_required_observations=detection_required,
         detection_estimated_opportunities=detection_estimated,
-        t_detect_estimated_opportunities=detection_estimated,
+        detection_kl_per_hand_nats=detection_kl_per_hand,
+        detection_tv_per_hand=detection_tv_per_hand,
+        detection_baseline_impossible_mass_per_hand=(
+            detection_baseline_impossible_mass
+        ),
+        t_detect_hands=t_detect_hands,
+        detection_time_basis=detection_time_basis,
+        t_detect_estimated_opportunities=t_detect_estimated,
         t_detect_is_no_later_than_t_deadline=t_detect_is_no_later,
         detected_adaptation_opportunity=detected_opportunity,
         detected_adaptation_delta_from_baseline=detected_delta,
@@ -499,8 +557,14 @@ def build_candidate_analysis_report(
     tolerance: float = 1e-9,
     max_horizon: int = DEFAULT_MAX_HORIZON,
     baseline_hero_strategy: Optional[HeroStrategy] = None,
+    tree: Optional[GameTree] = None,
+    baseline_villain_strategy: Optional[VillainStrategy] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
     detection_occurrence_probability_per_opportunity: Optional[float] = None,
+    detection_method: str = DETECTION_METHOD_LOCAL_V0,
+    detection_observation_model: Optional[str] = None,
+    terminal_reveals: Optional[TerminalReveals] = None,
+    max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
 ) -> CandidateAnalysisReport:
     """Consolidate selection, adaptation-deadline, and optional detection analyses.
 
@@ -527,6 +591,18 @@ def build_candidate_analysis_report(
     _validate_selection_thresholds(profit_tolerance, max_l1_distance, tolerance)
     validate_deadline_parameters(horizon, discount, tolerance, max_horizon)
     _validate_response_mode(response_mode)
+    resolved_observation_model = resolve_detection_observation_model(
+        detection_method, detection_observation_model
+    )
+    validate_max_detection_terminals(max_detection_terminals)
+    if (
+        detection_method == DETECTION_METHOD_REACH_WEIGHTED_V1
+        and detection_occurrence_probability_per_opportunity is not None
+    ):
+        raise ValueError(
+            "detection_occurrence_probability_per_opportunity is only valid with "
+            "detection_method='local_v0'"
+        )
 
     detection_enabled = detection_log_likelihood_threshold is not None
     if detection_enabled:
@@ -535,11 +611,25 @@ def build_candidate_analysis_report(
                 "baseline_hero_strategy is required when "
                 "detection_log_likelihood_threshold is given"
             )
-        validate_detection_parameters(
-            detection_log_likelihood_threshold,
-            detection_occurrence_probability_per_opportunity,
-            tolerance,
-        )
+        if detection_method == DETECTION_METHOD_REACH_WEIGHTED_V1:
+            if tree is None:
+                raise ValueError(
+                    "tree is required when detection_method='reach_weighted_v1'"
+                )
+            if baseline_villain_strategy is None:
+                raise ValueError(
+                    "baseline_villain_strategy is required when "
+                    "detection_method='reach_weighted_v1'"
+                )
+            validate_detection_parameters(
+                detection_log_likelihood_threshold, None, tolerance
+            )
+        else:
+            validate_detection_parameters(
+                detection_log_likelihood_threshold,
+                detection_occurrence_probability_per_opportunity,
+                tolerance,
+            )
 
     selection_report: CandidateSelectionReport = select_candidates(
         comparison_report,
@@ -556,7 +646,22 @@ def build_candidate_analysis_report(
         max_horizon=max_horizon,
     )
 
-    if detection_enabled:
+    if detection_enabled and detection_method == DETECTION_METHOD_REACH_WEIGHTED_V1:
+        detections = [
+            calculate_candidate_reach_weighted_detection(
+                tree,
+                baseline_hero_strategy,
+                comparison.candidate,
+                baseline_villain_strategy,
+                log_likelihood_threshold=detection_log_likelihood_threshold,
+                observation_model=resolved_observation_model,
+                terminal_reveals=terminal_reveals,
+                max_detection_terminals=max_detection_terminals,
+                tolerance=tolerance,
+            )
+            for comparison in comparison_report.comparisons
+        ]
+    elif detection_enabled:
         detections: List[Optional[DetectionResult]] = [
             calculate_candidate_local_detection(
                 baseline_hero_strategy,
@@ -665,6 +770,8 @@ def build_candidate_analysis_report(
                 detection_occurrence_probability_per_opportunity
             ),
             tolerance=tolerance,
+            method=detection_method,
+            observation_model=resolved_observation_model,
         ),
         rows=rows,
         summary_counts=summary_counts,

@@ -80,7 +80,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .exact_response import solve_exact_response
 from .game import (
@@ -306,6 +306,10 @@ class RiverScenarioBuildResult:
     # Candidate-generation breadth carried through from the scenario (see
     # ``RiverScenario.max_simultaneous_info_sets``). Defaulted for compatibility.
     max_simultaneous_info_sets: int = 1
+    # Builder-supplied public showdown annotations for T_detect v1. Each
+    # terminal id maps to ``None`` for no reveal (fold/muck) or to the public
+    # bucket labels revealed at showdown.
+    terminal_reveals: Optional[Dict[str, Optional[Tuple[str, ...]]]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -994,13 +998,21 @@ def build_river_steal_game_from_scenario(
     """
 
     if scenario.is_betting_tree_mode:
-        tree, baseline_hero_strategy, metadata = _build_betting_tree(scenario)
+        tree, baseline_hero_strategy, metadata, terminal_reveals = _build_betting_tree(
+            scenario
+        )
     elif scenario.is_matrix_mode:
-        tree, baseline_hero_strategy, metadata = _build_matrix_tree(scenario)
+        tree, baseline_hero_strategy, metadata, terminal_reveals = _build_matrix_tree(
+            scenario
+        )
     elif scenario.is_range_mode:
-        tree, baseline_hero_strategy, metadata = _build_range_tree(scenario)
+        tree, baseline_hero_strategy, metadata, terminal_reveals = _build_range_tree(
+            scenario
+        )
     else:
-        tree, baseline_hero_strategy, metadata = _build_single_hand_tree(scenario)
+        tree, baseline_hero_strategy, metadata, terminal_reveals = (
+            _build_single_hand_tree(scenario)
+        )
 
     validate_hero_strategy(tree, baseline_hero_strategy)
 
@@ -1027,6 +1039,7 @@ def build_river_steal_game_from_scenario(
         metadata=metadata,
         baseline_villain_source=baseline_villain_source,
         max_simultaneous_info_sets=scenario.max_simultaneous_info_sets,
+        terminal_reveals=terminal_reveals,
     )
 
 
@@ -1117,7 +1130,12 @@ def _build_single_hand_tree(scenario: RiverScenario):
     metadata = _base_metadata(scenario)
     metadata["mode"] = "single_hand"
     metadata["showdown"] = scenario.showdown
-    return tree, baseline_hero_strategy, metadata
+    terminal_reveals = {
+        "T_check_check": (),
+        "T_bet_call": (),
+        "T_bet_fold": None,
+    }
+    return tree, baseline_hero_strategy, metadata, terminal_reveals
 
 
 def _build_range_tree(scenario: RiverScenario):
@@ -1131,12 +1149,16 @@ def _build_range_tree(scenario: RiverScenario):
     hands = scenario.hero_range.hands
     children = []
     hero_probabilities: Dict[str, Dict[str, float]] = {}
+    terminal_reveals: Dict[str, Optional[Tuple[str, ...]]] = {}
     for hand in hands:
         ip_info_set = f"{_IP_INFO_SET}::{hand.hand_id}"
         suffix = f"::{hand.hand_id}"
         oop_node = _hand_subtree(scenario, hand.showdown, suffix, ip_info_set)
         children.append((hand.weight, oop_node))
         hero_probabilities[ip_info_set] = dict(hand.baseline_strategy)
+        terminal_reveals[f"T_check_check{suffix}"] = (hand.hand_id,)
+        terminal_reveals[f"T_bet_call{suffix}"] = (hand.hand_id,)
+        terminal_reveals[f"T_bet_fold{suffix}"] = None
 
     root = ChanceNode(node_id="hand_bucket", children=tuple(children))
     tree = GameTree(root=root)
@@ -1151,7 +1173,7 @@ def _build_range_tree(scenario: RiverScenario):
         {"hand_id": hand.hand_id, "weight": hand.weight, "showdown": hand.showdown}
         for hand in hands
     ]
-    return tree, baseline_hero_strategy, metadata
+    return tree, baseline_hero_strategy, metadata, terminal_reveals
 
 
 def _build_matrix_tree(scenario: RiverScenario):
@@ -1172,6 +1194,7 @@ def _build_matrix_tree(scenario: RiverScenario):
 
     children = []
     hero_probabilities: Dict[str, Dict[str, float]] = {}
+    terminal_reveals: Dict[str, Optional[Tuple[str, ...]]] = {}
     for hero in hero_hands:
         ip_info_set = f"{_IP_INFO_SET}::{hero.hand_id}"
         hero_probabilities[ip_info_set] = dict(hero.baseline_strategy)
@@ -1192,6 +1215,10 @@ def _build_matrix_tree(scenario: RiverScenario):
                     scenario, cell, suffix, ip_info_set, oop_info_set
                 )
             children.append((hero.weight * villain.weight, oop_node))
+            reveal = (hero.hand_id, villain.hand_id)
+            terminal_reveals[f"T_check_check{suffix}"] = reveal
+            terminal_reveals[f"T_bet_call{suffix}"] = reveal
+            terminal_reveals[f"T_bet_fold{suffix}"] = None
 
     root = ChanceNode(node_id="hand_matchup", children=tuple(children))
     tree = GameTree(root=root)
@@ -1217,7 +1244,7 @@ def _build_matrix_tree(scenario: RiverScenario):
         metadata["showdown_matrix"] = {
             hero_id: dict(row) for hero_id, row in matrix.items()
         }
-    return tree, baseline_hero_strategy, metadata
+    return tree, baseline_hero_strategy, metadata, terminal_reveals
 
 
 def _villain_baseline_best_response(
@@ -1341,4 +1368,16 @@ def _build_betting_tree(scenario: RiverScenario):
         {"hand_id": hand.hand_id, "weight": hand.weight}
         for hand in scenario.villain_range.hands
     ]
-    return tree, baseline_hero_strategy, metadata
+    terminal_reveals: Dict[str, Optional[Tuple[str, ...]]] = {}
+    for hero in scenario.hero_range.hands:
+        for villain in scenario.villain_range.hands:
+            suffix = f"::{hero.hand_id}__{villain.hand_id}"
+            reveal = (hero.hand_id, villain.hand_id)
+            terminal_reveals[f"T_check_check{suffix}"] = reveal
+            terminal_reveals[f"T_check_bet_call{suffix}"] = reveal
+            terminal_reveals[f"T_check_bet_fold{suffix}"] = None
+            terminal_reveals[f"T_bet_call{suffix}"] = reveal
+            terminal_reveals[f"T_bet_fold{suffix}"] = None
+            terminal_reveals[f"T_bet_raise_call{suffix}"] = reveal
+            terminal_reveals[f"T_bet_raise_fold{suffix}"] = None
+    return tree, baseline_hero_strategy, metadata, terminal_reveals

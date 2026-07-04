@@ -79,6 +79,15 @@ def test_baseline_villain_best_response_is_bet():
     assert villain_dist["check"] == pytest.approx(0.0)
 
 
+def test_single_hand_build_supplies_terminal_reveals():
+    build = _build_sample()
+    assert build.terminal_reveals == {
+        "T_check_check": (),
+        "T_bet_call": (),
+        "T_bet_fold": None,
+    }
+
+
 def test_locked_call_makes_oop_check():
     build = _build_sample()
     locked_call = HeroStrategy({"IP_vs_bet": {"call": 1.0, "fold": 0.0}})
