@@ -117,6 +117,20 @@ python examples/value_bluff_river.py
   set (only when an occurrence probability is supplied).
 - **detected_adaptation_is_at_least_baseline**: whether Hero is at least at
   baseline EV at the estimated detection timing (the economic read).
+- **observation_distance**: the observable-distribution (total-variation)
+  distance between the baseline and candidate Hero action distributions at the
+  changed information set(s) (the maximum over sets for a multi-shift candidate).
+  It is an observable distance, distinct from the strategy-space `l1_distance`.
+- **is_ev_observation_deadline_pareto_candidate**: whether the candidate is on the
+  trade-off Pareto frontier over `post_response_hero_ev_worst` (higher better),
+  `observation_distance` (lower better), and `t_deadline` (higher better). It is a
+  descriptive trade-off surface over all candidates, not a selection filter and
+  not an equilibrium or optimality claim.
+- **shifts** (JSON) / **info_sets**, **num_shifts** (CSV): the per-information-set
+  breakdown of a multi-shift candidate (`candidate_generation.max_simultaneous_info_sets = 2`).
+  Single-shift candidates keep the scalar `info_set` / `source_action` /
+  `target_action` / `shift_amount` fields; multi-shift candidates leave those
+  `null` and carry the combination here (and in `candidate_id`).
 
 ## What examples are not
 

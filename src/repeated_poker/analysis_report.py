@@ -44,17 +44,19 @@ confused:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .comparison import CandidateComparison, CandidateComparisonReport
 from .detection import (
     DetectionResult,
     calculate_candidate_local_detection,
+    candidate_observation_distance,
     validate_detection_parameters,
 )
 from .fixed_profile import FixedProfileValue
-from .game import HeroStrategy
+from .game import HeroStrategy, require_valid_tolerance
 from .repeated import (
     DEFAULT_MAX_HORIZON,
     RESPONSE_MODE_WORST,
@@ -132,13 +134,23 @@ class DetectionConfiguration:
 
 @dataclass(frozen=True)
 class SelectionSummaryCounts:
-    """Counts of candidates by selection outcome."""
+    """Counts of candidates by selection outcome.
+
+    ``pareto_frontier`` counts the strategy-space selection frontier
+    (baseline-Villain EV, post-response robust Hero EV, strategy-space L1).
+    ``ev_observation_deadline_pareto_frontier`` counts the separate M2-T2
+    trade-off frontier over post-response worst-case Hero EV, observation
+    distance, and ``T_deadline``; it is ``None`` when that frontier could not be
+    computed (no baseline Hero strategy was available to measure observation
+    distance).
+    """
 
     total: int
     eligible: int
     excluded: int
     minimum_villain_ev: int
     pareto_frontier: int
+    ev_observation_deadline_pareto_frontier: Optional[int] = None
 
     def to_dict(self) -> dict:
         return {
@@ -147,6 +159,9 @@ class SelectionSummaryCounts:
             "excluded": self.excluded,
             "minimum_villain_ev": self.minimum_villain_ev,
             "pareto_frontier": self.pareto_frontier,
+            "ev_observation_deadline_pareto_frontier": (
+                self.ev_observation_deadline_pareto_frontier
+            ),
         }
 
 
@@ -154,12 +169,18 @@ class SelectionSummaryCounts:
 class CandidateAnalysisRow:
     """A single candidate's consolidated analysis with English keys."""
 
-    # Candidate metadata.
+    # Candidate metadata. For a single-shift candidate the scalar shift fields
+    # (``info_set`` / ``source_action`` / ``target_action`` / ``shift_amount``)
+    # describe the shift. For a multi-shift candidate (M2-T2) there is no single
+    # shift, so those scalars are ``None`` and ``shifts`` carries the full
+    # per-information-set breakdown (it is always populated, with one entry per
+    # changed information set).
     candidate_id: str
-    info_set: str
-    source_action: str
-    target_action: str
-    shift_amount: float
+    info_set: Optional[str]
+    source_action: Optional[str]
+    target_action: Optional[str]
+    shift_amount: Optional[float]
+    shifts: List[dict]
     l1_distance: float
     # Fixed-baseline values (candidate locked, Villain at baseline strategy).
     fixed_hero_ev: float
@@ -173,11 +194,20 @@ class CandidateAnalysisRow:
     post_response_hero_ev_worst_diff: float
     post_response_hero_ev_best_diff: float
     robustly_profitable: bool
+    # Observable-distribution distance between baseline and candidate Hero action
+    # distributions at the changed information set(s) (the max over sets for a
+    # multi-shift candidate). ``None`` only when no baseline Hero strategy was
+    # available. It is an observable distance, distinct from ``l1_distance``.
+    observation_distance: Optional[float]
     # Selection labels.
     is_eligible: bool
     exclusion_reasons: List[str]
     is_minimum_villain_ev_candidate: bool
     is_pareto_frontier_candidate: bool
+    # M2-T2 trade-off Pareto frontier over (post_response_hero_ev_worst higher is
+    # better, observation_distance lower is better, t_deadline higher is better).
+    # ``None`` when the frontier could not be computed (no observation distance).
+    is_ev_observation_deadline_pareto_candidate: Optional[bool]
     # Deadline values.
     response_mode: str
     t_deadline: Optional[int]
@@ -210,6 +240,7 @@ class CandidateAnalysisRow:
             "source_action": self.source_action,
             "target_action": self.target_action,
             "shift_amount": self.shift_amount,
+            "shifts": [dict(component) for component in self.shifts],
             "l1_distance": self.l1_distance,
             "fixed_hero_ev": self.fixed_hero_ev,
             "fixed_villain_ev": self.fixed_villain_ev,
@@ -221,10 +252,14 @@ class CandidateAnalysisRow:
             "post_response_hero_ev_worst_diff": self.post_response_hero_ev_worst_diff,
             "post_response_hero_ev_best_diff": self.post_response_hero_ev_best_diff,
             "robustly_profitable": self.robustly_profitable,
+            "observation_distance": self.observation_distance,
             "is_eligible": self.is_eligible,
             "exclusion_reasons": list(self.exclusion_reasons),
             "is_minimum_villain_ev_candidate": self.is_minimum_villain_ev_candidate,
             "is_pareto_frontier_candidate": self.is_pareto_frontier_candidate,
+            "is_ev_observation_deadline_pareto_candidate": (
+                self.is_ev_observation_deadline_pareto_candidate
+            ),
             "response_mode": self.response_mode,
             "t_deadline": self.t_deadline,
             "baseline_total_hero_ev": self.baseline_total_hero_ev,
@@ -286,6 +321,66 @@ class CandidateAnalysisReport:
         }
 
 
+def ev_observation_deadline_pareto_ids(
+    objectives: Sequence[Tuple[str, float, Optional[float], Optional[int]]],
+    tolerance: float = 1e-9,
+) -> Optional[set]:
+    """Return the candidate ids on the M2-T2 trade-off Pareto frontier.
+
+    ``objectives`` is one ``(candidate_id, post_response_hero_ev_worst,
+    observation_distance, t_deadline)`` tuple per candidate. The three objectives
+    and their better-directions are:
+
+    * ``post_response_hero_ev_worst`` -- higher is better (robust profitability);
+    * ``observation_distance`` -- lower is better (a smaller observable deviation
+      is treated as more valuable, i.e. harder to detect);
+    * ``t_deadline`` -- higher is better (a later safe adaptation deadline). A
+      ``None`` deadline means no opportunity keeps Hero at least at baseline, so it
+      is treated as the worst on this axis.
+
+    A candidate is on the frontier when no other candidate is no worse on all
+    three objectives and strictly better on at least one, using ``tolerance`` the
+    same way as :func:`repeated_poker.selection.pareto_frontier` (so ties are all
+    retained and none is dropped by candidate id).
+
+    Returns ``None`` -- the frontier is undefined -- when any candidate has no
+    ``observation_distance`` (no baseline Hero strategy was available to measure
+    it), so the caller can report the flag as ``None`` rather than guess.
+
+    The observation-distance direction and the ``None``-deadline handling are
+    deliberate modelling choices, not equilibrium or optimality claims.
+    """
+
+    require_valid_tolerance(tolerance)
+    if any(observation is None for _, _, observation, _ in objectives):
+        return None
+
+    vectors: List[Tuple[str, Tuple[float, float, float]]] = []
+    for candidate_id, ev_worst, observation, t_deadline in objectives:
+        # Fold all three objectives into a lower-is-better vector.
+        deadline_value = t_deadline if t_deadline is not None else -math.inf
+        vectors.append((candidate_id, (-ev_worst, observation, -deadline_value)))
+
+    frontier: set = set()
+    for candidate_id_b, vector_b in vectors:
+        dominated = False
+        for candidate_id_a, vector_a in vectors:
+            if candidate_id_a == candidate_id_b:
+                continue
+            no_worse = all(
+                vector_a[k] <= vector_b[k] + tolerance for k in range(3)
+            )
+            strictly_better = any(
+                vector_a[k] < vector_b[k] - tolerance for k in range(3)
+            )
+            if no_worse and strictly_better:
+                dominated = True
+                break
+        if not dominated:
+            frontier.add(candidate_id_b)
+    return frontier
+
+
 def _require_unique_candidate_ids(report: CandidateComparisonReport) -> None:
     candidate_ids = [c.candidate.candidate_id for c in report.comparisons]
     duplicates = sorted(
@@ -299,10 +394,12 @@ def _build_row(
     comparison: CandidateComparison,
     deadline: CandidateAdaptationDeadline,
     detection: Optional[DetectionResult],
+    observation_distance: Optional[float],
     eligible_ids,
     exclusion_reasons_by_id: Dict[str, List[str]],
     minimum_ids,
     pareto_ids,
+    ev_observation_deadline_pareto_ids: Optional[set],
 ) -> CandidateAnalysisRow:
     candidate = comparison.candidate
     candidate_id = candidate.candidate_id
@@ -345,12 +442,19 @@ def _build_row(
         detected_delta = timing_row.delta_from_baseline
         detected_at_least_baseline = timing_row.is_at_least_baseline
 
+    is_ev_obs_deadline_pareto: Optional[bool]
+    if ev_observation_deadline_pareto_ids is None:
+        is_ev_obs_deadline_pareto = None
+    else:
+        is_ev_obs_deadline_pareto = candidate_id in ev_observation_deadline_pareto_ids
+
     return CandidateAnalysisRow(
         candidate_id=candidate_id,
         info_set=candidate.info_set,
         source_action=candidate.source_action,
         target_action=candidate.target_action,
         shift_amount=candidate.shift_amount,
+        shifts=[component.to_dict() for component in candidate.shifts],
         l1_distance=candidate.l1_distance,
         fixed_hero_ev=comparison.fixed_profile_value.hero_ev,
         fixed_villain_ev=comparison.fixed_profile_value.villain_ev,
@@ -362,10 +466,12 @@ def _build_row(
         post_response_hero_ev_worst_diff=comparison.post_response_hero_ev_worst_diff,
         post_response_hero_ev_best_diff=comparison.post_response_hero_ev_best_diff,
         robustly_profitable=comparison.robustly_profitable,
+        observation_distance=observation_distance,
         is_eligible=candidate_id in eligible_ids,
         exclusion_reasons=exclusion_reasons_by_id.get(candidate_id, []),
         is_minimum_villain_ev_candidate=candidate_id in minimum_ids,
         is_pareto_frontier_candidate=candidate_id in pareto_ids,
+        is_ev_observation_deadline_pareto_candidate=is_ev_obs_deadline_pareto,
         response_mode=deadline.response_mode,
         t_deadline=t_deadline,
         baseline_total_hero_ev=result.baseline_total_hero_ev,
@@ -466,6 +572,34 @@ def build_candidate_analysis_report(
     else:
         detections = [None for _ in comparison_report.comparisons]
 
+    # Observation distance (M2-T2 Pareto axis) is computed whenever a baseline
+    # Hero strategy is available, independently of the optional detection-time
+    # analysis, so the trade-off frontier is defined even when detection is off.
+    if baseline_hero_strategy is not None:
+        observation_distances: List[Optional[float]] = [
+            candidate_observation_distance(
+                baseline_hero_strategy, comparison.candidate, tolerance=tolerance
+            )
+            for comparison in comparison_report.comparisons
+        ]
+    else:
+        observation_distances = [None for _ in comparison_report.comparisons]
+
+    ev_observation_deadline_ids = ev_observation_deadline_pareto_ids(
+        [
+            (
+                comparison.candidate.candidate_id,
+                comparison.best_response.ev_h_worst,
+                observation,
+                deadline.result.t_deadline,
+            )
+            for comparison, deadline, observation in zip(
+                comparison_report.comparisons, deadlines, observation_distances
+            )
+        ],
+        tolerance=tolerance,
+    )
+
     eligible_ids = {c.candidate.candidate_id for c in selection_report.eligible}
     exclusion_reasons_by_id = {
         excluded.comparison.candidate.candidate_id: excluded.reasons
@@ -482,13 +616,18 @@ def build_candidate_analysis_report(
             comparison,
             deadline,
             detection,
+            observation,
             eligible_ids,
             exclusion_reasons_by_id,
             minimum_ids,
             pareto_ids,
+            ev_observation_deadline_ids,
         )
-        for comparison, deadline, detection in zip(
-            comparison_report.comparisons, deadlines, detections
+        for comparison, deadline, detection, observation in zip(
+            comparison_report.comparisons,
+            deadlines,
+            detections,
+            observation_distances,
         )
     ]
 
@@ -498,6 +637,11 @@ def build_candidate_analysis_report(
         excluded=len(selection_report.excluded),
         minimum_villain_ev=len(selection_report.minimum_villain_ev_candidates),
         pareto_frontier=len(selection_report.pareto_frontier),
+        ev_observation_deadline_pareto_frontier=(
+            None
+            if ev_observation_deadline_ids is None
+            else len(ev_observation_deadline_ids)
+        ),
     )
 
     return CandidateAnalysisReport(

@@ -40,13 +40,17 @@ _CSV_COLUMNS: List[str] = [
     "source_action",
     "target_action",
     "shift_amount",
+    "num_shifts",
+    "info_sets",
     "l1_distance",
+    "observation_distance",
     "is_eligible",
     "exclusion_reasons",
     "fixed_hero_ev",
     "fixed_villain_ev",
     "post_response_hero_ev_worst",
     "post_response_hero_ev_worst_diff",
+    "is_ev_observation_deadline_pareto_candidate",
     "t_deadline",
     "t_detect_estimated_opportunities",
     "detected_adaptation_delta_from_baseline",
@@ -264,7 +268,24 @@ def write_analysis_csv(result: "RiverScenarioAnalysisResult", path: PathLike) ->
         writer = csv.writer(handle)
         writer.writerow(_CSV_COLUMNS)
         for row in rows:
-            writer.writerow([_csv_cell(row.get(column)) for column in _CSV_COLUMNS])
+            flat = _flatten_row_for_csv(row)
+            writer.writerow([_csv_cell(flat.get(column)) for column in _CSV_COLUMNS])
+
+
+def _flatten_row_for_csv(row: dict) -> dict:
+    """Add flat, single-cell columns derived from a row's ``shifts`` list.
+
+    ``num_shifts`` is the number of changed information sets and ``info_sets`` is
+    the list of them (rendered ``;``-separated by :func:`_csv_cell`), so a CSV
+    consumer can see a multi-shift candidate's information sets without parsing
+    ``candidate_id`` (which also encodes the full combination).
+    """
+
+    shifts = row.get("shifts") or []
+    flat = dict(row)
+    flat["num_shifts"] = len(shifts)
+    flat["info_sets"] = [component["info_set"] for component in shifts]
+    return flat
 
 
 # ---------------------------------------------------------------------------

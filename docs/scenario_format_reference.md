@@ -62,7 +62,7 @@ work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
 | `showdown_matrix` | one matrix required (matrix modes) | matrix | object | `[hero_id][villain_id]` -> `"chop"` / `"hero"` / `"villain"`. Mutually exclusive with `equity_matrix`. |
 | `equity_matrix` | one matrix required (matrix modes) | matrix | object | `[hero_id][villain_id]` -> Hero pot share before rake in `[0, 1]`. Mutually exclusive with `showdown_matrix`. |
 | `betting_tree` | optional | matrix only | object | Adds the one-street betting tree (see the betting-tree mode below). |
-| `candidate_generation` | optional (required by the analysis runner) | all | object | `{ "shift_amounts": [number > 0, ...] }` (see section 6). |
+| `candidate_generation` | optional (required by the analysis runner) | all | object | `{ "shift_amounts": [number > 0, ...], "max_simultaneous_info_sets": 1 or 2 }` (see section 6). `max_simultaneous_info_sets` is optional (default `1`); `2` also generates simultaneous two-information-set shift candidates. |
 | `repeated` | optional | all | object | `{ "horizons": [int >= 1, ...] or null, "discount": number in (0, 1] }` (see section 6). |
 
 The input mode is inferred from which fields are present, and the modes are
@@ -237,6 +237,16 @@ from an external solver, or a deliberately simple "always check" villain).
   information set, relative to the baseline strategy. The analysis runner needs
   at least one shift amount; the parser accepts a scenario without
   `candidate_generation`, but the analysis runner then has nothing to generate.
+- `candidate_generation.max_simultaneous_info_sets`: an optional integer, `1`
+  (default) or `2`. `1` generates only single-information-set shift candidates
+  (unchanged behaviour). `2` additionally generates **simultaneous
+  two-information-set** shift candidates (M2-T2): each such candidate applies one
+  single shift at each of two distinct Hero information sets at once. A
+  multi-shift candidate's `candidate_id` is the two single-shift ids joined by
+  `" + "`, so the exact combination is recoverable from the id; its report row
+  also carries a structured `shifts` list and leaves the scalar `info_set` /
+  `source_action` / `target_action` / `shift_amount` fields `null`. Only `1` and
+  `2` are supported for now.
 - `repeated.horizons`: a list of integers `>= 1`. The analysis runner uses the
   maximum as the default horizon unless one is passed on the command line.
 - `repeated.discount`: a number in `(0, 1]` (defaults to `1.0`).

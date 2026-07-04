@@ -241,7 +241,10 @@ def run_river_scenario_analysis(
         build.tree,
         build.baseline_hero_strategy,
         build.baseline_villain_strategy,
-        generation=CandidateGenerationConfig(shift_amounts=build.shift_amounts),
+        generation=CandidateGenerationConfig(
+            shift_amounts=build.shift_amounts,
+            max_simultaneous_info_sets=build.max_simultaneous_info_sets,
+        ),
         horizon=horizon,
         discount=discount,
         response_mode=config.response_mode,

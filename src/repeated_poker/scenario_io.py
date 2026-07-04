@@ -259,6 +259,10 @@ class RiverScenario:
     # that tree in :func:`build_river_steal_game_from_scenario`. ``None`` keeps the
     # legacy behaviour of deriving the baseline Villain by automatic best response.
     baseline_villain_strategy: Optional[Dict[str, Dict[str, float]]] = None
+    # Candidate-generation breadth: ``1`` (single-information-set shifts only, the
+    # legacy behaviour) or ``2`` (also the simultaneous two-information-set shift
+    # candidates, M2-T2). Appended last for positional-constructor compatibility.
+    max_simultaneous_info_sets: int = 1
 
     @property
     def is_range_mode(self) -> bool:
@@ -299,6 +303,9 @@ class RiverScenarioBuildResult:
     # legacy automatic best response) or ``"explicit"`` (a profile supplied in the
     # scenario). Defaulted so any other construction keeps the legacy provenance.
     baseline_villain_source: str = "auto_best_response"
+    # Candidate-generation breadth carried through from the scenario (see
+    # ``RiverScenario.max_simultaneous_info_sets``). Defaulted for compatibility.
+    max_simultaneous_info_sets: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +395,35 @@ def _parse_shift_amounts(data) -> Optional[List[float]]:
         _require_positive(amount, f"shift_amounts[{index}]")
         shift_amounts.append(amount)
     return shift_amounts
+
+
+def _parse_max_simultaneous_info_sets(data) -> int:
+    """Parse ``candidate_generation.max_simultaneous_info_sets`` (default ``1``).
+
+    ``1`` keeps only single-information-set shift candidates (unchanged
+    behaviour); ``2`` additionally enables the simultaneous two-information-set
+    shift candidates (M2-T2). Only ``1`` and ``2`` are supported for now; a bool,
+    a non-integer, or any other value is rejected.
+    """
+
+    if data is None:
+        return 1
+    if not isinstance(data, dict):
+        raise ValueError("candidate_generation must be an object")
+    if "max_simultaneous_info_sets" not in data:
+        return 1
+    value = data["max_simultaneous_info_sets"]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            "candidate_generation.max_simultaneous_info_sets must be an integer, "
+            f"got {value!r}"
+        )
+    if value < 1 or value > 2:
+        raise ValueError(
+            "candidate_generation.max_simultaneous_info_sets must be 1 or 2, got "
+            f"{value}"
+        )
+    return value
 
 
 def _parse_hero_range(
@@ -899,6 +935,9 @@ def river_scenario_from_dict(data) -> RiverScenario:
         baseline_hero_strategy = {_IP_INFO_SET: ip_distribution}
 
     shift_amounts = _parse_shift_amounts(data.get("candidate_generation"))
+    max_simultaneous_info_sets = _parse_max_simultaneous_info_sets(
+        data.get("candidate_generation")
+    )
     repeated = _parse_repeated(data.get("repeated"))
     # Distinguish an absent key (use the automatic best-response baseline) from a
     # present key (parse it, rejecting a present ``null`` rather than silently
@@ -927,6 +966,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         equity_matrix=equity_matrix,
         betting_tree=betting_tree,
         baseline_villain_strategy=baseline_villain_strategy,
+        max_simultaneous_info_sets=max_simultaneous_info_sets,
     )
 
 
@@ -986,6 +1026,7 @@ def build_river_steal_game_from_scenario(
         repeated=scenario.repeated,
         metadata=metadata,
         baseline_villain_source=baseline_villain_source,
+        max_simultaneous_info_sets=scenario.max_simultaneous_info_sets,
     )
 
 

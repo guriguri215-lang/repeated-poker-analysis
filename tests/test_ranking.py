@@ -34,7 +34,16 @@ def _row(candidate_id, **overrides) -> CandidateAnalysisRow:
         source_action="check",
         target_action="bet",
         shift_amount=0.1,
+        shifts=[
+            {
+                "info_set": "H1",
+                "source_action": "check",
+                "target_action": "bet",
+                "shift_amount": 0.1,
+            }
+        ],
         l1_distance=0.2,
+        observation_distance=0.15,
         fixed_hero_ev=0.5,
         fixed_villain_ev=-1.0,
         fixed_house_rake=0.1,
@@ -49,6 +58,7 @@ def _row(candidate_id, **overrides) -> CandidateAnalysisRow:
         exclusion_reasons=[],
         is_minimum_villain_ev_candidate=False,
         is_pareto_frontier_candidate=False,
+        is_ev_observation_deadline_pareto_candidate=False,
         response_mode="worst",
         t_deadline=3,
         baseline_total_hero_ev=2.25,
