@@ -8,6 +8,13 @@ from nuts_chop_river import build_nuts_chop_river, default_hero_strategy
 from repeated_poker import (
     CandidateFilterConfig,
     CandidateGenerationConfig,
+    DETECTION_METHOD_REACH_WEIGHTED_V1,
+    GameTree,
+    HeroNode,
+    HeroStrategy,
+    TerminalNode,
+    VillainNode,
+    VillainStrategy,
     run_candidate_analysis_pipeline,
 )
 
@@ -24,6 +31,31 @@ def _run(**overrides):
     return run_candidate_analysis_pipeline(
         tree, baseline_hero, baseline_villain, **kwargs
     )
+
+
+def _zero_terminal(node_id: str) -> TerminalNode:
+    return TerminalNode(node_id=node_id, hero_ev=0.0, villain_ev=0.0, house_rake=0.0)
+
+
+def _zero_reach_detection_inputs():
+    hero_node = HeroNode(
+        node_id="hero",
+        info_set="H",
+        actions=(
+            ("call", _zero_terminal("T_call")),
+            ("fold", _zero_terminal("T_fold")),
+        ),
+    )
+    tree = GameTree(
+        root=VillainNode(
+            node_id="villain",
+            info_set="V",
+            actions=(("check", _zero_terminal("T_check")), ("bet", hero_node)),
+        )
+    )
+    baseline_hero = HeroStrategy({"H": {"call": 0.5, "fold": 0.5}})
+    baseline_villain = VillainStrategy({"V": {"check": 1.0, "bet": 0.0}})
+    return tree, baseline_hero, baseline_villain
 
 
 def test_pipeline_runs_end_to_end():
@@ -78,6 +110,32 @@ def test_filtering_excludes_some_candidates():
     counts = result.filter_result.summary_counts
     assert counts.excluded > 0
     assert counts.kept < counts.total
+
+
+def test_pipeline_reach_weighted_filter_uses_v1_none_semantics():
+    tree, baseline_hero, baseline_villain = _zero_reach_detection_inputs()
+
+    result = run_candidate_analysis_pipeline(
+        tree,
+        baseline_hero,
+        baseline_villain,
+        generation=CandidateGenerationConfig(shift_amounts=[0.2]),
+        horizon=5,
+        detection_log_likelihood_threshold=3.0,
+        detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+        filtering=CandidateFilterConfig(min_required_observations=10_000),
+        render_markdown=False,
+    )
+
+    counts = result.filter_result.summary_counts
+    assert counts.total == len(result.generated_candidates)
+    assert counts.total > 0
+    assert counts.excluded == 0
+    assert counts.kept == counts.total
+    assert result.analysis_report.detection_configuration.method == (
+        DETECTION_METHOD_REACH_WEIGHTED_V1
+    )
+    assert all(row.t_detect_hands is None for row in result.analysis_report.rows)
 
 
 def test_detection_enabled_flag_is_set():

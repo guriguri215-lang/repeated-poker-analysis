@@ -147,7 +147,13 @@ def run_candidate_analysis_pipeline(
             max_l1_distance=filtering.max_l1_distance,
             min_required_observations=filtering.min_required_observations,
             baseline_hero_strategy=baseline_hero_strategy,
+            tree=tree,
+            baseline_villain_strategy=baseline_villain_strategy,
             detection_log_likelihood_threshold=detection_log_likelihood_threshold,
+            detection_method=detection_method,
+            detection_observation_model=detection_observation_model,
+            terminal_reveals=terminal_reveals,
+            max_detection_terminals=max_detection_terminals,
             tolerance=tolerance,
         )
 

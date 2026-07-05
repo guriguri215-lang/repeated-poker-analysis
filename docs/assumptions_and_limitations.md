@@ -130,6 +130,9 @@
   detection time.
 - A `t_detect_hands` value of `None` means no signal under the chosen observation
   model, not safety and not real-world undetectability.
+- Candidate pre-filtering can use `reach_weighted_v1` as a diagnostic pruning
+  option before candidate comparison. Its minimum threshold applies only to
+  finite `t_detect_hands`; `None` is not filtered out.
 - It does not model real learning, memory, or statistical sophistication.
 - KL-based estimates depend on the chosen log-likelihood threshold.
 - `T_detect` may be compared with `T_deadline` only under the documented

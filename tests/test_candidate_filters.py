@@ -11,8 +11,15 @@ from repeated_poker import (
     INFO_SET_NOT_ALLOWED,
     L1_DISTANCE_EXCEEDS_LIMIT,
     REQUIRED_OBSERVATIONS_BELOW_LIMIT,
+    DETECTION_METHOD_REACH_WEIGHTED_V1,
+    OBSERVATION_MODEL_SHOWDOWN_REVEAL,
+    GameTree,
     HeroStrategy,
     HeroStrategyCandidate,
+    HeroNode,
+    TerminalNode,
+    VillainNode,
+    VillainStrategy,
     filter_candidates,
     generate_shift_candidates,
 )
@@ -36,6 +43,52 @@ def _candidate(candidate_id, info_set="H", l1_distance=0.2, dist=None):
         hero_strategy=HeroStrategy({info_set: dist}),
         l1_distance=l1_distance,
     )
+
+
+def _zero_terminal(node_id: str) -> TerminalNode:
+    return TerminalNode(node_id=node_id, hero_ev=0.0, villain_ev=0.0, house_rake=0.0)
+
+
+def _reach_weighted_fixture(villain_bet_probability=1.0):
+    hero_node = HeroNode(
+        node_id="hero",
+        info_set="H",
+        actions=(
+            ("call", _zero_terminal("T_call")),
+            ("fold", _zero_terminal("T_fold")),
+        ),
+    )
+    tree = GameTree(
+        root=VillainNode(
+            node_id="villain",
+            info_set="V",
+            actions=(("check", _zero_terminal("T_check")), ("bet", hero_node)),
+        )
+    )
+    baseline_hero = HeroStrategy({"H": {"call": 0.5, "fold": 0.5}})
+    candidate = HeroStrategyCandidate(
+        candidate_id="rw",
+        info_set="H",
+        source_action="fold",
+        target_action="call",
+        shift_amount=0.2,
+        hero_strategy=HeroStrategy({"H": {"call": 0.7, "fold": 0.3}}),
+        l1_distance=0.4,
+    )
+    villain = VillainStrategy(
+        {
+            "V": {
+                "check": 1.0 - villain_bet_probability,
+                "bet": villain_bet_probability,
+            }
+        }
+    )
+    terminal_reveals = {
+        "T_check": None,
+        "T_call": ("showdown",),
+        "T_fold": None,
+    }
+    return tree, baseline_hero, candidate, villain, terminal_reveals
 
 
 def test_no_filters_keeps_all():
@@ -114,6 +167,116 @@ def test_none_required_observations_is_not_excluded():
     )
     assert [c.candidate_id for c in result.kept] == ["c"]
     assert result.excluded == []
+
+
+def test_reach_weighted_v1_excludes_finite_t_detect_hands_below_limit():
+    tree, baseline_hero, candidate, villain, _ = _reach_weighted_fixture()
+    result = filter_candidates(
+        [candidate],
+        min_required_observations=38,
+        baseline_hero_strategy=baseline_hero,
+        tree=tree,
+        baseline_villain_strategy=villain,
+        detection_log_likelihood_threshold=3.0,
+        detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+    )
+
+    assert result.kept == []
+    assert result.excluded[0].reasons == [REQUIRED_OBSERVATIONS_BELOW_LIMIT]
+
+
+def test_reach_weighted_v1_none_t_detect_hands_is_not_excluded():
+    tree, baseline_hero, candidate, villain, _ = _reach_weighted_fixture(
+        villain_bet_probability=0.0
+    )
+    result = filter_candidates(
+        [candidate],
+        min_required_observations=10_000,
+        baseline_hero_strategy=baseline_hero,
+        tree=tree,
+        baseline_villain_strategy=villain,
+        detection_log_likelihood_threshold=3.0,
+        detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+    )
+
+    assert [c.candidate_id for c in result.kept] == ["rw"]
+    assert result.excluded == []
+
+
+def test_reach_weighted_v1_showdown_reveal_uses_terminal_reveals():
+    tree, baseline_hero, candidate, villain, terminal_reveals = (
+        _reach_weighted_fixture()
+    )
+    result = filter_candidates(
+        [candidate],
+        min_required_observations=38,
+        baseline_hero_strategy=baseline_hero,
+        tree=tree,
+        baseline_villain_strategy=villain,
+        detection_log_likelihood_threshold=3.0,
+        detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+        detection_observation_model=OBSERVATION_MODEL_SHOWDOWN_REVEAL,
+        terminal_reveals=terminal_reveals,
+    )
+
+    assert result.kept == []
+    assert result.excluded[0].reasons == [REQUIRED_OBSERVATIONS_BELOW_LIMIT]
+
+
+def test_reach_weighted_v1_filter_requires_tree():
+    _, baseline_hero, candidate, villain, _ = _reach_weighted_fixture()
+    with pytest.raises(ValueError, match="tree is required"):
+        filter_candidates(
+            [candidate],
+            min_required_observations=38,
+            baseline_hero_strategy=baseline_hero,
+            baseline_villain_strategy=villain,
+            detection_log_likelihood_threshold=3.0,
+            detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+        )
+
+
+def test_reach_weighted_v1_filter_requires_baseline_villain_strategy():
+    tree, baseline_hero, candidate, _, _ = _reach_weighted_fixture()
+    with pytest.raises(ValueError, match="baseline_villain_strategy is required"):
+        filter_candidates(
+            [candidate],
+            min_required_observations=38,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            detection_log_likelihood_threshold=3.0,
+            detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+        )
+
+
+def test_reach_weighted_v1_filter_showdown_reveal_requires_terminal_reveals():
+    tree, baseline_hero, candidate, villain, _ = _reach_weighted_fixture()
+    with pytest.raises(ValueError, match="terminal_reveals"):
+        filter_candidates(
+            [candidate],
+            min_required_observations=38,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            baseline_villain_strategy=villain,
+            detection_log_likelihood_threshold=3.0,
+            detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+            detection_observation_model=OBSERVATION_MODEL_SHOWDOWN_REVEAL,
+        )
+
+
+def test_reach_weighted_v1_filter_honors_max_detection_terminals():
+    tree, baseline_hero, candidate, villain, _ = _reach_weighted_fixture()
+    with pytest.raises(ValueError, match="max_detection_terminals"):
+        filter_candidates(
+            [candidate],
+            min_required_observations=38,
+            baseline_hero_strategy=baseline_hero,
+            tree=tree,
+            baseline_villain_strategy=villain,
+            detection_log_likelihood_threshold=3.0,
+            detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+            max_detection_terminals=2,
+        )
 
 
 def test_multiple_reasons_are_all_recorded():

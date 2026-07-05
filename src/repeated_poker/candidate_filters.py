@@ -6,10 +6,11 @@ expensive comparison / selection stages.  It is a cheap pre-filter, not a
 replacement for :func:`~repeated_poker.comparison.compare_candidates` or
 :func:`~repeated_poker.selection.select_candidates`.
 
-The optional detection-based filter uses the local observable-distribution
-``T_detect`` model (see :mod:`repeated_poker.detection`): it looks only at the
-Hero action distribution at each candidate's own information set, conditional on
-reaching it.  It does not model tree reach probability or real opponent
+The optional detection-based filter uses ``local_v0`` by default, preserving the
+historical local observable-distribution ``T_detect`` model.  When explicitly
+asked to use ``reach_weighted_v1``, it applies the same public-observation
+diagnostic used by the report path and interprets the minimum as a threshold on
+finite per-hand ``t_detect_hands``.  Neither method models real opponent
 learning.
 """
 
@@ -19,8 +20,24 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Set
 
 from .candidates import HeroStrategyCandidate
-from .detection import calculate_candidate_local_detection, validate_detection_parameters
-from .game import HeroStrategy, require_finite, require_valid_tolerance
+from .detection import (
+    DEFAULT_MAX_DETECTION_TERMINALS,
+    DETECTION_METHOD_LOCAL_V0,
+    DETECTION_METHOD_REACH_WEIGHTED_V1,
+    TerminalReveals,
+    calculate_candidate_local_detection,
+    calculate_candidate_reach_weighted_detection,
+    resolve_detection_observation_model,
+    validate_detection_parameters,
+    validate_max_detection_terminals,
+)
+from .game import (
+    GameTree,
+    HeroStrategy,
+    VillainStrategy,
+    require_finite,
+    require_valid_tolerance,
+)
 from .selection import L1_DISTANCE_EXCEEDS_LIMIT
 
 # Exclusion-reason codes (stable English identifiers).  L1_DISTANCE_EXCEEDS_LIMIT
@@ -103,7 +120,13 @@ def filter_candidates(
     max_l1_distance: Optional[float] = None,
     min_required_observations: Optional[int] = None,
     baseline_hero_strategy: Optional[HeroStrategy] = None,
+    tree: Optional[GameTree] = None,
+    baseline_villain_strategy: Optional[VillainStrategy] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
+    detection_method: str = DETECTION_METHOD_LOCAL_V0,
+    detection_observation_model: Optional[str] = None,
+    terminal_reveals: Optional[TerminalReveals] = None,
+    max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
     tolerance: float = 1e-9,
 ) -> CandidateFilterResult:
     """Pre-filter generated candidates, returning kept and excluded sets.
@@ -114,19 +137,26 @@ def filter_candidates(
       is not in the set -> ``INFO_SET_NOT_ALLOWED``.  An empty set excludes all.
     * ``max_l1_distance`` (when given): exclude when ``l1_distance`` exceeds it
       beyond ``tolerance`` -> ``L1_DISTANCE_EXCEEDS_LIMIT``.
-    * ``min_required_observations`` (when given): compute the candidate's local
-      ``T_detect`` and exclude when ``required_observations`` is below the limit
-      -> ``REQUIRED_OBSERVATIONS_BELOW_LIMIT``.  A ``None`` ``required_observations``
-      (identical / undetectable distribution) is never excluded.
+    * ``min_required_observations`` (when given): compute the candidate's
+      ``T_detect`` with ``detection_method`` and exclude finite estimates below
+      the limit -> ``REQUIRED_OBSERVATIONS_BELOW_LIMIT``.  For ``local_v0`` the
+      estimate is ``required_observations``; for ``reach_weighted_v1`` it is the
+      per-hand ``t_detect_hands``.  ``None`` (no signal under the selected model)
+      is never excluded.
 
     Using ``min_required_observations`` requires both ``baseline_hero_strategy``
-    and ``detection_log_likelihood_threshold``.  Input order is preserved, the
-    candidate objects are never mutated, and ``kept`` plus ``excluded`` always
-    sum to the input total.
+    and ``detection_log_likelihood_threshold``.  ``reach_weighted_v1`` also
+    requires ``tree`` and ``baseline_villain_strategy``.  Input order is
+    preserved, the candidate objects are never mutated, and ``kept`` plus
+    ``excluded`` always sum to the input total.
     """
 
     require_valid_tolerance(tolerance)
     allowed = _validate_allowed_info_sets(allowed_info_sets)
+    resolved_observation_model = resolve_detection_observation_model(
+        detection_method, detection_observation_model
+    )
+    validate_max_detection_terminals(max_detection_terminals)
 
     if max_l1_distance is not None:
         require_finite(max_l1_distance, "max_l1_distance")
@@ -159,9 +189,19 @@ def filter_candidates(
                 "detection_log_likelihood_threshold is required when "
                 "min_required_observations is given"
             )
-        validate_detection_parameters(
-            detection_log_likelihood_threshold, None, tolerance
-        )
+        if detection_method == DETECTION_METHOD_REACH_WEIGHTED_V1:
+            if tree is None:
+                raise ValueError(
+                    "tree is required when detection_method='reach_weighted_v1' "
+                    "and min_required_observations is given"
+                )
+            if baseline_villain_strategy is None:
+                raise ValueError(
+                    "baseline_villain_strategy is required when "
+                    "detection_method='reach_weighted_v1' and "
+                    "min_required_observations is given"
+                )
+        validate_detection_parameters(detection_log_likelihood_threshold, None, tolerance)
 
     kept: List[HeroStrategyCandidate] = []
     excluded: List[ExcludedGeneratedCandidate] = []
@@ -184,13 +224,27 @@ def filter_candidates(
             reasons.append(L1_DISTANCE_EXCEEDS_LIMIT)
 
         if detection_enabled:
-            detection = calculate_candidate_local_detection(
-                baseline_hero_strategy,
-                candidate,
-                log_likelihood_threshold=detection_log_likelihood_threshold,
-                tolerance=tolerance,
-            )
-            required = detection.required_observations
+            if detection_method == DETECTION_METHOD_REACH_WEIGHTED_V1:
+                detection = calculate_candidate_reach_weighted_detection(
+                    tree,
+                    baseline_hero_strategy,
+                    candidate,
+                    baseline_villain_strategy,
+                    log_likelihood_threshold=detection_log_likelihood_threshold,
+                    observation_model=resolved_observation_model,
+                    terminal_reveals=terminal_reveals,
+                    max_detection_terminals=max_detection_terminals,
+                    tolerance=tolerance,
+                )
+                required = detection.t_detect_hands
+            else:
+                detection = calculate_candidate_local_detection(
+                    baseline_hero_strategy,
+                    candidate,
+                    log_likelihood_threshold=detection_log_likelihood_threshold,
+                    tolerance=tolerance,
+                )
+                required = detection.required_observations
             if required is not None and required < min_required_observations:
                 reasons.append(REQUIRED_OBSERVATIONS_BELOW_LIMIT)
 

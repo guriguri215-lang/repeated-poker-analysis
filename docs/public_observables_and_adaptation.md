@@ -88,6 +88,12 @@ The v1 observation models are:
 `showdown_reveal` is opt-in and includes only public labels that the builder has
 explicitly supplied.
 
+The candidate pre-filter may also use `reach_weighted_v1` when a detection
+minimum is requested. It uses this same public-observation contract before the
+candidate-comparison stage and interprets the threshold as a minimum finite
+`t_detect_hands`; `None` means no signal under the selected observation model
+and is not pruned by that filter.
+
 ## Threshold-Observer Adaptation Convention
 
 `T_detect` is primarily a detectability diagnostic. It may be connected to
