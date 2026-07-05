@@ -302,6 +302,9 @@ def run_batch_scenario_analysis(
             "detection_occurrence_probability_per_opportunity": (
                 config.analysis.detection_occurrence_probability_per_opportunity
             ),
+            "detection_comparable_spot_occurrence_probability_per_physical_hand": (
+                config.analysis.detection_comparable_spot_occurrence_probability_per_physical_hand
+            ),
             "detection_method": config.analysis.detection_method,
             "detection_observation_model": resolved_detection_observation_model,
             "max_detection_terminals": config.analysis.max_detection_terminals,

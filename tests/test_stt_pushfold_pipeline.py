@@ -40,6 +40,42 @@ def test_run_from_parsed_scenario_succeeds():
     assert result.scenario.format_version == "stt_pushfold-1"
 
 
+def test_existing_positional_config_slots_are_preserved():
+    config = SttPushFoldAnalysisConfig(
+        None,
+        None,
+        "best",
+        0.25,
+        0.5,
+        3.0,
+        0.4,
+        "local_v0",
+        None,
+        123,
+        ["SB"],
+        0.7,
+        10,
+        False,
+        12,
+        "t_deadline",
+        True,
+        True,
+        2,
+        1e-8,
+        321,
+    )
+
+    assert config.detection_method == "local_v0"
+    assert config.max_detection_terminals == 123
+    assert config.filter_allowed_info_sets == ["SB"]
+    assert config.markdown is False
+    assert config.max_pure_strategies == 321
+    assert (
+        config.detection_comparable_spot_occurrence_probability_per_physical_hand
+        is None
+    )
+
+
 def test_manifest_contains_stt_format_version_and_prize_unit(tmp_path):
     result = run_stt_pushfold_analysis(_SAMPLE)
     path = tmp_path / "stt.json"
@@ -67,6 +103,28 @@ def test_local_detection_runs_without_error():
     row = result.pipeline_result.analysis_report.rows[0].to_dict()
     assert "t_detect_estimated_opportunities" in row
     assert "detection_kl_divergence_nats" in row
+
+
+def test_programmatic_physical_hand_conversion_runs_through_stt_runner():
+    result = run_stt_pushfold_analysis(
+        _SAMPLE,
+        SttPushFoldAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+            markdown=False,
+        ),
+    )
+
+    report = result.pipeline_result.analysis_report
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        == 0.25
+    )
+    assert result.manifest.parameters[
+        "detection_comparable_spot_occurrence_probability_per_physical_hand"
+    ] == 0.25
+    assert any(row.t_detect_estimated_physical_hands for row in report.rows)
 
 
 def test_reach_weighted_showdown_filter_runs_through_stt_runner():

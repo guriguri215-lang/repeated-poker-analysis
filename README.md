@@ -134,11 +134,15 @@ concepts and must not be conflated.
 `build_candidate_analysis_report` can optionally include per-candidate
 `T_detect`: pass `baseline_hero_strategy` together with
 `detection_log_likelihood_threshold`. The default `local_v0` method can also use
-`detection_occurrence_probability_per_opportunity`. The opt-in
-`reach_weighted_v1` method additionally takes the tree, baseline Villain
+`detection_occurrence_probability_per_opportunity`. In `local_v0`, that
+probability converts local observations at the changed information set into
+comparable-spot opportunities; it is not a physical dealt-hand frequency. The
+opt-in `reach_weighted_v1` method additionally takes the tree, baseline Villain
 strategy, and an observation model (`actions_only` or `showdown_reveal`), then
 builds per-hand public observation distributions from root-to-terminal path
-probabilities. Each row then carries detection fields and two distinct
+probabilities. In v1, one observation is one complete abstract hand /
+opportunity in the model, not necessarily one physical dealt hand in a wider
+population. Each row then carries detection fields and two distinct
 detection-vs-deadline reads:
 
 - `t_detect_is_no_later_than_t_deadline` is a pure time comparison
@@ -155,6 +159,18 @@ set and does not include tree reach probability. The opt-in v1 model includes
 within-spot reach in its per-hand observation distribution. Neither model is a
 real opponent-learning model, and neither should be read as a behavioural
 prediction outside the documented threshold-observer convention.
+
+Reports can also include an optional diagnostic physical-hand conversion by
+passing `detection_comparable_spot_occurrence_probability_per_physical_hand` to
+the report or pipeline API. The corresponding report configuration key is
+`comparable_spot_occurrence_probability_per_physical_hand`, and candidate rows
+add `t_detect_estimated_physical_hands`. This is a cross-spot population
+frequency for how often the comparable abstract spot occurs per physical dealt
+hand, not a single-tree reach probability. It is computed only after
+`t_detect_estimated_opportunities` exists and never changes detection math,
+filtering, ranking, `T_deadline`, or selection. It is not a scenario JSON field,
+not a real-world prediction, not opponent learning, and not a profitability
+guarantee.
 
 ### Markdown summary
 

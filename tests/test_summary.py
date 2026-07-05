@@ -127,6 +127,7 @@ def test_contains_configuration_values():
     assert "enabled: yes" in md
     assert "log_likelihood_threshold: 3.000000" in md
     assert "occurrence_probability_per_opportunity: 0.500000" in md
+    assert "comparable_spot_occurrence_probability_per_physical_hand: -" in md
 
 
 def test_contains_summary_counts():
@@ -155,6 +156,7 @@ def test_contains_candidate_columns_and_shift_format():
         "is_eligible",
         "t_deadline",
         "t_detect_estimated_opportunities",
+        "t_detect_estimated_physical_hands",
         "detected_adaptation_delta_from_baseline",
         "detected_adaptation_is_at_least_baseline",
         "exclusion_reasons",

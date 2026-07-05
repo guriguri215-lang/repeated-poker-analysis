@@ -75,6 +75,9 @@ class RiverScenarioAnalysisConfig:
     ranking_top_k: Optional[int] = None
     tolerance: float = 1e-9
     max_pure_strategies: int = DEFAULT_MAX_PURE_STRATEGIES
+    detection_comparable_spot_occurrence_probability_per_physical_hand: Optional[
+        float
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,9 @@ def run_river_scenario_analysis(
             "detection_occurrence_probability_per_opportunity": (
                 config.detection_occurrence_probability_per_opportunity
             ),
+            "detection_comparable_spot_occurrence_probability_per_physical_hand": (
+                config.detection_comparable_spot_occurrence_probability_per_physical_hand
+            ),
             "detection_method": config.detection_method,
             "detection_observation_model": resolved_detection_observation_model,
             "max_detection_terminals": config.max_detection_terminals,
@@ -267,6 +273,9 @@ def run_river_scenario_analysis(
         detection_log_likelihood_threshold=config.detection_log_likelihood_threshold,
         detection_occurrence_probability_per_opportunity=(
             config.detection_occurrence_probability_per_opportunity
+        ),
+        detection_comparable_spot_occurrence_probability_per_physical_hand=(
+            config.detection_comparable_spot_occurrence_probability_per_physical_hand
         ),
         detection_method=config.detection_method,
         detection_observation_model=config.detection_observation_model,

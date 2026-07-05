@@ -85,6 +85,9 @@ def run_candidate_analysis_pipeline(
     max_selection_l1_distance: Optional[float] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
     detection_occurrence_probability_per_opportunity: Optional[float] = None,
+    detection_comparable_spot_occurrence_probability_per_physical_hand: Optional[
+        float
+    ] = None,
     detection_method: str = DETECTION_METHOD_LOCAL_V0,
     detection_observation_model: Optional[str] = None,
     terminal_reveals: Optional[TerminalReveals] = None,
@@ -182,6 +185,9 @@ def run_candidate_analysis_pipeline(
         detection_log_likelihood_threshold=detection_log_likelihood_threshold,
         detection_occurrence_probability_per_opportunity=(
             detection_occurrence_probability_per_opportunity
+        ),
+        detection_comparable_spot_occurrence_probability_per_physical_hand=(
+            detection_comparable_spot_occurrence_probability_per_physical_hand
         ),
         detection_method=detection_method,
         detection_observation_model=detection_observation_model,

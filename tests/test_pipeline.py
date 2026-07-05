@@ -143,6 +143,23 @@ def test_detection_enabled_flag_is_set():
     assert result.analysis_report.detection_configuration.enabled is True
 
 
+def test_pipeline_forwards_physical_hand_conversion_config():
+    result = _run(
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=0.5,
+        detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+        render_markdown=False,
+    )
+
+    detection = result.analysis_report.detection_configuration
+    assert detection.comparable_spot_occurrence_probability_per_physical_hand == 0.25
+    assert result.analysis_report.rows
+    assert all(
+        row.t_detect_estimated_physical_hands is not None
+        for row in result.analysis_report.rows
+    )
+
+
 def test_detection_disabled_by_default():
     result = _run()
     assert result.analysis_report.detection_configuration.enabled is False

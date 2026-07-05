@@ -295,6 +295,12 @@ not a raw solver-export parser and introduces no new manifest field.
   method is `local_v0`; `reach_weighted_v1` is opt-in and supports
   `actions_only` or `showdown_reveal`. The v1 `showdown_reveal` labels are
   internal builder annotations (`build.terminal_reveals`), not JSON fields.
+- The optional physical-hand conversion is also not a scenario JSON field. Its
+  report/API input,
+  `detection_comparable_spot_occurrence_probability_per_physical_hand`, supplies
+  a comparable spot occurrence probability per physical dealt hand. This is a
+  diagnostic cross-spot population frequency, not a single-tree reach
+  probability and not an opponent-learning or profitability claim.
 - Public observability for river detection is the public action path plus
   optional builder-supplied reveal labels. Fold terminals reveal no private
   buckets; call / showdown-style terminals may carry the abstract labels
@@ -406,7 +412,8 @@ not a scenario input field, and it changes no analysis result. Fields:
 - `timestamp_utc`: run time as an ISO 8601 UTC string (`...Z`).
 - `parameters`: the effective analysis parameters (resolved horizon, discount,
   response mode, tolerances, detection settings including method / observation
-  model / terminal cap, ranking criterion). The
+  model / terminal cap, optional comparable spot occurrence probability, ranking
+  criterion). The
   batch-level manifest records the *requested* overrides instead; each
   per-scenario manifest records that scenario's resolved values.
 

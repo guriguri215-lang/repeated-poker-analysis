@@ -10,6 +10,7 @@ _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
 _FORMAT_REFERENCE = _ROOT / "docs" / "scenario_format_reference.md"
 _STT_FORMAT_REFERENCE = _ROOT / "docs" / "stt_pushfold_format_reference.md"
+_PUBLIC_OBSERVABLES = _ROOT / "docs" / "public_observables_and_adaptation.md"
 _GUI_DESIGN = _ROOT / "docs" / "gui_input_design.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
@@ -229,6 +230,7 @@ def test_walkthrough_contains_key_phrase(phrase):
         "Future-ICM / FGS / tournament-simulation backend",
         "not a strategic player",
         "does not guarantee profitable poker play",
+        "comparable spot occurrence probability per physical hand",
     ],
 )
 def test_assumptions_contains_key_phrase(phrase):
@@ -267,6 +269,10 @@ def test_examples_guide_contains_key_phrase(phrase):
 
 def test_format_reference_file_exists():
     assert _FORMAT_REFERENCE.is_file()
+
+
+def test_public_observables_file_exists():
+    assert _PUBLIC_OBSERVABLES.is_file()
 
 
 def test_stt_format_reference_file_exists():
@@ -313,6 +319,8 @@ def test_stt_format_reference_is_ascii_only():
         # field, documented with its provenance token.
         "baseline_villain_strategy",
         "baseline_villain_source",
+        "not a scenario JSON field",
+        "comparable spot occurrence probability",
     ],
 )
 def test_format_reference_contains_key_phrase(phrase):
@@ -331,10 +339,25 @@ def test_format_reference_contains_key_phrase(phrase):
         "not a push/fold chart",
         "not real-money advice",
         "validate_tree(..., allow_negative_residual=True)",
+        "not a tournament simulation",
+        "physical-hand conversion",
     ],
 )
 def test_stt_format_reference_contains_key_phrase(phrase):
     assert phrase in _STT_FORMAT_REFERENCE.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "cross-spot population frequency",
+        "not a single-tree reach probability",
+        "not a scenario JSON field",
+        "physical-hand conversion",
+    ],
+)
+def test_public_observables_contains_physical_conversion_scope(phrase):
+    assert phrase in _PUBLIC_OBSERVABLES.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("doc", ["README", "FORMAT_REFERENCE"])
