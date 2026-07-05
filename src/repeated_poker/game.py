@@ -8,13 +8,17 @@ kinds:
 * :class:`VillainNode`  -- a Villain decision node belonging to a Villain info
   set;
 * :class:`TerminalNode` -- a leaf carrying the net payoff triple
-  ``(hero_ev, villain_ev, house_rake)``.
+  ``(hero_ev, villain_ev, house_rake)``. The third slot is a residual account:
+  house rake in river-chip games, or another non-strategic accounting residual
+  such as bystander prize-EV delta in STT ICM games.
 
 Hero is locked: a fixed mixed strategy is supplied at every Hero info set.
 Villain keeps every legal action.  A player must choose the *same* action at
-every node that shares an information set.  Utilities are net chip results over
-the whole hand, so a rake-free game satisfies
-``hero_ev + villain_ev + house_rake == 0`` at every terminal.
+every node that shares an information set.  Utilities are net results over the
+analysed spot, so the payoff triple satisfies
+``hero_ev + villain_ev + house_rake == 0`` at every terminal. River-chip games
+normally require non-negative ``house_rake``; callers that intentionally use the
+third slot as a signed residual must opt in through :func:`validate_tree`.
 
 Perfect recall remains an *input contract*: the caller is responsible for
 supplying a tree whose information sets are consistent with a player never
@@ -58,7 +62,7 @@ def require_valid_tolerance(value: float, name: str = "tolerance") -> None:
 
 @dataclass(frozen=True)
 class TerminalNode:
-    """A leaf of the tree carrying the net payoff triple."""
+    """A leaf of the tree carrying the net payoff/residual triple."""
 
     node_id: NodeId
     hero_ev: float
@@ -198,22 +202,32 @@ def _collect_info_sets(tree: GameTree, node_type) -> Dict[InfoSetId, Tuple[Actio
 # ---------------------------------------------------------------------------
 
 
-def validate_tree(tree: GameTree, tolerance: float = 1e-9) -> None:
+def validate_tree(
+    tree: GameTree,
+    tolerance: float = 1e-9,
+    *,
+    allow_negative_residual: bool = False,
+) -> None:
     """Validate structural and numeric invariants of ``tree``.
 
     Checks, for every node:
 
     * chance probabilities are finite, non-negative, and sum to one;
     * decision nodes have at least one action and no duplicate action labels;
-    * terminal payoffs are finite, ``house_rake`` is non-negative, and the
-      triple satisfies ``hero_ev + villain_ev + house_rake == 0`` within
-      ``tolerance``;
+    * terminal payoffs are finite, ``house_rake`` is non-negative unless
+      ``allow_negative_residual`` is true, and the triple satisfies
+      ``hero_ev + villain_ev + house_rake == 0`` within ``tolerance``;
     * information sets have consistent legal actions for each player; and
     * no player's information-set ID repeats on a single root-to-terminal path
       (the perfect-recall structural guard).
     """
 
     require_valid_tolerance(tolerance)
+    if not isinstance(allow_negative_residual, bool):
+        raise ValueError(
+            "allow_negative_residual must be a bool, got "
+            f"{allow_negative_residual!r}"
+        )
 
     for node in iter_nodes(tree.root):
         if isinstance(node, TerminalNode):
@@ -226,7 +240,7 @@ def validate_tree(tree: GameTree, tolerance: float = 1e-9) -> None:
                     raise ValueError(
                         f"terminal {node.node_id!r} has non-finite {name}: {value!r}"
                     )
-            if node.house_rake < 0:
+            if node.house_rake < 0 and not allow_negative_residual:
                 raise ValueError(
                     f"terminal {node.node_id!r} has negative house_rake "
                     f"{node.house_rake}"

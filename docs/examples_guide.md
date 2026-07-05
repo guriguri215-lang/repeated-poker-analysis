@@ -22,6 +22,8 @@
 7. `examples/analysis_report.py` - build the consolidated report directly, at a
    lower level than the pipeline.
 8. `examples/value_bluff_river.py` - a contrasting non-chop spot.
+9. `scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json`
+   - run the experimental STT SB-vs-BB push/fold ICM scenario path.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -97,6 +99,7 @@ python examples/ranking.py
 python examples/markdown_summary.py
 python examples/analysis_report.py
 python examples/value_bluff_river.py
+python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
 ```
 
 ## How to interpret common output fields
@@ -206,6 +209,22 @@ Matrix mode accepts either matrix, but not both:
 
 These are *abstract* ranges given directly as weights and matchup outcomes; they
 are **not** a real card or hand-range parser.
+
+### STT push/fold JSON scenario
+
+`examples/stt_pushfold_2x2.json` demonstrates the separate
+`stt_pushfold-1` format for an STT SB-vs-BB push/fold spot with abstract SB and
+BB buckets. It uses Malmuth-Harville ICM prize EV deltas, not river chip EV.
+
+Run it with:
+
+```powershell
+python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
+```
+
+The output is a commitment-analysis diagnostic for the supplied abstract
+buckets. It is not a real hand recommendation, not real-money advice, and not a
+push/fold chart. See [stt_pushfold_format_reference.md](stt_pushfold_format_reference.md).
 
 ### River betting tree v1
 

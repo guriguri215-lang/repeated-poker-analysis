@@ -245,6 +245,8 @@ def solve_exact_response(
     tolerance: float = 1e-9,
     max_pure_strategies: int = DEFAULT_MAX_PURE_STRATEGIES,
     method: str = METHOD_DP,
+    *,
+    allow_negative_residual: bool = False,
 ) -> BestResponseResult:
     """Compute Villain's exact best-response correspondence against fixed Hero.
 
@@ -281,6 +283,10 @@ def solve_exact_response(
     ``method="enumerate"`` on small trees, or read the DP correspondence as
     per-information-set near-optimality rather than a global EV band.
 
+    ``allow_negative_residual`` is forwarded to :func:`validate_tree`. Keep the
+    default ``False`` for river-chip games; STT ICM callers set it to ``True``
+    because the third terminal slot is a signed bystander prize-EV delta.
+
     This is Villain's best response to a fixed Hero strategy, not an
     equilibrium computation.
     """
@@ -290,7 +296,11 @@ def solve_exact_response(
             f"method must be one of {list(_VALID_METHODS)}, got {method!r}"
         )
     require_valid_tolerance(tolerance)
-    validate_tree(tree, tolerance=tolerance)
+    validate_tree(
+        tree,
+        tolerance=tolerance,
+        allow_negative_residual=allow_negative_residual,
+    )
     validate_hero_strategy(tree, hero_strategy, tolerance=tolerance)
 
     if method == METHOD_ENUMERATE:

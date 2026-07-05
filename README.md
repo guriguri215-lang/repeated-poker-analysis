@@ -55,7 +55,7 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 ## Current working state
 
 - The project is tracked in Git and developed through small pull requests.
-- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, `T_detect` (`local_v0` by default, `reach_weighted_v1` opt-in), analysis reports, Markdown summaries, and a high-level pipeline API.
+- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, `T_detect` (`local_v0` by default, `reach_weighted_v1` opt-in), analysis reports, Markdown summaries, a high-level pipeline API, and an experimental STT SB-vs-BB push/fold ICM scenario path.
 - The main end-to-end entry point is `run_candidate_analysis_pipeline`.
 - The quickest local sanity check is `python scripts/check_mvp.py`.
 - The project remains experimental and intended for small abstract games; see the assumptions and limitations document before interpreting outputs.
@@ -262,6 +262,32 @@ pipeline. A bad file reports a short `error: ...` line instead of a Python
 traceback; pass `--continue-on-error` to record failing files and keep going,
 and `--output-json` (optionally with `--strict-json`) to save the rows as JSON.
 
+### STT push/fold ICM scenario input
+
+The STT path uses a separate JSON format, `stt_pushfold-1`, for preflop
+SB-vs-BB push/fold spots in a single-table tournament. It is intentionally
+separate from the river format because the payoff backend is ICM prize EV delta,
+not chip EV or river pot share.
+
+To run the bundled 2x2 abstract bucket example:
+
+```bash
+python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
+```
+
+The STT runner shares the same candidate-analysis pipeline and supports
+`--output-json`, `--output-markdown`, `--output-csv`, and `--strict-json`.
+Analysis values are modelled tournament prize EV deltas from
+Malmuth-Harville ICM. They are not real tournament predictions, not real-money
+advice, and not push/fold charts. The repeated layer assumes the same abstract
+spot is repeated for sensitivity analysis; it is not a tournament simulation,
+Future-ICM, or FGS model.
+
+The STT terminal triple still uses the core field name `house_rake` for API
+compatibility, but in STT reports that third slot is a bystander prize EV delta
+and may be negative. See `docs/stt_pushfold_format_reference.md` for the full
+field specification and validation rules.
+
 To start from a working file instead of an empty one, generate a starter
 scenario with `create_scenario_template` or
 `python scripts/create_scenario_template.py --kind <kind>` (use `--list-kinds`
@@ -346,6 +372,10 @@ See [docs/scenario_format_reference.md](docs/scenario_format_reference.md) for
 the full JSON scenario format: every top-level field, each input mode and its
 required fields, the information-set naming, payoff conventions, and validation
 troubleshooting.
+
+See [docs/stt_pushfold_format_reference.md](docs/stt_pushfold_format_reference.md)
+for the separate STT SB-vs-BB push/fold JSON format and its ICM prize-EV
+accounting conventions.
 
 ### GUI/form input design
 

@@ -9,6 +9,7 @@ _WALKTHROUGH = _ROOT / "docs" / "mvp_walkthrough.md"
 _ASSUMPTIONS = _ROOT / "docs" / "assumptions_and_limitations.md"
 _EXAMPLES_GUIDE = _ROOT / "docs" / "examples_guide.md"
 _FORMAT_REFERENCE = _ROOT / "docs" / "scenario_format_reference.md"
+_STT_FORMAT_REFERENCE = _ROOT / "docs" / "stt_pushfold_format_reference.md"
 _GUI_DESIGN = _ROOT / "docs" / "gui_input_design.md"
 _PUBLIC_READINESS = _ROOT / "docs" / "public_readiness_checklist.md"
 _PUBLICATION_POLICY = _ROOT / "docs" / "publication_policy.md"
@@ -237,6 +238,20 @@ def test_assumptions_contains_key_phrase(phrase):
 @pytest.mark.parametrize(
     "phrase",
     [
+        "STT push/fold assumptions",
+        "bystander prize EV delta",
+        "not push/fold charts",
+        "not simulate blind increases",
+        "Future-ICM, FGS, and tournament simulation",
+    ],
+)
+def test_assumptions_contains_stt_scope_phrase(phrase):
+    assert phrase in _ASSUMPTIONS.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
         "analysis_pipeline.py",
         "nuts_chop_river.py",
         "candidate_filters.py",
@@ -254,8 +269,18 @@ def test_format_reference_file_exists():
     assert _FORMAT_REFERENCE.is_file()
 
 
+def test_stt_format_reference_file_exists():
+    assert _STT_FORMAT_REFERENCE.is_file()
+
+
 def test_readme_links_to_format_reference():
     assert "docs/scenario_format_reference.md" in _README.read_text(encoding="utf-8")
+
+
+def test_readme_links_to_stt_format_reference():
+    assert "docs/stt_pushfold_format_reference.md" in _README.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_examples_guide_links_to_format_reference():
@@ -266,6 +291,10 @@ def test_format_reference_is_ascii_only():
     # Match the README / examples-guide style: ASCII-only, so no mojibake glyphs,
     # no replacement character, and no smart quotes / dashes.
     assert _FORMAT_REFERENCE.read_text(encoding="utf-8").isascii()
+
+
+def test_stt_format_reference_is_ascii_only():
+    assert _STT_FORMAT_REFERENCE.read_text(encoding="utf-8").isascii()
 
 
 @pytest.mark.parametrize(
@@ -288,6 +317,24 @@ def test_format_reference_is_ascii_only():
 )
 def test_format_reference_contains_key_phrase(phrase):
     assert phrase in _FORMAT_REFERENCE.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "stt_pushfold-1",
+        "outcome_matrix",
+        "sb_win_probability_matrix",
+        "baseline_villain_source",
+        "bystander prize EV delta",
+        "Malmuth-Harville ICM",
+        "not a push/fold chart",
+        "not real-money advice",
+        "validate_tree(..., allow_negative_residual=True)",
+    ],
+)
+def test_stt_format_reference_contains_key_phrase(phrase):
+    assert phrase in _STT_FORMAT_REFERENCE.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("doc", ["README", "FORMAT_REFERENCE"])
@@ -385,6 +432,7 @@ def test_non_goals_do_not_list_implemented_features():
     text = _ASSUMPTIONS.read_text(encoding="utf-8")
     assert "## Current non-goals" in text
     assert "CLI / file output / web app" not in text
+    assert "STT push-fold game builder / runner" not in text
 
 
 @pytest.mark.parametrize(

@@ -57,16 +57,24 @@ def evaluate_fixed_profile(
     hero_strategy: HeroStrategy,
     villain_strategy: VillainStrategy,
     tolerance: float = 1e-9,
+    *,
+    allow_negative_residual: bool = False,
 ) -> FixedProfileValue:
     """Return the exact expected value of a fixed Hero-and-Villain profile.
 
     Validates the tree and both strategies, then recurses over the tree mixing
     chance, Hero, and Villain probabilities to accumulate the expected payoff
-    triple.
+    triple. ``allow_negative_residual`` is forwarded to :func:`validate_tree`
+    for model families, such as STT ICM, that use the third terminal slot as a
+    signed non-strategic residual rather than non-negative rake.
     """
 
     require_valid_tolerance(tolerance)
-    validate_tree(tree, tolerance=tolerance)
+    validate_tree(
+        tree,
+        tolerance=tolerance,
+        allow_negative_residual=allow_negative_residual,
+    )
     validate_hero_strategy(tree, hero_strategy, tolerance=tolerance)
     validate_villain_strategy(tree, villain_strategy, tolerance=tolerance)
 

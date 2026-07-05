@@ -45,6 +45,24 @@
 - Future-ICM, FGS, and tournament-simulation backends are later extensions, not
   part of the current ICM backend.
 
+## STT push/fold assumptions
+
+- The STT implementation covers a preflop SB-vs-BB push/fold spot after all
+  other players have folded.
+- SB has only `shove` or `fold`; BB has only `call` or `fold` against a shove.
+- Showdown results are supplied as abstract bucket probabilities. The tool does
+  not evaluate real cards, parse real ranges, or apply card removal.
+- Terminal values are modelled tournament prize EV deltas from ICM. They are
+  not chip EV, not real tournament predictions, not real-money advice, and not
+  push/fold charts.
+- The terminal accounting residual is the bystander prize EV delta. It may be
+  negative even though river-chip rake remains non-negative.
+- `T_deadline` and `T_detect` on STT scenarios repeat the same abstract spot as
+  a sensitivity assumption. They do not simulate blind increases, eliminations,
+  future stack evolution, or tournament dynamics.
+- Limping, min-raising, non-all-in sizing, side pots, partial blind posting,
+  Future-ICM, FGS, and tournament simulation are not part of STT v1.
+
 ## Hero commitment assumptions
 
 - Candidate strategies represent fixed Hero mixed strategies (a commitment).
@@ -117,8 +135,8 @@
   reach-weighted `T_detect` v1 is implemented)
 - Human opponent modeling
 - Strategy recommendation for real-money play
-- STT push-fold game builder / runner
 - Future-ICM / FGS / tournament-simulation backend
+- STT limp / raise / non-all-in sizing, side-pot, or real-card evaluation
 - Publicly hosted web service (the GUIs are local-only prototypes)
 - New GUI features (the five local editor/analyze prototypes are frozen;
   bug fixes only)

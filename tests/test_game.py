@@ -78,6 +78,21 @@ def test_validate_tree_rejects_negative_house_rake():
         validate_tree(tree)
 
 
+def test_validate_tree_can_allow_negative_residual_accounting():
+    tree = GameTree(
+        root=TerminalNode("t", hero_ev=1.0, villain_ev=0.0, house_rake=-1.0)
+    )
+
+    validate_tree(tree, allow_negative_residual=True)
+
+
+def test_validate_tree_rejects_non_bool_allow_negative_residual():
+    tree = _single_hero_tree()
+
+    with pytest.raises(ValueError, match="allow_negative_residual"):
+        validate_tree(tree, allow_negative_residual=1)
+
+
 def test_validate_tree_rejects_non_zero_sum_terminal():
     tree = GameTree(
         root=TerminalNode("t", hero_ev=1.0, villain_ev=0.0, house_rake=0.0)
