@@ -33,6 +33,18 @@
 - Utilities are net hand payoffs under the model (with zero rake the game is
   zero-sum; rake makes it non-zero-sum).
 
+## ICM assumptions
+
+- The ICM backend implements Malmuth-Harville Independent Chip Model prize
+  equity.
+- ICM maps a stack vector and a payout vector to modelled tournament prize EV.
+- It ignores position, blind increases, future hands, skill differences, and
+  table dynamics.
+- Its outputs are not real tournament predictions, not real-money advice, and
+  not push/fold charts.
+- Future-ICM, FGS, and tournament-simulation backends are later extensions, not
+  part of the current ICM backend.
+
 ## Hero commitment assumptions
 
 - Candidate strategies represent fixed Hero mixed strategies (a commitment).
@@ -105,7 +117,8 @@
   reach-weighted `T_detect` v1 is implemented)
 - Human opponent modeling
 - Strategy recommendation for real-money play
-- STT / ICM / push-fold implementation
+- STT push-fold game builder / runner
+- Future-ICM / FGS / tournament-simulation backend
 - Publicly hosted web service (the GUIs are local-only prototypes)
 - New GUI features (the five local editor/analyze prototypes are frozen;
   bug fixes only)

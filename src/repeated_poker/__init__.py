@@ -58,6 +58,7 @@ from .detection import (
     validate_detection_parameters,
     validate_max_detection_terminals,
 )
+from .icm import DEFAULT_MAX_ICM_ORDERINGS, calculate_icm_equities
 from .fixed_profile import FixedProfileValue, evaluate_fixed_profile
 from .repeated import (
     DEFAULT_MAX_HORIZON,
@@ -361,6 +362,8 @@ __all__ = [
     "resolve_detection_observation_model",
     "validate_detection_parameters",
     "validate_max_detection_terminals",
+    "DEFAULT_MAX_ICM_ORDERINGS",
+    "calculate_icm_equities",
     "L1_DISTANCE_EXCEEDS_LIMIT",
     "NOT_ROBUSTLY_PROFITABLE",
     "CandidateSelectionReport",
