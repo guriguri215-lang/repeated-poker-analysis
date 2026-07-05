@@ -41,7 +41,7 @@ python scripts/check_mvp.py
 | Game model | Two strategic players plus a non-strategic house rake account. Rake makes the game non-zero-sum; it does not by itself create a third strategic player. |
 | Hero lock | Hero's mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
 | Villain response | Villain retains every legal action. The tool calculates Villain's exact best-response set to the fully fixed Hero strategy. |
-| Baseline equilibrium | An existing solver may optionally provide the baseline solution. The first version does not embed or control that solver. |
+| Baseline solution import contract | Baseline-solution import v1 is the existing scenario-native mixed strategy map format. External-source profiles may be converted outside this project into the current baseline strategy fields; the project does not parse or certify raw solver exports. |
 | Public observables / adaptation interpretation | Public observations are the public action path plus optional builder-supplied reveal labels. `T_detect` can be compared with `T_deadline` only as a diagnostic under the idealized threshold-observer convention; real opponent-learning and behavioural prediction remain unsupported. |
 | Analysis form | A fixed-Hero response is a commitment analysis, not automatically a repeated-game equilibrium. Known finite repetition, uncertain horizon, and discounted infinite repetition are reported separately. |
 | Implementation | Start a clean standalone project rather than extending the earlier prototype. |
@@ -52,6 +52,7 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 ## Project document
 
 - [02_research_and_implementation_plan.md](02_research_and_implementation_plan.md) - mathematical model, response correspondence, timing measures, inputs and outputs, and development phases.
+- [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md) - v1 baseline-solution import boundary over existing scenario-native profile fields.
 
 ## Current working state
 
@@ -63,7 +64,9 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 
 ## Decisions to fix before implementation expands
 
-1. Define the baseline-solution import format, if an external solver is used.
+No open blocking decisions are currently tracked here. The baseline-solution
+import format is fixed conservatively as existing scenario-native mixed strategy
+maps; see [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md).
 
 ## Development
 
@@ -381,6 +384,10 @@ troubleshooting.
 See [docs/stt_pushfold_format_reference.md](docs/stt_pushfold_format_reference.md)
 for the separate STT SB-vs-BB push/fold JSON format and its ICM prize-EV
 accounting conventions.
+
+See [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md)
+for the shared v1 contract that treats existing river and STT baseline strategy
+fields as scenario-native profile imports, not raw solver-export imports.
 
 ### GUI/form input design
 

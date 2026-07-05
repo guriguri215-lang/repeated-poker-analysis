@@ -18,6 +18,11 @@ work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
   **not a full poker solver** format: it does not parse real cards, hand ranges,
   board textures, or solver exports. Matchup outcomes (discrete results or
   equities) are supplied directly as abstract inputs.
+- Existing baseline strategy fields are also the v1 normalized
+  baseline-solution profile import boundary. External-source profiles must be
+  converted outside this project into these scenario-native mixed strategy maps;
+  no raw solver-export field is introduced. See
+  [baseline_solution_import_format.md](baseline_solution_import_format.md).
 - STT SB-vs-BB push/fold uses a separate `stt_pushfold-1` format because its
   payoff backend is ICM prize EV delta, not river chip EV. See
   [stt_pushfold_format_reference.md](stt_pushfold_format_reference.md).
@@ -72,6 +77,30 @@ The input mode is inferred from which fields are present, and the modes are
 mutually exclusive. Mixing fields from different modes (for example a top-level
 `showdown` together with a `hero_range`, or a `villain_range` without a matrix)
 is rejected.
+
+## 2a. Baseline profile import boundary
+
+For river scenarios, baseline-solution import v1 is not a separate file format
+and not a raw solver adapter. It is the existing baseline strategy fields in this
+reference:
+
+- top-level `baseline_hero_strategy` in single-hand mode;
+- per-Hero-bucket `baseline_strategy` in Hero-range-only and simple matrix modes;
+- per-Hero-bucket `baseline_strategies` in betting-tree mode;
+- optional top-level `baseline_villain_strategy` for an explicit comparison
+  Villain profile.
+
+Each distribution must use the scenario's legal action labels, finite
+non-negative probabilities, and probabilities that sum to `1` within the
+existing parser tolerance. A legal action omitted inside a distribution is
+treated as probability `0`; unknown actions or unknown information sets are
+rejected.
+
+The project does not check that an external source used the same abstraction as
+the scenario. The scenario author is responsible for matching actions, bucket
+ids, ranges, payoff model, rake assumptions, and information-set meanings. See
+[baseline_solution_import_format.md](baseline_solution_import_format.md) for the
+shared river / STT contract.
 
 ## 3. Modes
 
@@ -156,6 +185,8 @@ response to the baseline Hero strategy. The optional top-level
 Villain explicitly, so the reported baseline value and the candidate comparison
 are measured against a Villain profile you choose (for example one transcribed
 from an external solver, or a deliberately simple "always check" villain).
+This field is part of the v1 normalized baseline profile import boundary; it is
+not a raw solver-export parser and introduces no new manifest field.
 
 - **Shape**: an object `{ villain_info_set: { action: probability } }` over the
   scenario's built **Villain** information sets. Use the same information-set

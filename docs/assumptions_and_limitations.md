@@ -33,6 +33,20 @@
 - Utilities are net hand payoffs under the model (with zero rake the game is
   zero-sum; rake makes it non-zero-sum).
 
+## Baseline profile import assumptions
+
+- Baseline profiles from external sources are chosen comparison inputs, not
+  solver certification.
+- The v1 import boundary is the existing scenario-native mixed strategy map
+  format documented in
+  [baseline_solution_import_format.md](baseline_solution_import_format.md).
+- The project does not validate that an external source's abstraction matches
+  the scenario. The scenario author is responsible for matching actions,
+  bucket ids, ranges, payoff model, rake or ICM assumptions, and information-set
+  meanings.
+- Raw solver export parsing, real-card range import, card removal, and
+  large-scale range solving remain non-goals.
+
 ## ICM assumptions
 
 - The ICM backend implements Malmuth-Harville Independent Chip Model prize
@@ -136,7 +150,7 @@
 ## Current non-goals
 
 - Full poker solver
-- Real solver range import
+- Raw solver export parsing or real-card range import
 - Large-scale range solving
 - Cross-spot reach detection and real opponent-learning models (within-spot
   reach-weighted `T_detect` v1 is implemented)
