@@ -1,0 +1,87 @@
+{
+  "format_version": "stt_pushfold-1",
+  "scenario_id": "stt_pushfold_2x2",
+  "description": "3-handed STT, 50/30/20 payout, SB shove/fold vs BB call/fold",
+  "stacks": [1200.0, 800.0, 1000.0],
+  "sb_index": 0,
+  "bb_index": 1,
+  "prizes": [0.5, 0.3, 0.2],
+  "small_blind": 50.0,
+  "big_blind": 100.0,
+  "ante": 10.0,
+  "hero_seat": "sb",
+  "sb_range": [
+    {
+      "id": "strong",
+      "weight": 0.4
+    },
+    {
+      "id": "weak",
+      "weight": 0.6
+    }
+  ],
+  "bb_range": [
+    {
+      "id": "call_good",
+      "weight": 0.5
+    },
+    {
+      "id": "trash",
+      "weight": 0.5
+    }
+  ],
+  "outcome_matrix": {
+    "strong": {
+      "call_good": {
+        "sb_win": 0.55,
+        "bb_win": 0.4,
+        "chop": 0.05
+      },
+      "trash": {
+        "sb_win": 0.7,
+        "bb_win": 0.3,
+        "chop": 0.0
+      }
+    },
+    "weak": {
+      "call_good": {
+        "sb_win": 0.35,
+        "bb_win": 0.6,
+        "chop": 0.05
+      },
+      "trash": {
+        "sb_win": 0.5,
+        "bb_win": 0.45,
+        "chop": 0.05
+      }
+    }
+  },
+  "baseline_sb_strategy": {
+    "strong": {
+      "shove": 1.0,
+      "fold": 0.0
+    },
+    "weak": {
+      "shove": 0.3,
+      "fold": 0.7
+    }
+  },
+  "baseline_bb_strategy": {
+    "call_good": {
+      "call": 1.0,
+      "fold": 0.0
+    },
+    "trash": {
+      "call": 0.1,
+      "fold": 0.9
+    }
+  },
+  "repeated": {
+    "horizon": 50,
+    "discount": 1.0
+  },
+  "candidates": {
+    "shift_amounts": [0.1, 0.2],
+    "max_simultaneous_info_sets": 1
+  }
+}

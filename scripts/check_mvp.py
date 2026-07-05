@@ -27,6 +27,12 @@ COMMANDS = [
     [sys.executable, "examples/analysis_pipeline.py"],
     [sys.executable, "examples/nuts_chop_river.py"],
     [sys.executable, "examples/candidate_filters.py"],
+    [
+        sys.executable,
+        "scripts/run_stt_pushfold_analysis.py",
+        "examples/stt_pushfold_2x2.json",
+        "--no-markdown",
+    ],
 ]
 
 

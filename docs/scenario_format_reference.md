@@ -18,6 +18,9 @@ work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
   **not a full poker solver** format: it does not parse real cards, hand ranges,
   board textures, or solver exports. Matchup outcomes (discrete results or
   equities) are supplied directly as abstract inputs.
+- STT SB-vs-BB push/fold uses a separate `stt_pushfold-1` format because its
+  payoff backend is ICM prize EV delta, not river chip EV. See
+  [stt_pushfold_format_reference.md](stt_pushfold_format_reference.md).
 - Validate a file before analysis with the validation CLI, for example:
 
   ```bash

@@ -95,6 +95,7 @@ def run_candidate_analysis_pipeline(
     max_horizon: int = DEFAULT_MAX_HORIZON,
     max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
     max_pure_strategies: int = DEFAULT_MAX_PURE_STRATEGIES,
+    allow_negative_residual: bool = False,
 ) -> CandidateAnalysisPipelineResult:
     """Run candidate generation through to an optional Markdown summary.
 
@@ -108,7 +109,9 @@ def run_candidate_analysis_pipeline(
     additionally rejects an empty ``generation.shift_amounts``, a non-boolean
     ``render_markdown``, an invalid ``markdown_max_rows``, and a filter that
     requests ``min_required_observations`` without a
-    ``detection_log_likelihood_threshold``.
+    ``detection_log_likelihood_threshold``. ``allow_negative_residual`` is
+    forwarded to comparison-time tree validation for model families whose third
+    terminal slot is a signed accounting residual.
     """
 
     if not generation.shift_amounts:
@@ -155,6 +158,7 @@ def run_candidate_analysis_pipeline(
         filter_result.kept,
         tolerance=tolerance,
         max_pure_strategies=max_pure_strategies,
+        allow_negative_residual=allow_negative_residual,
     )
 
     analysis_report = build_candidate_analysis_report(

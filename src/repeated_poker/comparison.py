@@ -57,6 +57,8 @@ def compare_candidates(
     candidates: Sequence[HeroStrategyCandidate],
     tolerance: float = 1e-9,
     max_pure_strategies: int = DEFAULT_MAX_PURE_STRATEGIES,
+    *,
+    allow_negative_residual: bool = False,
 ) -> CandidateComparisonReport:
     """Compare each Hero candidate against the fixed baseline profile.
 
@@ -65,23 +67,33 @@ def compare_candidates(
     the exact best response to the locked candidate are computed, and the EV
     differences from the baseline profile are recorded.  ``robustly_profitable``
     is ``True`` when the post-response worst-case Hero EV strictly exceeds the
-    baseline profile's Hero EV.
+    baseline profile's Hero EV. ``allow_negative_residual`` is forwarded to the
+    validators used by the fixed-profile and exact-response stages.
     """
 
     baseline_value = evaluate_fixed_profile(
-        tree, baseline_hero_strategy, baseline_villain_strategy, tolerance=tolerance
+        tree,
+        baseline_hero_strategy,
+        baseline_villain_strategy,
+        tolerance=tolerance,
+        allow_negative_residual=allow_negative_residual,
     )
 
     comparisons: List[CandidateComparison] = []
     for candidate in candidates:
         fixed_profile_value = evaluate_fixed_profile(
-            tree, candidate.hero_strategy, baseline_villain_strategy, tolerance=tolerance
+            tree,
+            candidate.hero_strategy,
+            baseline_villain_strategy,
+            tolerance=tolerance,
+            allow_negative_residual=allow_negative_residual,
         )
         best_response = solve_exact_response(
             tree,
             candidate.hero_strategy,
             tolerance=tolerance,
             max_pure_strategies=max_pure_strategies,
+            allow_negative_residual=allow_negative_residual,
         )
         comparisons.append(
             CandidateComparison(

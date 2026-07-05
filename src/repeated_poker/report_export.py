@@ -1,7 +1,8 @@
 """Write a scenario analysis result to JSON, Markdown, or CSV files.
 
 These are thin persistence helpers for
-:class:`~repeated_poker.scenario_pipeline.RiverScenarioAnalysisResult`. They
+:class:`~repeated_poker.scenario_pipeline.RiverScenarioAnalysisResult` and
+:class:`~repeated_poker.stt_pushfold_pipeline.SttPushFoldAnalysisResult`. They
 reuse the existing ``to_dict`` / ``summary_rows`` / ``markdown_summary`` outputs
 rather than recomputing anything, so the on-disk content matches what the
 pipeline already produces.
@@ -30,6 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from .scenario_batch import BatchScenarioAnalysisResult
     from .scenario_pipeline import RiverScenarioAnalysisResult
     from .scenario_validation import ScenarioValidationResult
+    from .stt_pushfold_pipeline import SttPushFoldAnalysisResult
 
 PathLike = Union[str, Path]
 
