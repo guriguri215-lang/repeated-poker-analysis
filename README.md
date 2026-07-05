@@ -165,10 +165,14 @@ change analysis results, and it does not write files (it returns a string).
 ### Candidate pre-filter
 
 `filter_candidates` is a lightweight pre-comparison pruning helper for generated
-candidates (by allowed information set, strategy-space L1 distance, or a local
+candidates (by allowed information set, strategy-space L1 distance, or a
 detection minimum). It does not replace `compare_candidates` or
-`select_candidates`. The detection-based filter remains tied to the local
-observable-distribution model; v1 filtering is left for a later task.
+`select_candidates`. The detection-based filter uses the default `local_v0`
+observable-distribution model unless the caller selects `reach_weighted_v1`;
+under v1 the existing minimum is interpreted as a minimum finite
+`t_detect_hands`. A candidate whose v1 `t_detect_hands` is `null` / `None` is
+not removed by this filter. This is a diagnostic pruning option before the
+comparison stage, not an opponent-learning or behavioural-prediction model.
 
 ### Analysis pipeline
 

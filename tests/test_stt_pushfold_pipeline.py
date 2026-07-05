@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from repeated_poker import (
+    DETECTION_METHOD_REACH_WEIGHTED_V1,
+    OBSERVATION_MODEL_SHOWDOWN_REVEAL,
     SttPushFoldAnalysisConfig,
     SttPushFoldAnalysisResult,
     load_stt_pushfold_scenario_json,
@@ -65,6 +67,30 @@ def test_local_detection_runs_without_error():
     row = result.pipeline_result.analysis_report.rows[0].to_dict()
     assert "t_detect_estimated_opportunities" in row
     assert "detection_kl_divergence_nats" in row
+
+
+def test_reach_weighted_showdown_filter_runs_through_stt_runner():
+    result = run_stt_pushfold_analysis(
+        _SAMPLE,
+        SttPushFoldAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_method=DETECTION_METHOD_REACH_WEIGHTED_V1,
+            detection_observation_model=OBSERVATION_MODEL_SHOWDOWN_REVEAL,
+            filter_min_required_observations=1_000_000,
+            markdown=False,
+        ),
+    )
+
+    counts = result.pipeline_result.filter_result.summary_counts
+    assert counts.total == len(result.pipeline_result.generated_candidates)
+    assert counts.excluded > 0
+    assert len(result.pipeline_result.analysis_report.rows) == counts.kept
+    assert result.pipeline_result.analysis_report.detection_configuration.method == (
+        DETECTION_METHOD_REACH_WEIGHTED_V1
+    )
+    assert result.pipeline_result.analysis_report.detection_configuration.observation_model == (
+        OBSERVATION_MODEL_SHOWDOWN_REVEAL
+    )
 
 
 def test_missing_shift_amounts_raise_clear_error():
