@@ -36,7 +36,8 @@ python scripts/check_mvp.py
 | Topic | Decision |
 |---|---|
 | First target | A river spot with ranges and rake. This is where the repeated-game core will be validated. |
-| Second target | Preflop SB-vs-BB Push/Fold in an STT. The earlier phrase "flop BvB" is interpreted as preflop because the described spot begins after everyone folds to the small blind. |
+| Second target | Confirmed: preflop SB-vs-BB Push/Fold in an STT (fixed 2026-07-05). The earlier phrase "flop BvB" is interpreted as preflop because the described spot begins after everyone folds to the small blind. |
+| STT value backend | The first STT value backend is ICM only. Future-ICM and tournament-simulation backends are later, separately designed extensions (fixed 2026-07-05). |
 | Game model | Two strategic players plus a non-strategic house rake account. Rake makes the game non-zero-sum; it does not by itself create a third strategic player. |
 | Hero lock | Hero's mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
 | Villain response | Villain retains every legal action. The tool calculates Villain's exact best-response set to the fully fixed Hero strategy. |
@@ -61,10 +62,8 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 
 ## Decisions to fix before implementation expands
 
-1. Confirm that the STT target is preflop SB-vs-BB Push/Fold rather than a literal flop spot.
-2. Define the baseline-solution import format, if an external solver is used.
-3. Decide whether the first STT value backend is ICM only or must include a Future-ICM / tournament-simulation backend.
-4. Define the public observables and the opponent adaptation model before interpreting a commitment result as a behavioural prediction.
+1. Define the baseline-solution import format, if an external solver is used.
+2. Define the public observables and the opponent adaptation model before interpreting a commitment result as a behavioural prediction.
 
 ## Development
 

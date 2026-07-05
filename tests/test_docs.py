@@ -224,6 +224,8 @@ def test_walkthrough_contains_key_phrase(phrase):
         "not a full poker solver",
         "T_deadline",
         "T_detect",
+        "Malmuth-Harville Independent Chip Model",
+        "Future-ICM / FGS / tournament-simulation backend",
         "not a strategic player",
         "does not guarantee profitable poker play",
     ],
