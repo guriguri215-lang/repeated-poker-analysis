@@ -134,6 +134,28 @@ def test_set_filter_allowed_info_sets_is_accepted():
     assert isinstance(result, RiverScenarioAnalysisResult)
 
 
+def test_programmatic_physical_hand_conversion_config_is_forwarded():
+    result = run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+            markdown=False,
+        ),
+    )
+
+    report = result.pipeline_result.analysis_report
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        == 0.25
+    )
+    assert result.manifest.parameters[
+        "detection_comparable_spot_occurrence_probability_per_physical_hand"
+    ] == 0.25
+    assert any(row.t_detect_estimated_physical_hands for row in report.rows)
+
+
 def test_to_dict_contains_core_fields():
     result = run_river_scenario_analysis(_SAMPLE)
     payload = result.to_dict()

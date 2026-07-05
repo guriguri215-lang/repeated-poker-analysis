@@ -30,6 +30,7 @@ _TABLE_HEADERS = [
     "is_ev_obs_deadline_pareto",
     "t_deadline",
     "t_detect_estimated_opportunities",
+    "t_detect_estimated_physical_hands",
     "t_detect_hands",
     "detection_kl_per_hand_nats",
     "detection_tv_per_hand",
@@ -111,6 +112,7 @@ def _row_cells(row: CandidateAnalysisRow) -> List[str]:
         _format_value(row.is_ev_observation_deadline_pareto_candidate),
         _format_value(row.t_deadline),
         _format_value(row.t_detect_estimated_opportunities),
+        _format_value(row.t_detect_estimated_physical_hands),
         _format_value(row.t_detect_hands),
         _format_value(row.detection_kl_per_hand_nats),
         _format_value(row.detection_tv_per_hand),
@@ -186,6 +188,10 @@ def format_candidate_analysis_markdown(
         f"- occurrence_probability_per_opportunity: "
         f"{_format_value(detection.occurrence_probability_per_opportunity)}"
     )
+    lines.append(
+        "- comparable_spot_occurrence_probability_per_physical_hand: "
+        f"{_format_value(detection.comparable_spot_occurrence_probability_per_physical_hand)}"
+    )
     lines.append(f"- tolerance: {_format_value(detection.tolerance)}")
     lines.append("")
 
@@ -221,6 +227,10 @@ def format_candidate_analysis_markdown(
     lines.append("- `T_deadline` is an economic adaptation deadline.")
     lines.append(
         "- `T_detect` is a rough diagnostic of an expected detection-time scale."
+    )
+    lines.append(
+        "- `t_detect_estimated_physical_hands` is an optional diagnostic "
+        "conversion from comparable opportunities to physical dealt hands."
     )
     lines.append(
         "- `t_detect_is_no_later_than_t_deadline` is only a timing comparison and "

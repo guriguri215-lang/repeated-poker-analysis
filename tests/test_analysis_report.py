@@ -372,6 +372,7 @@ _DETECTION_KEYS = [
     "t_detect_hands",
     "detection_time_basis",
     "t_detect_estimated_opportunities",
+    "t_detect_estimated_physical_hands",
     "t_detect_is_no_later_than_t_deadline",
     "detected_adaptation_opportunity",
     "detected_adaptation_delta_from_baseline",
@@ -416,6 +417,7 @@ def test_detection_disabled_keeps_detection_fields_none():
         assert row.detection_required_observations is None
         assert row.detection_estimated_opportunities is None
         assert row.t_detect_estimated_opportunities is None
+        assert row.t_detect_estimated_physical_hands is None
         assert row.t_detect_is_no_later_than_t_deadline is None
         assert row.detected_adaptation_opportunity is None
         assert row.detected_adaptation_delta_from_baseline is None
@@ -481,9 +483,62 @@ def test_to_dict_includes_detection_configuration():
     assert as_dict["detection_configuration"]["log_likelihood_threshold"] == 3.0
     assert as_dict["detection_configuration"]["method"] == "local_v0"
     assert as_dict["detection_configuration"]["observation_model"] is None
+    assert (
+        as_dict["detection_configuration"][
+            "comparable_spot_occurrence_probability_per_physical_hand"
+        ]
+        is None
+    )
 
 
-def _v1_report_fixture(horizon=3):
+def test_local_v0_physical_hands_conversion_from_estimated_opportunities():
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=0.25,
+        detection_comparable_spot_occurrence_probability_per_physical_hand=0.2,
+    )
+    row = report.rows[0]
+
+    assert row.detection_estimated_opportunities == 4
+    assert row.t_detect_estimated_opportunities == 4
+    assert row.t_detect_estimated_physical_hands == 20
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        == 0.2
+    )
+    assert (
+        report.to_dict()["candidate_rows"][0]["t_detect_estimated_physical_hands"]
+        == 20
+    )
+
+
+def test_local_v0_physical_conversion_requires_local_occurrence_probability():
+    comparison = _detection_comparison(
+        "c", "H", {"check": 0.5, "bet": 0.5}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    with pytest.raises(
+        ValueError, match="detection_occurrence_probability_per_opportunity"
+    ):
+        build_candidate_analysis_report(
+            comparison_report,
+            horizon=3,
+            profit_tolerance=-100.0,
+            baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+            detection_log_likelihood_threshold=3.0,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.2,
+        )
+
+
+def _v1_report_fixture(horizon=3, physical_probability=None):
     check = TerminalNode("T_check", 0.0, 0.0, 0.0)
     call = TerminalNode("T_bet_call", 0.0, 0.0, 0.0)
     fold = TerminalNode("T_bet_fold", 0.0, 0.0, 0.0)
@@ -519,6 +574,9 @@ def _v1_report_fixture(horizon=3):
         baseline_villain_strategy=villain,
         detection_log_likelihood_threshold=3.0,
         detection_method="reach_weighted_v1",
+        detection_comparable_spot_occurrence_probability_per_physical_hand=(
+            physical_probability
+        ),
         terminal_reveals=terminal_reveals,
     )
     return report
@@ -546,6 +604,41 @@ def test_reach_weighted_v1_report_fields_and_downstream_clamp():
     assert row.detection_time_basis == "sprt_kl"
     assert row.t_detect_estimated_opportunities == row.t_detect_hands
     assert row.detected_adaptation_opportunity == 4  # horizon + 1 clamp
+
+
+def test_reach_weighted_v1_physical_hands_conversion():
+    report = _v1_report_fixture(horizon=3, physical_probability=0.25)
+    row = report.rows[0]
+
+    assert row.t_detect_hands == 73
+    assert row.t_detect_estimated_opportunities == 73
+    assert row.t_detect_estimated_physical_hands == 292
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        == 0.25
+    )
+
+
+def test_physical_hands_conversion_is_none_without_detection_signal():
+    comparison = _detection_comparison(
+        "same", "H", {"check": 1.0, "bet": 0.0}, fixed_hero_ev=2.0, ev_h_worst=0.0
+    )
+    comparison_report = _report([comparison], baseline_hero_ev=1.0)
+    report = build_candidate_analysis_report(
+        comparison_report,
+        horizon=3,
+        profit_tolerance=-100.0,
+        baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0, "bet": 0.0}}),
+        detection_log_likelihood_threshold=3.0,
+        detection_occurrence_probability_per_opportunity=0.5,
+        detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+    )
+    row = report.rows[0]
+
+    assert row.detection_required_observations is None
+    assert row.detection_estimated_opportunities is None
+    assert row.t_detect_estimated_opportunities is None
+    assert row.t_detect_estimated_physical_hands is None
 
 
 def test_reach_weighted_v1_validation_rejections():
@@ -778,4 +871,29 @@ def test_empty_report_rejects_invalid_detection_occurrence(bad):
             baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0}}),
             detection_log_likelihood_threshold=3.0,
             detection_occurrence_probability_per_opportunity=bad,
+        )
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 1.5, math.nan, math.inf, True, False])
+def test_empty_report_rejects_invalid_physical_hand_occurrence_probability(bad):
+    with pytest.raises(
+        ValueError,
+        match="comparable_spot_occurrence_probability_per_physical_hand",
+    ):
+        build_candidate_analysis_report(
+            _empty_report(),
+            horizon=3,
+            baseline_hero_strategy=HeroStrategy({"H": {"check": 1.0}}),
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=bad,
+        )
+
+
+def test_physical_hand_occurrence_probability_rejected_when_detection_disabled():
+    with pytest.raises(ValueError, match="requires detection_log_likelihood_threshold"):
+        build_candidate_analysis_report(
+            _empty_report(),
+            horizon=3,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.5,
         )

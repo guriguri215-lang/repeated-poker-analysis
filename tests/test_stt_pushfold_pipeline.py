@@ -69,6 +69,28 @@ def test_local_detection_runs_without_error():
     assert "detection_kl_divergence_nats" in row
 
 
+def test_programmatic_physical_hand_conversion_runs_through_stt_runner():
+    result = run_stt_pushfold_analysis(
+        _SAMPLE,
+        SttPushFoldAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+            markdown=False,
+        ),
+    )
+
+    report = result.pipeline_result.analysis_report
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        == 0.25
+    )
+    assert result.manifest.parameters[
+        "detection_comparable_spot_occurrence_probability_per_physical_hand"
+    ] == 0.25
+    assert any(row.t_detect_estimated_physical_hands for row in report.rows)
+
+
 def test_reach_weighted_showdown_filter_runs_through_stt_runner():
     result = run_stt_pushfold_analysis(
         _SAMPLE,

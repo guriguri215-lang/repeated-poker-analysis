@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from numbers import Real
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .comparison import CandidateComparison, CandidateComparisonReport
@@ -64,7 +65,13 @@ from .detection import (
     validate_max_detection_terminals,
 )
 from .fixed_profile import FixedProfileValue
-from .game import GameTree, HeroStrategy, VillainStrategy, require_valid_tolerance
+from .game import (
+    GameTree,
+    HeroStrategy,
+    VillainStrategy,
+    require_finite,
+    require_valid_tolerance,
+)
 from .repeated import (
     DEFAULT_MAX_HORIZON,
     RESPONSE_MODE_WORST,
@@ -123,6 +130,9 @@ class DetectionConfiguration:
     When ``enabled`` is ``False`` no detection information is computed and every
     row's detection fields are ``None``. ``method`` defaults to the historical
     local model; ``reach_weighted_v1`` is opt-in and reports per-hand fields.
+    ``comparable_spot_occurrence_probability_per_physical_hand`` is an optional
+    report-side diagnostic conversion from comparable opportunities to physical
+    dealt hands; it is not part of the detection math.
     """
 
     enabled: bool
@@ -131,6 +141,7 @@ class DetectionConfiguration:
     tolerance: float
     method: str = DETECTION_METHOD_LOCAL_V0
     observation_model: Optional[str] = None
+    comparable_spot_occurrence_probability_per_physical_hand: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -140,6 +151,9 @@ class DetectionConfiguration:
             "log_likelihood_threshold": self.log_likelihood_threshold,
             "occurrence_probability_per_opportunity": (
                 self.occurrence_probability_per_opportunity
+            ),
+            "comparable_spot_occurrence_probability_per_physical_hand": (
+                self.comparable_spot_occurrence_probability_per_physical_hand
             ),
             "tolerance": self.tolerance,
         }
@@ -251,6 +265,9 @@ class CandidateAnalysisRow:
     detection_baseline_impossible_mass_per_hand: Optional[float] = None
     t_detect_hands: Optional[int] = None
     detection_time_basis: Optional[str] = None
+    # Optional report-side diagnostic conversion from comparable opportunities to
+    # physical dealt hands.
+    t_detect_estimated_physical_hands: Optional[int] = None
 
     def to_dict(self) -> dict:
         return {
@@ -300,6 +317,9 @@ class CandidateAnalysisRow:
             "t_detect_hands": self.t_detect_hands,
             "detection_time_basis": self.detection_time_basis,
             "t_detect_estimated_opportunities": self.t_detect_estimated_opportunities,
+            "t_detect_estimated_physical_hands": (
+                self.t_detect_estimated_physical_hands
+            ),
             "t_detect_is_no_later_than_t_deadline": (
                 self.t_detect_is_no_later_than_t_deadline
             ),
@@ -416,10 +436,76 @@ def _require_unique_candidate_ids(report: CandidateComparisonReport) -> None:
         raise ValueError(f"duplicate candidate_id(s) in report: {duplicates}")
 
 
+def _validate_comparable_spot_occurrence_probability_per_physical_hand(
+    value: Optional[float],
+) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool):
+        raise ValueError(
+            "comparable_spot_occurrence_probability_per_physical_hand must be "
+            f"a finite number, got {value!r}"
+        )
+    if not isinstance(value, Real):
+        raise ValueError(
+            "comparable_spot_occurrence_probability_per_physical_hand must be "
+            f"a finite number, got {value!r}"
+        )
+    require_finite(value, "comparable_spot_occurrence_probability_per_physical_hand")
+    if not 0.0 < value <= 1.0:
+        raise ValueError(
+            "comparable_spot_occurrence_probability_per_physical_hand must "
+            f"satisfy 0 < p <= 1, got {value!r}"
+        )
+
+
+def _validate_physical_hand_conversion_configuration(
+    *,
+    detection_enabled: bool,
+    detection_method: str,
+    detection_occurrence_probability_per_opportunity: Optional[float],
+    comparable_spot_occurrence_probability_per_physical_hand: Optional[float],
+) -> None:
+    if comparable_spot_occurrence_probability_per_physical_hand is None:
+        return
+    _validate_comparable_spot_occurrence_probability_per_physical_hand(
+        comparable_spot_occurrence_probability_per_physical_hand
+    )
+    if not detection_enabled:
+        raise ValueError(
+            "detection_comparable_spot_occurrence_probability_per_physical_hand "
+            "requires detection_log_likelihood_threshold"
+        )
+    if (
+        detection_method == DETECTION_METHOD_LOCAL_V0
+        and detection_occurrence_probability_per_opportunity is None
+    ):
+        raise ValueError(
+            "detection_occurrence_probability_per_opportunity is required with "
+            "local_v0 physical-hand conversion"
+        )
+
+
+def _estimate_physical_hands(
+    t_detect_estimated_opportunities: Optional[int],
+    comparable_spot_occurrence_probability_per_physical_hand: Optional[float],
+) -> Optional[int]:
+    if (
+        t_detect_estimated_opportunities is None
+        or comparable_spot_occurrence_probability_per_physical_hand is None
+    ):
+        return None
+    return math.ceil(
+        t_detect_estimated_opportunities
+        / comparable_spot_occurrence_probability_per_physical_hand
+    )
+
+
 def _build_row(
     comparison: CandidateComparison,
     deadline: CandidateAdaptationDeadline,
     detection: Optional[object],
+    comparable_spot_occurrence_probability_per_physical_hand: Optional[float],
     observation_distance: Optional[float],
     eligible_ids,
     exclusion_reasons_by_id: Dict[str, List[str]],
@@ -470,6 +556,10 @@ def _build_row(
         t_detect_hands = None
         detection_time_basis = None
 
+    t_detect_estimated_physical_hands = _estimate_physical_hands(
+        t_detect_estimated,
+        comparable_spot_occurrence_probability_per_physical_hand,
+    )
     t_deadline = result.t_deadline
 
     # Pure time comparison only; it does not say whether Hero is at baseline.
@@ -540,6 +630,7 @@ def _build_row(
         t_detect_hands=t_detect_hands,
         detection_time_basis=detection_time_basis,
         t_detect_estimated_opportunities=t_detect_estimated,
+        t_detect_estimated_physical_hands=t_detect_estimated_physical_hands,
         t_detect_is_no_later_than_t_deadline=t_detect_is_no_later,
         detected_adaptation_opportunity=detected_opportunity,
         detected_adaptation_delta_from_baseline=detected_delta,
@@ -561,6 +652,9 @@ def build_candidate_analysis_report(
     baseline_villain_strategy: Optional[VillainStrategy] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
     detection_occurrence_probability_per_opportunity: Optional[float] = None,
+    detection_comparable_spot_occurrence_probability_per_physical_hand: Optional[
+        float
+    ] = None,
     detection_method: str = DETECTION_METHOD_LOCAL_V0,
     detection_observation_model: Optional[str] = None,
     terminal_reveals: Optional[TerminalReveals] = None,
@@ -579,6 +673,10 @@ def build_candidate_analysis_report(
     :func:`~repeated_poker.detection.calculate_candidate_local_detection` from
     the Hero action distributions at the candidate's own information set; this is
     a local, reach-conditional sensitivity analysis (see the module docstring).
+    ``detection_comparable_spot_occurrence_probability_per_physical_hand`` is
+    an optional report-side conversion from already-estimated comparable
+    opportunities to physical dealt hands. It is diagnostic metadata only and is
+    not used by the detection math, filtering, ranking, or ``T_deadline``.
 
     Raises :class:`ValueError` if the report contains duplicate candidate ids, or
     if any threshold/horizon/discount/response-mode/detection argument is
@@ -605,6 +703,16 @@ def build_candidate_analysis_report(
         )
 
     detection_enabled = detection_log_likelihood_threshold is not None
+    _validate_physical_hand_conversion_configuration(
+        detection_enabled=detection_enabled,
+        detection_method=detection_method,
+        detection_occurrence_probability_per_opportunity=(
+            detection_occurrence_probability_per_opportunity
+        ),
+        comparable_spot_occurrence_probability_per_physical_hand=(
+            detection_comparable_spot_occurrence_probability_per_physical_hand
+        ),
+    )
     if detection_enabled:
         if baseline_hero_strategy is None:
             raise ValueError(
@@ -721,6 +829,7 @@ def build_candidate_analysis_report(
             comparison,
             deadline,
             detection,
+            detection_comparable_spot_occurrence_probability_per_physical_hand,
             observation,
             eligible_ids,
             exclusion_reasons_by_id,
@@ -768,6 +877,9 @@ def build_candidate_analysis_report(
             log_likelihood_threshold=detection_log_likelihood_threshold,
             occurrence_probability_per_opportunity=(
                 detection_occurrence_probability_per_opportunity
+            ),
+            comparable_spot_occurrence_probability_per_physical_hand=(
+                detection_comparable_spot_occurrence_probability_per_physical_hand
             ),
             tolerance=tolerance,
             method=detection_method,

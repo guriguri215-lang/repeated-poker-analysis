@@ -55,6 +55,7 @@ _CSV_COLUMNS: List[str] = [
     "is_ev_observation_deadline_pareto_candidate",
     "t_deadline",
     "t_detect_estimated_opportunities",
+    "t_detect_estimated_physical_hands",
     "detected_adaptation_delta_from_baseline",
     "detected_adaptation_is_at_least_baseline",
     "detection_kl_per_hand_nats",

@@ -133,12 +133,26 @@
 - Candidate pre-filtering can use `reach_weighted_v1` as a diagnostic pruning
   option before candidate comparison. Its minimum threshold applies only to
   finite `t_detect_hands`; `None` is not filtered out.
+- The optional comparable spot occurrence probability per physical hand is a
+  report-side diagnostic conversion from comparable opportunities to physical
+  dealt hands. It is a cross-spot population frequency supplied by the analyst,
+  not a single-tree reach probability and not part of `T_detect` math.
+- For `local_v0`, `detection_occurrence_probability_per_opportunity` converts
+  local observations at the changed information set into comparable
+  opportunities. It is not a physical dealt-hand occurrence rate. A physical-hand
+  conversion therefore requires both the local occurrence probability and the
+  comparable-spot physical-hand probability.
+- For `reach_weighted_v1`, one observation is one complete abstract
+  hand/opportunity in the model. The optional physical-hand conversion only
+  maps the resulting opportunity estimate onto a supplied dealt-hand scale.
 - It does not model real learning, memory, or statistical sophistication.
 - KL-based estimates depend on the chosen log-likelihood threshold.
 - `T_detect` may be compared with `T_deadline` only under the documented
   idealized threshold-observer convention. Under that convention,
   `detected_adaptation_is_at_least_baseline` asks what happens if adaptation is
   immediate at the estimated detection time; it is not a behavioural prediction.
+- Physical-hand conversion is not a real-game-volume forecast, not a claim about
+  when a real opponent learns, and not a profitability guarantee.
 
 ## Output interpretation warnings
 

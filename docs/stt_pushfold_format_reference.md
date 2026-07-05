@@ -33,6 +33,13 @@ terminals reveal no bucket, while call terminals reveal
 `(sb_bucket_id, bb_bucket_id)` in the abstract all-in showdown model. These
 reveal labels are internal builder annotations, not JSON input fields.
 
+The optional physical-hand conversion available through the shared report /
+pipeline API is likewise not a JSON input field. In STT outputs it can only be
+read as a diagnostic conversion from repeated comparable push/fold opportunities
+to a supplied physical-hand scale. It is not a tournament simulation, not a
+blind-increase model, not Future-ICM / FGS, and not a prediction of real
+tournament volume or opponent learning.
+
 Out of scope for this format:
 
 - Future-ICM, FGS, or tournament simulation.

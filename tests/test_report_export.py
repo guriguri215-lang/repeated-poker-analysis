@@ -151,6 +151,7 @@ def test_write_csv_header_and_rows(tmp_path, result):
     header = rows[1]
     assert "candidate_id" in header
     assert "t_deadline" in header
+    assert "t_detect_estimated_physical_hands" in header
     assert len(rows) - 2 == len(result.pipeline_result.analysis_report.rows)
     assert len(rows) >= 3  # manifest comment + header + at least one candidate
 

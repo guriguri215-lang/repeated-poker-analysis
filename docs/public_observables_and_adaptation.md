@@ -94,6 +94,39 @@ candidate-comparison stage and interprets the threshold as a minimum finite
 `t_detect_hands`; `None` means no signal under the selected observation model
 and is not pruned by that filter.
 
+## Comparable Opportunities And Physical Hands
+
+`T_deadline`, `T_detect`, and `t_detect_estimated_opportunities` are expressed
+in comparable abstract opportunities. Those opportunities are not necessarily
+physical dealt hands in a wider game or session.
+
+Two occurrence probabilities are intentionally separate:
+
+- `detection_occurrence_probability_per_opportunity` is local-v0 only. It
+  converts local observations at the changed information set into comparable
+  opportunities.
+- `comparable_spot_occurrence_probability_per_physical_hand` is an optional
+  report configuration key. It is a cross-spot population frequency for how
+  often the comparable abstract spot occurs per physical dealt hand.
+
+The physical-hand conversion writes `t_detect_estimated_physical_hands` only
+when both `t_detect_estimated_opportunities` and the comparable-spot physical
+hand probability are present. It is computed after detection, as:
+
+```text
+ceil(t_detect_estimated_opportunities
+     / comparable_spot_occurrence_probability_per_physical_hand)
+```
+
+This probability is not a single-tree reach probability. For `reach_weighted_v1`,
+within-spot reach is already inside the one-hand public observation
+distribution. For `local_v0`, the local observation-to-opportunity conversion
+comes first, and the physical-hand conversion comes second.
+
+The optional physical-hand conversion is not a scenario JSON field, not a new
+detection method, not an opponent-learning model, not a real-world forecast of
+when a person adapts, and not a profitability guarantee.
+
 ## Threshold-Observer Adaptation Convention
 
 `T_detect` is primarily a detectability diagnostic. It may be connected to
