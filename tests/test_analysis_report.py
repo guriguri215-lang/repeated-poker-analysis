@@ -271,6 +271,34 @@ def test_empty_report_with_valid_input_returns_empty_analysis():
     assert json.loads(json.dumps(report.summary_rows())) == []
 
 
+def test_existing_positional_detection_method_slot_is_preserved():
+    report = build_candidate_analysis_report(
+        _empty_report(),
+        3,
+        1.0,
+        "worst",
+        0.0,
+        None,
+        1e-9,
+        100,
+        None,
+        None,
+        None,
+        None,
+        None,
+        "local_v0",
+        None,
+        None,
+        100,
+    )
+
+    assert report.detection_configuration.method == "local_v0"
+    assert (
+        report.detection_configuration.comparable_spot_occurrence_probability_per_physical_hand
+        is None
+    )
+
+
 @pytest.mark.parametrize("bad_horizon", [0, -1, 2.5, True])
 def test_empty_report_rejects_invalid_horizon(bad_horizon):
     with pytest.raises(ValueError, match="horizon"):

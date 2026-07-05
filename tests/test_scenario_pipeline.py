@@ -62,6 +62,42 @@ def test_explicit_discount_overrides_scenario():
     assert result.discount == 0.9
 
 
+def test_existing_positional_config_slots_are_preserved():
+    config = RiverScenarioAnalysisConfig(
+        None,
+        None,
+        "best",
+        0.25,
+        0.5,
+        3.0,
+        0.4,
+        "local_v0",
+        None,
+        123,
+        ["IP_vs_bet"],
+        0.7,
+        10,
+        False,
+        12,
+        "t_deadline",
+        True,
+        True,
+        2,
+        1e-8,
+        321,
+    )
+
+    assert config.detection_method == "local_v0"
+    assert config.max_detection_terminals == 123
+    assert config.filter_allowed_info_sets == ["IP_vs_bet"]
+    assert config.markdown is False
+    assert config.max_pure_strategies == 321
+    assert (
+        config.detection_comparable_spot_occurrence_probability_per_physical_hand
+        is None
+    )
+
+
 def test_missing_shift_amounts_raises_clear_error():
     data = _scenario_dict()
     data.pop("candidate_generation", None)

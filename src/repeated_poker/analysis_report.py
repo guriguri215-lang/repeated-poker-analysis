@@ -652,13 +652,13 @@ def build_candidate_analysis_report(
     baseline_villain_strategy: Optional[VillainStrategy] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
     detection_occurrence_probability_per_opportunity: Optional[float] = None,
-    detection_comparable_spot_occurrence_probability_per_physical_hand: Optional[
-        float
-    ] = None,
     detection_method: str = DETECTION_METHOD_LOCAL_V0,
     detection_observation_model: Optional[str] = None,
     terminal_reveals: Optional[TerminalReveals] = None,
     max_detection_terminals: int = DEFAULT_MAX_DETECTION_TERMINALS,
+    detection_comparable_spot_occurrence_probability_per_physical_hand: Optional[
+        float
+    ] = None,
 ) -> CandidateAnalysisReport:
     """Consolidate selection, adaptation-deadline, and optional detection analyses.
 

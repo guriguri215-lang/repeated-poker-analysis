@@ -40,6 +40,42 @@ def test_run_from_parsed_scenario_succeeds():
     assert result.scenario.format_version == "stt_pushfold-1"
 
 
+def test_existing_positional_config_slots_are_preserved():
+    config = SttPushFoldAnalysisConfig(
+        None,
+        None,
+        "best",
+        0.25,
+        0.5,
+        3.0,
+        0.4,
+        "local_v0",
+        None,
+        123,
+        ["SB"],
+        0.7,
+        10,
+        False,
+        12,
+        "t_deadline",
+        True,
+        True,
+        2,
+        1e-8,
+        321,
+    )
+
+    assert config.detection_method == "local_v0"
+    assert config.max_detection_terminals == 123
+    assert config.filter_allowed_info_sets == ["SB"]
+    assert config.markdown is False
+    assert config.max_pure_strategies == 321
+    assert (
+        config.detection_comparable_spot_occurrence_probability_per_physical_hand
+        is None
+    )
+
+
 def test_manifest_contains_stt_format_version_and_prize_unit(tmp_path):
     result = run_stt_pushfold_analysis(_SAMPLE)
     path = tmp_path / "stt.json"
