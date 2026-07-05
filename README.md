@@ -42,6 +42,7 @@ python scripts/check_mvp.py
 | Hero lock | Hero's mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
 | Villain response | Villain retains every legal action. The tool calculates Villain's exact best-response set to the fully fixed Hero strategy. |
 | Baseline equilibrium | An existing solver may optionally provide the baseline solution. The first version does not embed or control that solver. |
+| Public observables / adaptation interpretation | Public observations are the public action path plus optional builder-supplied reveal labels. `T_detect` can be compared with `T_deadline` only as a diagnostic under the idealized threshold-observer convention; real opponent-learning and behavioural prediction remain unsupported. |
 | Analysis form | A fixed-Hero response is a commitment analysis, not automatically a repeated-game equilibrium. Known finite repetition, uncertain horizon, and discounted infinite repetition are reported separately. |
 | Implementation | Start a clean standalone project rather than extending the earlier prototype. |
 | Quality bar | Mathematical specifications, input validation, hand-calculated benchmarks, reproducible run manifests, and tests are required from the beginning. |
@@ -63,7 +64,6 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 ## Decisions to fix before implementation expands
 
 1. Define the baseline-solution import format, if an external solver is used.
-2. Define the public observables and the opponent adaptation model before interpreting a commitment result as a behavioural prediction.
 
 ## Development
 
@@ -117,12 +117,16 @@ with the total variation distance and the KL divergence in nats, then converts
 the divergence into a required number of observations via a log-likelihood
 threshold.
 
+See [docs/public_observables_and_adaptation.md](docs/public_observables_and_adaptation.md)
+for the shared public-observation contract and the narrow threshold-observer
+adaptation convention.
+
 `T_detect` is a sensitivity analysis based on observable event distributions. It
 is not a psychological model, not a real learning-speed estimate, and not a full
 opponent-adaptation model. It is separate from `T_deadline`: `T_deadline` is an
-economic adaptation deadline, while `T_detect` is a behavioural-identification
-estimate. Strategy-space L1 distance and observable-distribution distance are
-different concepts and must not be conflated.
+economic adaptation deadline, while `T_detect` is a detectability diagnostic.
+Strategy-space L1 distance and observable-distribution distance are different
+concepts and must not be conflated.
 
 `build_candidate_analysis_report` can optionally include per-candidate
 `T_detect`: pass `baseline_hero_strategy` together with
@@ -146,7 +150,8 @@ detection-vs-deadline reads:
 The default local model is conditional on reaching the candidate's information
 set and does not include tree reach probability. The opt-in v1 model includes
 within-spot reach in its per-hand observation distribution. Neither model is a
-real opponent-learning model.
+real opponent-learning model, and neither should be read as a behavioural
+prediction outside the documented threshold-observer convention.
 
 ### Markdown summary
 
