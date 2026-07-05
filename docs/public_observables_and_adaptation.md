@@ -126,6 +126,10 @@ comes first, and the physical-hand conversion comes second.
 The optional physical-hand conversion is not a scenario JSON field, not a new
 detection method, not an opponent-learning model, not a real-world forecast of
 when a person adapts, and not a profitability guarantee.
+The CLI flag
+`--detection-comparable-spot-occurrence-probability-per-physical-hand` exposes
+only this report-side conversion and records the supplied value in the run
+manifest.
 
 ## Threshold-Observer Adaptation Convention
 
@@ -175,7 +179,7 @@ This v1 contract does not implement:
   modelling.
 - A replacement structured object for `TerminalReveals`.
 - New detection methods beyond `local_v0` and `reach_weighted_v1`.
-- New scenario JSON fields or CLI flags.
+- New scenario JSON fields, or CLI flags that change detection math.
 - Real-card evaluation, card removal, or chart generation.
 - Future-ICM, FGS, or tournament simulation.
 - Gambling, bankroll, staking, financial, legal, or real-money advice.

@@ -208,7 +208,7 @@ def run_stt_pushfold_analysis(
             "detection_occurrence_probability_per_opportunity": (
                 config.detection_occurrence_probability_per_opportunity
             ),
-            "detection_comparable_spot_occurrence_probability_per_physical_hand": (
+            "comparable_spot_occurrence_probability_per_physical_hand": (
                 config.detection_comparable_spot_occurrence_probability_per_physical_hand
             ),
             "detection_method": config.detection_method,

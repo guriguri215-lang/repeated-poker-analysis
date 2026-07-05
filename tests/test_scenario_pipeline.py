@@ -1,6 +1,7 @@
 """Tests for the JSON scenario analysis runner."""
 
 import copy
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -187,7 +188,7 @@ def test_programmatic_physical_hand_conversion_config_is_forwarded():
         == 0.25
     )
     assert result.manifest.parameters[
-        "detection_comparable_spot_occurrence_probability_per_physical_hand"
+        "comparable_spot_occurrence_probability_per_physical_hand"
     ] == 0.25
     assert any(row.t_detect_estimated_physical_hands for row in report.rows)
 
@@ -240,3 +241,61 @@ def test_cli_script_ranking_section():
         check=True,
     )
     assert "Ranking by t_deadline" in completed.stdout
+
+
+def test_cli_script_physical_hand_conversion_writes_json_manifest(tmp_path):
+    json_path = tmp_path / "river.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_SAMPLE),
+            "--no-markdown",
+            "--detection-log-likelihood-threshold",
+            "3.0",
+            "--detection-occurrence-probability-per-opportunity",
+            "0.5",
+            "--detection-comparable-spot-occurrence-probability-per-physical-hand",
+            "0.25",
+            "--output-json",
+            str(json_path),
+            "--strict-json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "saved JSON to" in completed.stdout
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    parameters = payload["manifest"]["parameters"]
+    parameter_name = "comparable_spot_occurrence_probability_per_physical_hand"
+    assert parameters[parameter_name] == 0.25
+    detection_config = payload["analysis_report"]["detection_configuration"]
+    assert detection_config[parameter_name] == 0.25
+    rows = payload["analysis_report"]["candidate_rows"]
+    assert any(row["t_detect_estimated_physical_hands"] for row in rows)
+
+
+def test_cli_script_rejects_invalid_physical_hand_conversion_value():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_SAMPLE),
+            "--no-markdown",
+            "--detection-log-likelihood-threshold",
+            "3.0",
+            "--detection-occurrence-probability-per-opportunity",
+            "0.5",
+            "--detection-comparable-spot-occurrence-probability-per-physical-hand",
+            "0",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "comparable_spot_occurrence_probability_per_physical_hand" in (
+        completed.stderr + completed.stdout
+    )

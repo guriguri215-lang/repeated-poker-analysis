@@ -290,16 +290,20 @@ not a raw solver-export parser and introduces no new manifest field.
   not promises of profitable play.
 - Detection settings are analysis-run options, not scenario JSON fields. Use
   `RiverScenarioAnalysisConfig` or the runner flags
-  `--detection-log-likelihood-threshold`, `--detection-method`,
-  `--detection-observation-model`, and `--max-detection-terminals`. The default
-  method is `local_v0`; `reach_weighted_v1` is opt-in and supports
-  `actions_only` or `showdown_reveal`. The v1 `showdown_reveal` labels are
-  internal builder annotations (`build.terminal_reveals`), not JSON fields.
+  `--detection-log-likelihood-threshold`,
+  `--detection-occurrence-probability-per-opportunity`,
+  `--detection-method`, `--detection-observation-model`, and
+  `--max-detection-terminals`. The default method is `local_v0`;
+  `reach_weighted_v1` is opt-in and supports `actions_only` or
+  `showdown_reveal`. The v1 `showdown_reveal` labels are internal builder
+  annotations (`build.terminal_reveals`), not JSON fields.
 - The optional physical-hand conversion is also not a scenario JSON field. Its
   report/API input,
   `detection_comparable_spot_occurrence_probability_per_physical_hand`, supplies
-  a comparable spot occurrence probability per physical dealt hand. This is a
-  diagnostic cross-spot population frequency, not a single-tree reach
+  a comparable spot occurrence probability per physical dealt hand; the runner
+  flag is
+  `--detection-comparable-spot-occurrence-probability-per-physical-hand`. This
+  is a diagnostic cross-spot population frequency, not a single-tree reach
   probability and not an opponent-learning or profitability claim.
 - Public observability for river detection is the public action path plus
   optional builder-supplied reveal labels. Fold terminals reveal no private

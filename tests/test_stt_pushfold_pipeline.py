@@ -122,7 +122,7 @@ def test_programmatic_physical_hand_conversion_runs_through_stt_runner():
         == 0.25
     )
     assert result.manifest.parameters[
-        "detection_comparable_spot_occurrence_probability_per_physical_hand"
+        "comparable_spot_occurrence_probability_per_physical_hand"
     ] == 0.25
     assert any(row.t_detect_estimated_physical_hands for row in report.rows)
 
@@ -216,3 +216,38 @@ def test_cli_writes_json_markdown_and_csv(tmp_path):
     assert json_path.exists()
     assert md_path.exists()
     assert csv_path.exists()
+
+
+def test_cli_physical_hand_conversion_writes_json_manifest(tmp_path):
+    json_path = tmp_path / "stt_physical.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_SAMPLE),
+            "--no-markdown",
+            "--detection-log-likelihood-threshold",
+            "3.0",
+            "--detection-occurrence-probability-per-opportunity",
+            "0.5",
+            "--detection-comparable-spot-occurrence-probability-per-physical-hand",
+            "0.25",
+            "--output-json",
+            str(json_path),
+            "--strict-json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "saved JSON to" in completed.stdout
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    parameters = payload["manifest"]["parameters"]
+    parameter_name = "comparable_spot_occurrence_probability_per_physical_hand"
+    assert parameters[parameter_name] == 0.25
+    assert parameters["value_unit"] == "modelled_tournament_prize_ev_delta"
+    detection_config = payload["analysis_report"]["detection_configuration"]
+    assert detection_config[parameter_name] == 0.25
+    rows = payload["analysis_report"]["candidate_rows"]
+    assert any(row["t_detect_estimated_physical_hands"] for row in rows)

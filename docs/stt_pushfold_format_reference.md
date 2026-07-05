@@ -252,6 +252,15 @@ The runner supports the same output flags as the river scenario runner:
 - `--output-csv`
 - `--strict-json`
 
+It also supports the shared detection run options, including
+`--detection-log-likelihood-threshold`, `--detection-method`,
+`--detection-observation-model`, and the diagnostic physical-hand conversion
+flag `--detection-comparable-spot-occurrence-probability-per-physical-hand`.
+The physical-hand flag records a supplied comparable spot frequency in the run
+manifest; it remains a report-side scale conversion, not a tournament
+simulation, real tournament volume forecast, opponent-learning model, or
+real-money advice.
+
 The run manifest records the scenario SHA-256, `scenario_format_version` set to
 `stt_pushfold-1`, the package version, a best-effort git commit, UTC timestamp,
 and effective parameters.

@@ -184,6 +184,34 @@ def test_markdown_export_has_manifest_section(tmp_path, result):
     assert f"- package_version: {PACKAGE_VERSION}" in text
 
 
+def test_single_exports_record_physical_conversion_manifest_parameter(tmp_path):
+    result = run_river_scenario_analysis(
+        _SAMPLE,
+        RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+        ),
+    )
+    parameter_name = "comparable_spot_occurrence_probability_per_physical_hand"
+
+    json_path = tmp_path / "physical.json"
+    write_analysis_json(result, json_path, strict=True)
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert payload["manifest"]["parameters"][parameter_name] == 0.25
+
+    csv_path = tmp_path / "physical.csv"
+    write_analysis_csv(result, csv_path)
+    first = csv_path.read_text(encoding="utf-8").splitlines()[0]
+    manifest = json.loads(first.removeprefix("# run_manifest: "))
+    assert manifest["parameters"][parameter_name] == 0.25
+
+    md_path = tmp_path / "physical.md"
+    write_analysis_markdown(result, md_path)
+    markdown = md_path.read_text(encoding="utf-8")
+    assert f"{parameter_name}=0.25" in markdown
+
+
 # ---------------------------------------------------------------------------
 # Batch exports
 # ---------------------------------------------------------------------------
@@ -219,6 +247,23 @@ def test_batch_manifest_records_resolved_v1_observation_model():
         scenario_result.manifest.parameters["detection_observation_model"]
         == "actions_only"
     )
+
+
+def test_batch_manifest_records_physical_conversion_override_and_resolved_value():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            detection_occurrence_probability_per_opportunity=0.5,
+            detection_comparable_spot_occurrence_probability_per_physical_hand=0.25,
+            markdown=False,
+        )
+    )
+    batch = run_batch_scenario_analysis(_SAMPLE, config)
+
+    parameter_name = "comparable_spot_occurrence_probability_per_physical_hand"
+    assert batch.manifest.parameters[parameter_name] == 0.25
+    (scenario_result,) = batch.results.values()
+    assert scenario_result.manifest.parameters[parameter_name] == 0.25
 
 
 def test_batch_json_export_contains_manifests(tmp_path, batch):

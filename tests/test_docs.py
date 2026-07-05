@@ -321,6 +321,7 @@ def test_stt_format_reference_is_ascii_only():
         "baseline_villain_source",
         "not a scenario JSON field",
         "comparable spot occurrence probability",
+        "--detection-comparable-spot-occurrence-probability-per-physical-hand",
     ],
 )
 def test_format_reference_contains_key_phrase(phrase):
@@ -341,6 +342,7 @@ def test_format_reference_contains_key_phrase(phrase):
         "validate_tree(..., allow_negative_residual=True)",
         "not a tournament simulation",
         "physical-hand conversion",
+        "--detection-comparable-spot-occurrence-probability-per-physical-hand",
     ],
 )
 def test_stt_format_reference_contains_key_phrase(phrase):
@@ -354,6 +356,7 @@ def test_stt_format_reference_contains_key_phrase(phrase):
         "not a single-tree reach probability",
         "not a scenario JSON field",
         "physical-hand conversion",
+        "--detection-comparable-spot-occurrence-probability-per-physical-hand",
     ],
 )
 def test_public_observables_contains_physical_conversion_scope(phrase):
