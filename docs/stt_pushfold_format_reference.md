@@ -22,6 +22,14 @@ Implemented in `stt_pushfold-1`:
 - Shared candidate-analysis pipeline, including `T_deadline` and optional
   `T_detect`.
 
+Public observability for `T_detect` follows the shared contract in
+[public_observables_and_adaptation.md](public_observables_and_adaptation.md):
+one terminal observation is the public action path plus optional
+builder-supplied reveal labels. In STT v1, SB fold and BB fold-after-shove
+terminals reveal no bucket, while call terminals reveal
+`(sb_bucket_id, bb_bucket_id)` in the abstract all-in showdown model. These
+reveal labels are internal builder annotations, not JSON input fields.
+
 Out of scope for this format:
 
 - Future-ICM, FGS, or tournament simulation.
@@ -182,7 +190,11 @@ quantity as bystander prize EV delta.
 
 `horizon` is the default fixed repeated-spot horizon for the runner. It is a
 sensitivity assumption that repeats the same abstract spot, not a tournament
-simulation and not a model of blind increases or future stack evolution.
+simulation and not a model of blind increases or future stack evolution. If
+`T_detect` is compared with `T_deadline`, that comparison is only a diagnostic
+under the idealized threshold-observer convention described in
+[public_observables_and_adaptation.md](public_observables_and_adaptation.md), not
+a prediction of real opponent adaptation.
 
 `candidates`:
 

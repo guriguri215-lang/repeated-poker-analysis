@@ -264,6 +264,13 @@ from an external solver, or a deliberately simple "always check" villain).
   method is `local_v0`; `reach_weighted_v1` is opt-in and supports
   `actions_only` or `showdown_reveal`. The v1 `showdown_reveal` labels are
   internal builder annotations (`build.terminal_reveals`), not JSON fields.
+- Public observability for river detection is the public action path plus
+  optional builder-supplied reveal labels. Fold terminals reveal no private
+  buckets; call / showdown-style terminals may carry the abstract labels
+  supplied by the builder. Do not add `TerminalReveals` to scenario JSON. See
+  [public_observables_and_adaptation.md](public_observables_and_adaptation.md)
+  for the shared river / STT contract and the threshold-observer interpretation
+  used when comparing `T_detect` with `T_deadline`.
 
 ## 7. Validation and troubleshooting
 

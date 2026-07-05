@@ -94,6 +94,9 @@
 
 - `T_detect` is a rough diagnostic of an expected detection-time scale, not a
   real opponent-learning model.
+- The shared public-observation contract and the only supported adaptation
+  timing interpretation are defined in
+  [public_observables_and_adaptation.md](public_observables_and_adaptation.md).
 - The default `local_v0` model is based on local observable event distributions.
   It is conditional on reaching the candidate's information set and observing an
   action there.
@@ -115,6 +118,10 @@
   model, not safety and not real-world undetectability.
 - It does not model real learning, memory, or statistical sophistication.
 - KL-based estimates depend on the chosen log-likelihood threshold.
+- `T_detect` may be compared with `T_deadline` only under the documented
+  idealized threshold-observer convention. Under that convention,
+  `detected_adaptation_is_at_least_baseline` asks what happens if adaptation is
+  immediate at the estimated detection time; it is not a behavioural prediction.
 
 ## Output interpretation warnings
 
