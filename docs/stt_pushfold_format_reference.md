@@ -19,6 +19,9 @@ Implemented in `stt_pushfold-1`:
 - ICM prize EV deltas at terminal stack vectors.
 - Hero seat selection with `hero_seat` set to `sb` or `bb`.
 - Optional explicit baseline strategy for the non-Hero side.
+- Existing baseline strategy fields as the v1 normalized baseline-solution
+  profile import boundary. See
+  [baseline_solution_import_format.md](baseline_solution_import_format.md).
 - Shared candidate-analysis pipeline, including `T_deadline` and optional
   `T_detect`.
 
@@ -36,6 +39,7 @@ Out of scope for this format:
 - Real-card evaluation, 169-hand chart generation, or card removal.
 - Limping, min-raising, non-all-in sizes, side pots, and partial blind posting.
 - GUI editing or batch runner integration.
+- Raw solver-export parsing or external solver control.
 - Solver-grade, optimal, guaranteed, or profitable strategy claims.
 
 ## Top-Level Fields
@@ -128,6 +132,11 @@ vectors.
 
 ## Baseline Strategies
 
+The existing baseline strategy fields are the STT side of the v1
+baseline-solution profile import boundary. They are scenario-native bucket maps,
+not raw solver-export fields, and this format adds no new JSON field for
+external solver metadata.
+
 SB baseline strategy is keyed by SB bucket id and uses actions `shove` and
 `fold`:
 
@@ -152,6 +161,17 @@ The Hero-side baseline is required. The non-Hero baseline is optional. An
 explicit non-Hero baseline is a chosen comparison profile, not an equilibrium
 claim and not a best-response claim unless it was produced elsewhere and the
 scenario author chooses to say so outside this format.
+
+Each bucket distribution must use finite, non-negative, non-boolean
+probabilities that sum to `1` within the existing parser tolerance. A legal
+action omitted inside a distribution is interpreted as probability `0`; unknown
+actions or unknown bucket ids are rejected.
+
+When the non-Hero side is omitted, the existing automatic exact best response is
+used. When it is present, the build records `baseline_villain_source` as
+`explicit`; otherwise it records `auto_best_response`. The run manifest's
+scenario SHA-256 captures the exact input file, so this contract adds no
+separate manifest field.
 
 ## Payoff Accounting
 
