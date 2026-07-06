@@ -378,6 +378,43 @@ def test_cli_writes_outputs(tmp_path):
     assert md_path.exists()
 
 
+def test_cli_physical_hand_conversion_records_batch_and_scenario_manifest(tmp_path):
+    json_path = tmp_path / "batch_physical.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            str(_NUTS),
+            "--no-markdown",
+            "--detection-log-likelihood-threshold",
+            "3.0",
+            "--detection-occurrence-probability-per-opportunity",
+            "0.5",
+            "--detection-comparable-spot-occurrence-probability-per-physical-hand",
+            "0.25",
+            "--output-json",
+            str(json_path),
+            "--strict-json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "saved JSON to" in completed.stdout
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    parameter_name = "comparable_spot_occurrence_probability_per_physical_hand"
+    assert payload["manifest"]["parameters"][parameter_name] == 0.25
+    scenario_payload = next(iter(payload["scenario_results"].values()))
+    assert scenario_payload["manifest"]["parameters"][parameter_name] == 0.25
+    detection_config = scenario_payload["analysis_report"][
+        "detection_configuration"
+    ]
+    assert detection_config[parameter_name] == 0.25
+    rows = scenario_payload["analysis_report"]["candidate_rows"]
+    assert any(row["t_detect_estimated_physical_hands"] for row in rows)
+
+
 def test_cli_strict_json_writes_rfc_json(tmp_path):
     json_path = tmp_path / "strict.json"
     completed = subprocess.run(
@@ -509,6 +546,10 @@ def test_cli_help_documents_options():
     assert "--output-json" in out
     assert "--output-csv" in out
     assert "--output-markdown" in out
+    assert (
+        "--detection-comparable-spot-occurrence-probability-per-physical-hand"
+        in out
+    )
     # A couple of the help strings themselves, not just the option names.
     assert "every scenario" in out
     assert "one CSV summary row per scenario" in out

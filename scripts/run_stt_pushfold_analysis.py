@@ -64,6 +64,16 @@ def _parse_args(argv):
         help="local_v0 only: convert required observations to opportunities",
     )
     parser.add_argument(
+        "--detection-comparable-spot-occurrence-probability-per-physical-hand",
+        dest="detection_comparable_spot_occurrence_probability_per_physical_hand",
+        type=float,
+        default=None,
+        help=(
+            "diagnostic only: convert comparable opportunities to physical "
+            "dealt hands using a supplied spot frequency"
+        ),
+    )
+    parser.add_argument(
         "--detection-method",
         dest="detection_method",
         default="local_v0",
@@ -157,6 +167,9 @@ def main(argv) -> int:
         detection_log_likelihood_threshold=args.detection_log_likelihood_threshold,
         detection_occurrence_probability_per_opportunity=(
             args.detection_occurrence_probability_per_opportunity
+        ),
+        detection_comparable_spot_occurrence_probability_per_physical_hand=(
+            args.detection_comparable_spot_occurrence_probability_per_physical_hand
         ),
         detection_method=args.detection_method,
         detection_observation_model=args.detection_observation_model,

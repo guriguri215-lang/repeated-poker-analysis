@@ -171,6 +171,9 @@ hand, not a single-tree reach probability. It is computed only after
 filtering, ranking, `T_deadline`, or selection. It is not a scenario JSON field,
 not a real-world prediction, not opponent learning, and not a profitability
 guarantee.
+The river, batch, and STT runners expose the same run option as
+`--detection-comparable-spot-occurrence-probability-per-physical-hand`; it is
+recorded in the run manifest with the report configuration key above.
 
 ### Markdown summary
 
