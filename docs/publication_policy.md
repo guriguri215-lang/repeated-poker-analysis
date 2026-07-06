@@ -39,6 +39,8 @@ Avoid phrasing:
 - Do not imply that positive model EV guarantees profitable poker play.
 - Do not imply that `T_detect` predicts real opponent learning.
 - Do not imply that `T_deadline` predicts actual human adaptation timing.
+- Do not imply that physical-hand conversion forecasts real game volume, real
+  opponent learning, or profitability.
 - Link to `docs/assumptions_and_limitations.md` when writing public
   explanations.
 

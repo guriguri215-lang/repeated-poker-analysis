@@ -72,12 +72,12 @@ reaching those information sets, does not include tree reach probability, and
 does not combine evidence across public paths. Use it for the question: how
 large is the local action-frequency change once this decision point is reached?
 
-`reach_weighted_v1` builds one-hand public observation distributions from
-root-to-terminal path probabilities under the fixed baseline Villain profile. It
-compares baseline Hero (`P0`) with candidate Hero (`P1`) over a public
-observation channel. Because one observation is one hand or opportunity and
-public reach through the tree is included, this is the preferred method when
-comparing `T_detect` with `T_deadline`.
+`reach_weighted_v1` builds public observation distributions for one complete
+abstract hand/opportunity in the model from root-to-terminal path probabilities
+under the fixed baseline Villain profile. It compares baseline Hero (`P0`) with
+candidate Hero (`P1`) over a public observation channel. Because public reach
+through the tree is included, this is the preferred method when comparing
+`T_detect` with `T_deadline` in comparable-opportunity units.
 
 The v1 observation models are:
 
@@ -142,8 +142,8 @@ adaptation timing only under this idealized threshold-observer convention:
    distribution `P1`.
 4. `P1` is treated as known for the likelihood-ratio diagnostic.
 5. A positive log-likelihood threshold is chosen outside the solver.
-6. Detection occurs at the reported `T_detect` hand or opportunity.
-7. Adaptation is immediate and deterministic at that hand or opportunity.
+6. Detection occurs at the reported `T_detect` abstract hand/opportunity.
+7. Adaptation is immediate and deterministic at that abstract hand/opportunity.
 8. Post-detection play is represented by the same exact-response mode used for
    `T_deadline`.
 

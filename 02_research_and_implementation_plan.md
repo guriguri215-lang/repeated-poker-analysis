@@ -2,7 +2,7 @@
 
 ## Objective
 
-Analyse a one-hand poker solution when comparable spots recur and opponents can observe, learn, and adapt. The first deliverable is not a story about reputation. It is a reproducible analyser that reports:
+Analyse small abstract poker commitments across repeated comparable opportunities, with separate economic adaptation-deadline and public-signal detectability diagnostics under a declared public-observation channel and threshold-observer convention. The first deliverable is not a story about reputation. It is a reproducible analyser that reports:
 
 - the baseline one-hand solution and its EVs;
 - each fully fixed Hero candidate policy;
@@ -72,10 +72,17 @@ This matters for baseline-solving algorithms. An algorithm designed only for zer
 
 The interchange format is JSON and/or CSV. The project does not directly read a proprietary solver’s internal file format.
 
+Current v1 implementation note: the implemented scenario formats use abstract
+buckets, direct showdown / equity / outcome inputs, and scenario-native mixed
+strategy maps. They do not parse raw solver exports, real cards, real-card range
+or equity data, card removal, or solver metadata. The `RangeSnapshot` /
+`BaselineSolution` / card-removal items below are long-term design placeholders
+unless a later design explicitly introduces them.
+
 1. `SpotSpec`: board, pot, stacks, positions, full action tree, and rake rules.
-2. `RangeSnapshot`: combo weights for both players after card removal; each conditional range must normalise correctly.
+2. `RangeSnapshot` (future, outside current v1): real-card combo weights after card removal; current v1 uses abstract buckets and direct matchup inputs instead.
 3. `StrategySnapshot`: action probabilities for every information set and legal action.
-4. `BaselineSolution` (optional): an imported baseline solution with EV, solver name/version, convergence information, and export time. A small internally solved game may supply the baseline instead.
+4. `BaselineSolution` (future metadata wrapper, outside current v1): an imported baseline solution with EV, solver name/version, convergence information, and export time. Current v1 instead uses scenario-native mixed strategy maps as chosen comparison inputs and does not certify raw solver exports.
 5. `RepeatedSpec`: `N`, `delta` or stopping hazard, public observables, occurrence rate, and opponent-adaptation model.
 
 Solver exports that cannot legally be distributed are never committed to the repository.
@@ -84,7 +91,7 @@ Solver exports that cannot legally be distributed are never committed to the rep
 
 The main product is an analysis tool outside existing poker solvers. An external solver may provide `sigma0`, but it is not called to resolve every candidate.
 
-After every Hero information set is fixed, Villain still has all legal decisions in the tree: check, fold, bet, call, raise, and so on. The tool enumerates legal private-card combinations, chance outcomes, and fixed Hero action probabilities, then calculates continuation values for every Villain action at every Villain information set.
+After every Hero information set is fixed, Villain still has all legal decisions in the tree: check, fold, bet, call, raise, and so on. In current v1, the tool enumerates the abstract chance outcomes or bucket matchups supplied by the scenario, together with fixed Hero action probabilities, then calculates continuation values for every Villain action at every Villain information set. A future real-card adapter would need separate design before private-card combinations or card removal are introduced.
 
 Under the ordinary assumptions of a finite extensive-form game with perfect recall and expected-utility maximisation, at least one pure Villain best response exists against a fixed Hero behavioural strategy. This remains true in a non-zero-sum game. A mixed best response is also valid whenever Villain is indifferent among actions.
 
@@ -105,11 +112,11 @@ At a zero-reach Villain information set, the ex-ante strategy does not identify 
 
 ### River workflow
 
-1. Validate ranges, card removal, legal actions, terminal rake, and imported baseline values.
+1. Validate the supplied abstract buckets / direct matchup inputs, legal actions, terminal rake, and scenario-native baseline values. Real-card ranges and card removal require a separate future design.
 2. Build the finite Hero candidate library under legal, distance, and short-run-loss constraints.
 3. Run the original compatible search: hold `sigmaV0` fixed and seek candidates that lower Villain EV.
 4. For every candidate, calculate the full `BR_V(piH)` correspondence without calling an external solver.
-5. Compare the Hero EV interval with the baseline and retain the robustly profitable candidates.
+5. Compare the Hero EV interval with the baseline and retain candidates passing the implemented robust above-baseline EV diagnostic.
 6. Evaluate repetition and adaptation for retained candidates.
 7. Sweep rake, cap, sizing, baseline-solver error, Villain optimisation quality, and observation noise.
 
@@ -130,27 +137,27 @@ T_deadline = max { m in [1, N] : V_lock(m) >= V_base }
 
 `T_deadline` is the **adaptation deadline**: the latest opportunity at which Villain must adapt for the locked policy to remain at least as valuable as baseline. In a stateful model, the implementation uses conditional values by history rather than constant `a` and `l`.
 
-The intuition that a larger departure from baseline is easier to identify needs a distinct observational model. Define `T_detect`, the **identification time**, from observable action distributions only. A first approximation uses expected evidence per opportunity `D_obs` and a decision threshold `lambda`:
+The intuition that a larger departure from baseline is easier to identify needs a distinct public-observation model. Define `T_detect`, the **public-signal identification-time diagnostic**, from distributions on a selected observable channel. A first approximation uses expected evidence per opportunity `D_obs` and a decision threshold `lambda`:
 
 ```text
 T_detect = ceil(lambda / D_obs)
 ```
 
-Showdown frequency, hidden cards, observation noise, exploration, and occurrence rate must be inputs or sensitivity variables. A practical screening rule is:
+Showdown frequency, public reveal labels, observation noise, exploration, occurrence rate, and the log-likelihood threshold must be inputs or sensitivity variables. Under a declared threshold-observer convention, a practical diagnostic screening rule is:
 
 ```text
 T_detect <= T_deadline
 ```
 
-The first quantity is an economic deadline; the second is a behavioural-identification estimate. They must never be presented as the same thing.
+The first quantity is an economic deadline; the second is a public-signal identification-time diagnostic under a declared threshold-observer convention. They must never be presented as the same thing.
 
 ## STT SB-vs-BB Push/Fold
 
 The initial interpretation is preflop: everyone folds to the small blind, SB chooses fold or shove, and BB chooses fold or call. If a literal flop BvB spot is intended, it becomes a later game-tree extension.
 
-Inputs include the payout table, all stacks, blinds, antes, card distribution, and any required rake rule. Utility is prize EV, not chip EV. The first backend is explicit ICM, with a Future-ICM or tournament-simulation backend designed as a later replaceable extension.
+Current v1 inputs include the payout table, all stacks, blinds, antes, abstract SB/BB bucket distributions, direct outcome probabilities, and any required rake rule. Utility is prize EV, not chip EV. The first backend is explicit ICM, with a Future-ICM or tournament-simulation backend designed as a later replaceable extension. The current path does not parse real cards, real-card equities, or card removal.
 
-The same fixed-Hero analysis applies. With a fixed BB call policy, enumerate card removal and compare SB shove/fold prize EV by SB information set. With a fixed SB policy, compare BB call/fold. Ties are reported as a response set with robust and optimistic Hero values.
+The same fixed-Hero analysis applies. With a fixed BB call policy, enumerate the supplied abstract SB/BB bucket matchups and compare SB shove/fold prize EV by SB information set. With a fixed SB policy, compare BB call/fold. No real-card card-removal engine is present in v1. Ties are reported as a response set with robust and optimistic Hero values.
 
 ## Planned architecture
 

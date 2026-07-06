@@ -26,6 +26,12 @@
 - [ ] Assumptions and limitations are linked.
 - [ ] Examples are described as abstract demonstrations, not real hand
       recommendations.
+- [ ] `T_detect` is described as a diagnostic under a public-observation
+      channel, not human learning speed.
+- [ ] Physical-hand conversion, if mentioned, is described as analyst-supplied
+      scale conversion, not a forecast, advice, or profitability claim.
+- [ ] STT output is described as ICM-only, not Future-ICM / FGS / tournament
+      simulation.
 
 ### Reproducibility
 
