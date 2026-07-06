@@ -285,9 +285,11 @@ not a raw solver-export parser and introduces no new manifest field.
   maximum as the default horizon unless one is passed on the command line.
 - `repeated.discount`: a number in `(0, 1]` (defaults to `1.0`).
 - `T_deadline` and `T_detect` are **analysis outputs**, not input solver
-  guarantees: they describe when a locked policy stops being at least as good as
-  baseline, and when a deviation becomes statistically distinguishable. They are
-  not promises of profitable play.
+  guarantees: `T_deadline` is the switching-opportunity diagnostic for when a
+  locked policy stops being at least as good as baseline, and `T_detect` is the
+  opportunity scale at which the selected observation model reaches the declared
+  detectability threshold under the documented threshold-observer convention.
+  They are not promises of profitable play.
 - Detection settings are analysis-run options, not scenario JSON fields. Use
   `RiverScenarioAnalysisConfig` or the runner flags
   `--detection-log-likelihood-threshold`,

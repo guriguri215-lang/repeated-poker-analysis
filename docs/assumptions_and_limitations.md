@@ -82,7 +82,7 @@
 - Candidate strategies represent fixed Hero mixed strategies (a commitment).
 - Current candidates are simple probability shifts at single Hero information
   sets; they are not an exhaustive strategy search.
-- A candidate being robustly profitable under the implemented criterion does
+- A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
   does not prove a full equilibrium.
@@ -114,11 +114,11 @@
 - The default `local_v0` model is based on local observable event distributions.
   It is conditional on reaching the candidate's information set and observing an
   action there.
-- The opt-in `reach_weighted_v1` model builds a per-hand public observation
-  distribution from root-to-terminal path probabilities, using the baseline
-  Villain profile and either baseline Hero or candidate Hero. One observation is
-  one hand, so `t_detect_hands` is directly comparable to `T_deadline`
-  opportunities.
+- The opt-in `reach_weighted_v1` model builds a public observation distribution
+  for one complete abstract hand/opportunity in the model from root-to-terminal
+  path probabilities, using the baseline Villain profile and either baseline
+  Hero or candidate Hero. The v1 estimate is comparable with `T_deadline` only
+  when both are read in comparable-opportunity units.
 - `reach_weighted_v1` supports `actions_only` and `showdown_reveal`. The reveal
   model uses only builder-supplied public showdown annotations; fold terminals do
   not reveal private buckets.
