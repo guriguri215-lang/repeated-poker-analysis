@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="850" viewBox="0 0 1120 850" role="img" aria-labelledby="title desc">
+  <title id="title">Figure 5. Synthetic report-side scale conversion after finite opportunity-scale detection</title>
+  <desc id="desc">Formula-style diagram showing a report-side conversion only after a finite opportunity-scale public-signal diagnostic exists. The input is T_detect equals 1 comparable abstract opportunity. The adjacent conversion note says synthetic, analyst-supplied q_spot=0.01 is not estimated by the toolkit, and ceil(1/0.01)=100 is displayed as physical-hand scale units.</desc>
+  <style>
+    .bg { fill: #fbfbf8; }
+    .title { font: 700 27px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .subtitle { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .box { fill: #ffffff; stroke: #7f8b93; stroke-width: 1.3; rx: 7; }
+    .finite { fill: #eef7f6; stroke: #607d7b; stroke-width: 1.5; rx: 7; }
+    .scale { fill: #f7f1e8; stroke: #8a7761; stroke-width: 1.5; rx: 7; }
+    .convert { fill: #eef2f7; stroke: #657786; stroke-width: 1.5; rx: 7; }
+    .label { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .body { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #2f3b43; }
+    .bodyBold { font: 700 16px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .small { font: 400 12.5px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .caption { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #303841; }
+    .arrow { stroke: #4f6472; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4f6472"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1120" height="850"/>
+  <text class="title" x="55" y="58">Figure 5. Synthetic report-side scale conversion</text>
+  <text class="subtitle" x="55" y="86">Formula diagram only; no countdown, timeline, axis tick, or standalone badge for the converted value.</text>
+
+  <rect class="finite" x="170" y="125" width="780" height="115"/>
+  <text class="label" x="205" y="162">finite opportunity-scale public-signal diagnostic</text>
+  <text class="bodyBold" x="205" y="198">T_detect = 1 comparable abstract opportunity</text>
+  <text class="small" x="205" y="222">source: nuts-chop toy calibration row; detection_time_basis=baseline_impossible_event</text>
+
+  <path class="arrow" d="M560 242 V282"/>
+
+  <rect class="scale" x="170" y="285" width="780" height="150"/>
+  <text class="label" x="205" y="322">synthetic, analyst-supplied scale parameter</text>
+  <text class="bodyBold" x="205" y="360">synthetic, analyst-supplied q_spot=0.01</text>
+  <text class="body" x="205" y="392">q_spot is not estimated by the toolkit</text>
+  <text class="body" x="205" y="420">converted display unit: physical-hand scale units</text>
+
+  <path class="arrow" d="M560 437 V477"/>
+
+  <rect class="convert" x="170" y="480" width="780" height="170"/>
+  <text class="label" x="205" y="517">report-side conversion</text>
+  <text class="bodyBold" x="205" y="554">synthetic, analyst-supplied q_spot=0.01; q_spot is not estimated by the toolkit</text>
+  <text class="bodyBold" x="205" y="588">ceil(1/0.01)=100 physical-hand scale units</text>
+  <text class="body" x="205" y="622">This is a synthetic scale-conversion example, not a real-game occurrence estimate.</text>
+
+  <text class="caption" x="55" y="700">Caption. Synthetic physical-hand scale conversion is applied only after a finite opportunity-scale public-signal diagnostic exists.</text>
+  <text class="caption" x="55" y="722">In this calibration row, T_detect=1 comparable abstract opportunity. With synthetic, analyst-supplied q_spot=0.01, not estimated by the toolkit,</text>
+  <text class="caption" x="55" y="744">the report-side conversion displays ceil(1/0.01)=100 physical-hand scale units.</text>
+
+  <rect class="box" x="55" y="765" width="1010" height="55"/>
+  <text class="small" x="80" y="789">Footnote. The numeric conversion is a synthetic scale-conversion example: q_spot=0.01 is analyst-supplied and not estimated by the toolkit,</text>
+  <text class="small" x="80" y="809">and ceil(1/0.01)=100 is displayed only as physical-hand scale units.</text>
+</svg>

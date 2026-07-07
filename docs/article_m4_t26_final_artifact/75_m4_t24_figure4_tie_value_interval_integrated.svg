@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="780" viewBox="0 0 1200 780" role="img" aria-labelledby="title desc">
+  <title id="title">Figure 4. Exact response and tie-reading Hero value interval</title>
+  <desc id="desc">Interval plot sketch for three fixed-Hero candidates. Each row shows the Hero value interval spanning worst and best Hero readings across tied Villain best responses inside the supplied finite tree. All three intervals collapse to points in this run. The baseline Hero EV marker is at -0.145.</desc>
+  <style>
+    .bg { fill: #fbfbf8; }
+    .title { font: 700 27px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .subtitle { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .panel { fill: #ffffff; stroke: #7f8b93; stroke-width: 1.3; rx: 7; }
+    .label { font: 700 15px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .body { font: 400 13.5px "Segoe UI", Arial, sans-serif; fill: #2f3b43; }
+    .small { font: 400 12px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .caption { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #303841; }
+    .axis { stroke: #5f6f7a; stroke-width: 1.4; }
+    .grid { stroke: #d5d9dc; stroke-width: 1; }
+    .baseline { stroke: #8a7761; stroke-width: 2; stroke-dasharray: 6 5; }
+    .rowline { stroke: #a5aeb5; stroke-width: 1.5; }
+    .pointA { fill: #607d7b; stroke: #263d3b; stroke-width: 1.2; }
+    .pointB { fill: #8a7761; stroke: #4a3a2b; stroke-width: 1.2; }
+    .pointC { fill: #657786; stroke: #2d3b45; stroke-width: 1.2; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1200" height="780"/>
+  <text class="title" x="60" y="58">Figure 4. Exact response and tie-reading Hero value interval</text>
+  <text class="subtitle" x="60" y="86">Renderer-native lines and points; intervals collapse to points in this run and no artificial width is added.</text>
+
+  <rect class="panel" x="70" y="125" width="1060" height="455"/>
+  <text class="label" x="105" y="160">Hero EV inside supplied abstract model</text>
+  <text class="small" x="105" y="184">Vertical marker: baseline Hero EV = -0.14500000000000005</text>
+
+  <line class="grid" x1="155" y1="230" x2="1055" y2="230"/>
+  <line class="grid" x1="155" y1="335" x2="1055" y2="335"/>
+  <line class="grid" x1="155" y1="440" x2="1055" y2="440"/>
+
+  <line class="axis" x1="155" y1="505" x2="1055" y2="505"/>
+  <line class="axis" x1="155" y1="498" x2="155" y2="512"/>
+  <line class="axis" x1="645" y1="498" x2="645" y2="512"/>
+  <line class="axis" x1="1055" y1="498" x2="1055" y2="512"/>
+  <text class="small" x="155" y="532" text-anchor="middle">-6.142</text>
+  <text class="small" x="645" y="532" text-anchor="middle">-1.000</text>
+  <text class="small" x="1055" y="532" text-anchor="middle">-0.145</text>
+
+  <line class="baseline" x1="1055" y1="205" x2="1055" y2="485"/>
+  <text class="small" x="1035" y="200" text-anchor="end">baseline marker</text>
+
+  <text class="label" x="105" y="216">losing contrast</text>
+  <text class="body" x="105" y="258">hero_chop fold-&gt;call shift=0.25</text>
+  <line class="rowline" x1="155" y1="230" x2="155" y2="230"/>
+  <circle class="pointA" cx="155" cy="230" r="7"/>
+  <text class="body" x="178" y="235">worst=best=-6.142; diff=-5.997; T_deadline=null</text>
+
+  <text class="label" x="105" y="340">larger-shift boundary</text>
+  <text class="body" x="105" y="363">hero_strong call-&gt;fold shift=1.0</text>
+  <circle class="pointB" cx="645" cy="335" r="7"/>
+  <text class="body" x="668" y="340">worst=best=-1.000; diff=-0.855; T_deadline=null</text>
+
+  <text class="label" x="105" y="445">Figure 2 main row</text>
+  <text class="body" x="105" y="468">hero_strong call-&gt;fold shift=0.25</text>
+  <circle class="pointC" cx="1055" cy="440" r="7"/>
+  <text class="body" x="705" y="435">worst=best=-0.145; diff=0.000</text>
+  <text class="body" x="705" y="456">T_deadline=100 abstract opportunities</text>
+
+  <rect class="panel" x="70" y="600" width="1060" height="70"/>
+  <text class="body" x="100" y="628">Annotation. Hero value interval = worst-to-best Hero readings across tied Villain best responses.</text>
+  <text class="body" x="100" y="652">Tie interval collapses in this run; the interval is a tie-reading diagnostic inside the supplied model.</text>
+
+  <text class="caption" x="60" y="710">Caption. For each fixed-Hero candidate, Villain's response is a best-response correspondence inside the supplied finite tree.</text>
+  <text class="caption" x="60" y="732">The plotted Hero value interval spans the worst and best Hero readings across tied Villain best responses; in these displayed rows the interval collapses to a point.</text>
+  <text class="caption" x="60" y="754">The interval is a tie-reading diagnostic inside the supplied model.</text>
+</svg>

@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+  <title id="title">Figure 1. Diagnostic pipeline and manifest boundary</title>
+  <desc id="desc">Pipeline diagram for a model-scoped diagnostic report. A supplied finite abstraction flows into a finite fixed-Hero candidate library, exact Villain response inside the supplied tree, tie-aware Hero value readings, separate T_deadline and T_detect diagnostics, and report outputs with a reproducibility manifest. The manifest records scenario hash, git commit, timestamp, showdown_reveal, reach_weighted_v1, and horizon 100.</desc>
+  <style>
+    .bg { fill: #fbfbf8; }
+    .title { font: 700 28px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .subtitle { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .box { fill: #ffffff; stroke: #657786; stroke-width: 1.4; rx: 7; }
+    .boxA { fill: #eef7f6; }
+    .boxB { fill: #f7f1e8; }
+    .boxC { fill: #eef2f7; }
+    .boxD { fill: #f5f5f2; }
+    .label { font: 700 15px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .small { font: 400 12.5px "Segoe UI", Arial, sans-serif; fill: #3b4850; }
+    .chip { fill: #ffffff; stroke: #8d9aa5; stroke-width: 1.2; rx: 7; }
+    .chipText { font: 400 12px "Segoe UI", Arial, sans-serif; fill: #2f3b43; }
+    .arrow { stroke: #4f6472; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .caption { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #303841; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4f6472"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="820"/>
+  <text class="title" x="60" y="58">Figure 1. Diagnostic pipeline and manifest boundary</text>
+  <text class="subtitle" x="60" y="86">Concept figure: run-level pipeline and manifest fields only; no candidate row is highlighted as a chosen play.</text>
+
+  <rect class="box boxA" x="55" y="135" width="165" height="165"/>
+  <text class="label" x="137.5" y="164" text-anchor="middle">supplied finite</text>
+  <text class="label" x="137.5" y="183" text-anchor="middle">abstraction</text>
+  <text class="small" x="137.5" y="216" text-anchor="middle">range_matrix_steal_bet98</text>
+  <text class="small" x="137.5" y="238" text-anchor="middle">mode: range_matrix</text>
+  <text class="small" x="137.5" y="260" text-anchor="middle">matrix: showdown</text>
+
+  <rect class="box boxB" x="250" y="135" width="165" height="165"/>
+  <text class="label" x="332.5" y="164" text-anchor="middle">finite fixed-Hero</text>
+  <text class="label" x="332.5" y="183" text-anchor="middle">candidate library</text>
+  <text class="small" x="332.5" y="216" text-anchor="middle">generated=6, kept=6</text>
+  <text class="small" x="332.5" y="238" text-anchor="middle">generation excluded=0</text>
+  <text class="small" x="332.5" y="260" text-anchor="middle">report total=6</text>
+  <text class="small" x="332.5" y="282" text-anchor="middle">eligible=0, excluded=6</text>
+
+  <rect class="box boxC" x="445" y="135" width="165" height="165"/>
+  <text class="label" x="527.5" y="164" text-anchor="middle">exact Villain</text>
+  <text class="label" x="527.5" y="183" text-anchor="middle">response</text>
+  <text class="small" x="527.5" y="218" text-anchor="middle">inside the supplied tree</text>
+  <text class="small" x="527.5" y="246" text-anchor="middle">fixed-Hero candidate rows</text>
+
+  <rect class="box boxD" x="640" y="135" width="165" height="165"/>
+  <text class="label" x="722.5" y="164" text-anchor="middle">tie-aware Hero</text>
+  <text class="label" x="722.5" y="183" text-anchor="middle">value readings</text>
+  <text class="small" x="722.5" y="218" text-anchor="middle">worst and best Hero</text>
+  <text class="small" x="722.5" y="240" text-anchor="middle">readings across tied</text>
+  <text class="small" x="722.5" y="262" text-anchor="middle">Villain responses</text>
+
+  <rect class="box boxA" x="835" y="135" width="165" height="165"/>
+  <text class="label" x="917.5" y="160" text-anchor="middle">model-scoped</text>
+  <text class="label" x="917.5" y="179" text-anchor="middle">diagnostics</text>
+  <text class="small" x="917.5" y="212" text-anchor="middle">economic switching-</text>
+  <text class="small" x="917.5" y="232" text-anchor="middle">opportunity diagnostic</text>
+  <text class="small" x="917.5" y="258" text-anchor="middle">selected-channel</text>
+  <text class="small" x="917.5" y="278" text-anchor="middle">public-signal diagnostic</text>
+
+  <rect class="box boxB" x="1030" y="135" width="115" height="165"/>
+  <text class="label" x="1087.5" y="164" text-anchor="middle">report</text>
+  <text class="label" x="1087.5" y="183" text-anchor="middle">outputs</text>
+  <text class="small" x="1087.5" y="217" text-anchor="middle">plus</text>
+  <text class="small" x="1087.5" y="239" text-anchor="middle">reproducibility</text>
+  <text class="small" x="1087.5" y="261" text-anchor="middle">manifest</text>
+
+  <path class="arrow" d="M220 217.5 H248"/>
+  <path class="arrow" d="M415 217.5 H443"/>
+  <path class="arrow" d="M610 217.5 H638"/>
+  <path class="arrow" d="M805 217.5 H833"/>
+  <path class="arrow" d="M1000 217.5 H1028"/>
+
+  <rect class="chip" x="145" y="365" width="910" height="125"/>
+  <text class="label" x="170" y="397">Reproducibility manifest chip</text>
+  <text class="chipText" x="170" y="427">scenario SHA: a3c63787ad53375856b4a369a478f8ba1eb315d1acf0596ebf92f23ff9c93a71</text>
+  <text class="chipText" x="170" y="452">git commit: ddf3dcaaa504a6dbc9448ebff37d7f495c4e10c5 | timestamp UTC: 2026-07-06T14:29:50Z</text>
+  <text class="chipText" x="170" y="477">observation channel: showdown_reveal | method: reach_weighted_v1 | horizon=100 | discount=1.0</text>
+
+  <rect class="chip" x="145" y="520" width="910" height="84"/>
+  <text class="label" x="170" y="552">Run-level counts shown neutrally</text>
+  <text class="chipText" x="170" y="580">candidate row count: counts.generated=6 and analysis_report.candidate_rows.Count=6; report summary total=6.</text>
+  <text class="chipText" x="170" y="600">eligible=0 is visible and neutral; descriptive frontier count=1 is audit metadata.</text>
+
+  <text class="caption" x="60" y="675">Caption. A supplied range-matrix scenario defines a small abstract poker model, a baseline comparison profile, and a finite candidate library.</text>
+  <text class="caption" x="60" y="697">The report then computes model-scoped diagnostics: exact Villain response inside the supplied tree, tie-aware Hero value readings,</text>
+  <text class="caption" x="60" y="719">an economic switching-opportunity diagnostic, a selected-channel public-signal diagnostic, and a reproducibility manifest.</text>
+  <text class="small" x="60" y="770">Production note: schema correction uses summary_counts.total, candidate_rows.Count, and counts.generated.</text>
+</svg>
