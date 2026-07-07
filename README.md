@@ -53,6 +53,7 @@ The original idea - find Hero strategies that lower Villain's EV while Villain i
 
 - [02_research_and_implementation_plan.md](02_research_and_implementation_plan.md) - mathematical model, response correspondence, timing measures, inputs and outputs, and development phases.
 - [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md) - v1 baseline-solution import boundary over existing scenario-native profile fields.
+- [docs/article_m4_t26_final_artifact/index.html](docs/article_m4_t26_final_artifact/index.html) - internal model-scoped diagnostic article artifact, not strategy advice or public advice.
 
 ## Current working state
 
