@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="660" viewBox="0 0 1050 660" role="img" aria-labelledby="title desc">
+  <title id="title">Figure 3. Calibration row for a baseline-impossible public event</title>
+  <desc id="desc">Compact calibration strip for a nuts-chop toy row. The selected public channel is actions_only. The detection basis is baseline_impossible_event. Baseline impossible public mass is 1.0, TV per abstract opportunity is 1.0, and T_detect is 1 comparable abstract opportunity.</desc>
+  <style>
+    .bg { fill: #fbfbf8; }
+    .title { font: 700 27px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .subtitle { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .card { fill: #ffffff; stroke: #7f8b93; stroke-width: 1.4; rx: 7; }
+    .accent { fill: #eef7f6; stroke: #607d7b; stroke-width: 1.4; rx: 7; }
+    .warm { fill: #f7f1e8; stroke: #8a7761; stroke-width: 1.4; rx: 7; }
+    .label { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .metric { font: 700 22px "Segoe UI", Arial, sans-serif; fill: #1f2933; }
+    .body { font: 400 15px "Segoe UI", Arial, sans-serif; fill: #2f3b43; }
+    .small { font: 400 12.5px "Segoe UI", Arial, sans-serif; fill: #52616b; }
+    .caption { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #303841; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1050" height="660"/>
+  <text class="title" x="55" y="58">Figure 3. Calibration row for a baseline-impossible public event</text>
+  <text class="subtitle" x="55" y="86">Toy calibration row for public-signal machinery; this is not the main strategy example.</text>
+
+  <rect class="card" x="70" y="125" width="910" height="90"/>
+  <text class="label" x="100" y="160">toy calibration row</text>
+  <text class="body" x="100" y="190">candidate row: IP_vs_bet|fold-&gt;call|shift=1.0 | shift=1.0 | observation distance=1.0 | worst-tie EV delta=0.950</text>
+
+  <rect class="accent" x="70" y="250" width="430" height="210"/>
+  <text class="label" x="100" y="290">selected channel</text>
+  <text class="metric" x="100" y="330">actions_only</text>
+  <text class="body" x="100" y="370">method: reach_weighted_v1</text>
+  <text class="body" x="100" y="400">threshold: 3.0</text>
+  <text class="small" x="100" y="435">Scope: selected public-observation channel only.</text>
+
+  <rect class="warm" x="550" y="250" width="430" height="210"/>
+  <text class="label" x="580" y="290">public-signal machinery check</text>
+  <text class="body" x="580" y="330">basis: baseline_impossible_event</text>
+  <text class="body" x="580" y="365">baseline-impossible public mass = 1.0</text>
+  <text class="body" x="580" y="400">TV per abstract opportunity = 1.0</text>
+  <text class="metric" x="580" y="438">T_detect=1 comparable abstract opportunity</text>
+
+  <rect class="card" x="70" y="490" width="910" height="60"/>
+  <text class="small" x="100" y="522">Secondary note: KL is not the main visual; JSON null for detection_kl_per_hand_nats must not be read as KL zero.</text>
+
+  <text class="caption" x="55" y="590">Caption. The nuts-chop row is a calibration diagnostic for the public-signal machinery. Under the declared actions_only channel,</text>
+  <text class="caption" x="55" y="612">the candidate creates a baseline-impossible public event, so the report records detection_time_basis=baseline_impossible_event,</text>
+  <text class="caption" x="55" y="634">T_detect=1 comparable abstract opportunity, and TV 1.0.</text>
+</svg>

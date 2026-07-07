@@ -1,0 +1,753 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M4-T27 final article artifact</title>
+    <style>
+    :root {
+      color-scheme: light;
+      --paper: #fbfbf8;
+      --ink: #1f2933;
+      --muted: #52616b;
+      --line: #c9d0d5;
+      --line-dark: #7f8b93;
+      --panel: #ffffff;
+      --soft-blue: #eef2f7;
+      --soft-green: #eef7f6;
+      --soft-warm: #f7f1e8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 42px 0 70px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line-dark);
+      padding-bottom: 22px;
+      margin-bottom: 34px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.24;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+
+    h2 {
+      margin: 38px 0 12px;
+      font-size: 24px;
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 14px;
+      max-width: 86ch;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.94em;
+    }
+
+    .deck {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 92ch;
+    }
+
+    .note,
+    .guardrail,
+    .footnote {
+      border: 1px solid var(--line-dark);
+      background: var(--panel);
+      border-radius: 7px;
+      padding: 14px 16px;
+      font-size: 14px;
+    }
+
+    .note {
+      margin: 20px 0 0;
+    }
+
+    .guardrail {
+      margin: 16px 0 24px;
+      background: var(--soft-blue);
+    }
+
+    .footnote {
+      margin-top: 10px;
+      background: var(--soft-warm);
+    }
+
+    .figure-block {
+      margin: 24px 0 38px;
+    }
+
+    .figure-block img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--paper);
+      border: 1px solid var(--line-dark);
+      border-radius: 7px;
+    }
+
+    figcaption {
+      margin-top: 10px;
+      color: #303841;
+      font-size: 14px;
+      max-width: 100ch;
+    }
+
+    .inline-artifact {
+      border: 1px solid var(--line-dark);
+      border-radius: 7px;
+      background: var(--paper);
+      padding: 24px;
+      margin: 16px 0 24px;
+      overflow-x: auto;
+    }
+
+    .inline-artifact .fragment-title {
+      margin: 0 0 8px;
+      font-size: 20px;
+      line-height: 1.25;
+    }
+
+    .inline-artifact .note {
+      border: 0;
+      background: transparent;
+      border-radius: 0;
+      padding: 0;
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .inline-artifact code {
+      overflow-wrap: anywhere;
+    }
+
+    .inline-artifact table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #fff;
+      border: 1px solid #8a97a3;
+    }
+
+    .inline-artifact caption {
+      caption-side: bottom;
+      text-align: left;
+      padding-top: 14px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #303841;
+    }
+
+    .inline-artifact th,
+    .inline-artifact td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.35;
+      word-break: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .inline-artifact thead th {
+      background: var(--soft-blue);
+      font-weight: 700;
+    }
+
+    .inline-artifact .group th {
+      background: #f5f5f2;
+      color: #2f3b43;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .inline-artifact .muted {
+      color: var(--muted);
+    }
+
+    .inline-artifact .guardrail {
+      margin: 18px 0 0;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .stt-fragment {
+      max-width: 920px;
+    }
+
+    .stt-fragment aside {
+      background: #fff;
+      border: 1px solid var(--line-dark);
+      border-left: 6px solid #607d7b;
+      border-radius: 7px;
+      padding: 22px 24px;
+    }
+
+    .stt-fragment p {
+      font-size: 14.5px;
+      line-height: 1.55;
+      max-width: none;
+    }
+
+    .stt-fragment .meta {
+      background: #f5f5f2;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 12px 14px;
+      margin: 12px 0;
+    }
+
+    .stt-fragment .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      margin: 18px 0 10px;
+    }
+
+    .mini-card {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      padding: 14px 16px;
+      min-height: 100%;
+    }
+
+    .mini-card h3 {
+      margin-top: 0;
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        width: min(100% - 24px, 1180px);
+        padding-top: 28px;
+      }
+
+      h1 {
+        font-size: 27px;
+      }
+
+      h2 {
+        font-size: 21px;
+      }
+
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .inline-artifact {
+        padding: 18px;
+      }
+
+      .inline-artifact table {
+        table-layout: auto;
+      }
+
+      .table1-fragment table {
+        min-width: 1060px;
+      }
+
+      .table2-fragment table {
+        min-width: 860px;
+      }
+
+      .stt-fragment aside {
+        padding: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>First Article Internal Memo: Final Article Artifact</h1>
+      <p class="deck">
+        M4-T27 repo-placed artifact for the repeated-poker-analysis article artifact. This standalone HTML assembles the M4-T22/M4-T24 Figure 1-5 SVG assets by relative reference and embeds Table 1, Table 2, and the public-facing ICM-only abstract STT side box as inline fragments.
+      </p>
+      <div class="note">
+        Scope note: this artifact is a model-scoped diagnostic memo, not a strategy
+        recommendation, ranking, real-money forecast, action chart, or equilibrium
+        certificate. It preserves the M4-T23 pass-with-integration-notes guardrails.
+      </div>
+    </header>
+
+    <section aria-labelledby="scope">
+      <h2 id="scope">Article Scope</h2>
+      <p>
+        The memo introduces a supplied finite abstraction, fixed-Hero candidate
+        rows, exact Villain response inside the supplied tree, tie-aware Hero
+        value readings, an economic switching-opportunity diagnostic, and a
+        selected-channel public-signal diagnostic. All labels are scoped to the
+        declared model and selected observation channel.
+      </p>
+      <div class="two-col">
+        <div class="mini-card">
+          <h3>Safe Reading</h3>
+          <p>
+            Read the artifacts as diagnostic excerpts inside supplied finite
+            abstractions. `T_deadline` is an abstract-opportunity diagnostic.
+            `T_detect` is a selected-channel public-signal diagnostic under the
+            declared channel and threshold.
+          </p>
+        </div>
+        <div class="mini-card">
+          <h3>Not Claimed</h3>
+          <p>
+            The memo does not claim actual adaptation time, human learning speed,
+            an opponent prediction, a recommended play, a push/fold chart, or a
+            real-game volume forecast.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="pipeline">
+      <h2 id="pipeline">What The Report Is</h2>
+      <figure class="figure-block">
+        <img
+          src="73_m4_t22_figure1_pipeline_manifest.svg"
+          alt="Pipeline diagram for a model-scoped diagnostic report. It uses summary_counts.total, candidate_rows.Count, and counts.generated with the M4-T19 schema correction applied. A supplied finite abstraction flows through a finite fixed-Hero candidate library, exact Villain response inside the supplied tree, tie-aware Hero value readings, separate T_deadline and T_detect diagnostics, and report outputs with a reproducibility manifest.">
+        <figcaption>
+          Figure 1 integrates the pipeline and manifest boundary. The schema
+          correction from M4-T19 is preserved: the figure uses
+          <code>analysis_report.summary_counts.total</code>,
+          <code>analysis_report.candidate_rows.Count</code>, and
+          <code>counts.generated</code>.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="field-dictionary">
+      <h2 id="field-dictionary">Field Dictionary Guardrails</h2>
+      <p>
+        The field dictionary is placed early so implementation field names do not
+        drift into article-facing claims. It is a guardrail table, not an output
+        leaderboard or decision table.
+      </p>
+      <div class="inline-artifact table-fragment table2-fragment">
+<h3 class="fragment-title">Table 2. Implementation fields and article labels</h3>
+    <p class="note">Field dictionary and guardrail table. This is not an output leaderboard or decision table.</p>
+    <table aria-describedby="table2-guardrail">
+      <caption>
+        Table 2. Implementation fields are mapped to article labels and scoped interpretations.
+        Fields containing "hands" are abstract hand/opportunity units unless an explicit report-side physical-hand conversion is supplied.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">implementation field</th>
+          <th scope="col">article label</th>
+          <th scope="col">used in</th>
+          <th scope="col">safe interpretation</th>
+          <th scope="col">do not imply</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>t_deadline</code></td>
+          <td><code>T_deadline</code></td>
+          <td>Fig. 2, Fig. 4, Table 1</td>
+          <td>economic switching-opportunity diagnostic in abstract opportunities</td>
+          <td>actual adaptation time or safety window</td>
+        </tr>
+        <tr>
+          <td><code>t_detect_estimated_opportunities</code></td>
+          <td><code>T_detect</code></td>
+          <td>Fig. 2, Fig. 3, Fig. 5, Table 1</td>
+          <td>selected-channel public-signal diagnostic under declared channel and threshold</td>
+          <td>human learning speed or opponent prediction</td>
+        </tr>
+        <tr>
+          <td><code>t_detect_hands</code></td>
+          <td>v1 abstract hand/opportunity estimate</td>
+          <td>Table 2 only</td>
+          <td>legacy implementation field name; abstract opportunity unless conversion supplied</td>
+          <td>physical dealt hands by default</td>
+        </tr>
+        <tr>
+          <td><code>detection_kl_per_hand_nats</code></td>
+          <td>KL per abstract opportunity</td>
+          <td>Table 1/2</td>
+          <td>selected public-observation distribution metric</td>
+          <td>unknown-strategy learning model</td>
+        </tr>
+        <tr>
+          <td><code>detection_tv_per_hand</code></td>
+          <td>TV per abstract opportunity</td>
+          <td>Fig. 3, Table 1/2</td>
+          <td>distribution distance over public observations</td>
+          <td>same thing as <code>observation_distance</code></td>
+        </tr>
+        <tr>
+          <td><code>detection_baseline_impossible_mass_per_hand</code></td>
+          <td>baseline-impossible public mass</td>
+          <td>Fig. 3, Table 2</td>
+          <td>mass of public events absent under the baseline model</td>
+          <td>strategy exploitability</td>
+        </tr>
+        <tr>
+          <td><code>detection_time_basis</code></td>
+          <td>detection basis</td>
+          <td>Fig. 3, Table 1/2</td>
+          <td><code>sprt_kl</code> or <code>baseline_impossible_event</code> report convention</td>
+          <td>psychological detection process</td>
+        </tr>
+        <tr>
+          <td><code>t_detect_estimated_physical_hands</code></td>
+          <td>optional physical-hand scale units</td>
+          <td>Fig. 5, Table 2</td>
+          <td>report-side conversion from supplied <code>q_spot</code></td>
+          <td>real volume forecast</td>
+        </tr>
+        <tr>
+          <td><code>comparable_spot_occurrence_probability_per_physical_hand</code></td>
+          <td>supplied <code>q_spot</code></td>
+          <td>Fig. 5</td>
+          <td>analyst-supplied scale parameter</td>
+          <td>estimated real-game occurrence rate</td>
+        </tr>
+        <tr>
+          <td><code>post_response_hero_ev_worst_diff</code></td>
+          <td>worst-tie post-response Hero EV delta</td>
+          <td>Fig. 4, Table 1</td>
+          <td>model EV delta under tied-response reading</td>
+          <td>real profitability</td>
+        </tr>
+        <tr>
+          <td><code>post_response_hero_ev_best_diff</code></td>
+          <td>best-tie post-response Hero EV delta</td>
+          <td>Fig. 4</td>
+          <td>other endpoint of tied-response reading</td>
+          <td>actual opponent mixture</td>
+        </tr>
+        <tr>
+          <td><code>robustly_profitable</code></td>
+          <td>audit-only field; do not display raw</td>
+          <td>audit only</td>
+          <td>if unavoidable, rewrite as "passes the model's above-baseline criterion"</td>
+          <td>profitable poker strategy</td>
+        </tr>
+        <tr>
+          <td><code>is_eligible</code></td>
+          <td>audit-only field; do not display raw</td>
+          <td>audit only</td>
+          <td>report filtering status</td>
+          <td>selected or recommended candidate</td>
+        </tr>
+        <tr>
+          <td><code>is_ev_observation_deadline_pareto_candidate</code></td>
+          <td>descriptive trade-off marker</td>
+          <td>audit only</td>
+          <td>descriptive frontier under selected fields</td>
+          <td>optimal recommendation</td>
+        </tr>
+        <tr>
+          <td>STT <code>value_unit</code></td>
+          <td>modelled tournament prize-EV delta</td>
+          <td>STT side box</td>
+          <td>ICM-only payoff unit in supplied STT abstraction</td>
+          <td>tournament simulation or real-money EV</td>
+        </tr>
+        <tr>
+          <td>STT action labels</td>
+          <td>abstract action labels</td>
+          <td>STT side box only</td>
+          <td>labels inside supplied <code>stt_pushfold-1</code> model</td>
+          <td>push/fold chart advice</td>
+        </tr>
+      </tbody>
+    </table>
+    <section class="guardrail" id="table2-guardrail">
+      Guardrail confirmation: the "do not imply" column is retained, raw audit values from specific rows are not printed,
+      and STT action labels are scoped only to the STT side box.
+    </section>
+      </div>
+    </section>
+
+    <section aria-labelledby="timing-split">
+      <h2 id="timing-split">Timing Split</h2>
+      <p>
+        The range-matrix main row separates two diagnostics: an economic
+        switching-opportunity lane and a selected-channel public-signal lane.
+        `T_deadline=100` stays on the abstract-opportunity scale and is not shown
+        as a clock, countdown, safety window, or physical-hand timeline.
+      </p>
+      <figure class="figure-block">
+        <img
+          src="73_m4_t22_figure2_timing_split.svg"
+          alt="Two-lane diagnostic panel for the fixed-Hero candidate hero_strong call-to-fold shift 0.25. The economic lane shows T_deadline equals 100 abstract opportunities and worst-tie EV delta 0.000. The selected-channel public-signal lane shows showdown_reveal with reach_weighted_v1, KL 0.0, TV 0.0, and no finite estimate under the selected channel/model for T_detect.">
+        <figcaption>
+          Figure 2 keeps `T_deadline=100 abstract opportunities` separate from
+          `T_detect=no finite estimate under the selected channel/model`.
+          It uses renderer-native SVG rectangles and lines, not the earlier
+          draft's environment-dependent ASCII box characters.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="calibration">
+      <h2 id="calibration">Calibration Row</h2>
+      <p>
+        The nuts-chop row is a toy calibration row for the public-signal
+        machinery. It is not compared against the range-matrix rows as a
+        competing play.
+      </p>
+      <figure class="figure-block">
+        <img
+          src="73_m4_t22_figure3_baseline_impossible_event.svg"
+          alt="Compact calibration strip for a nuts-chop toy row. The selected public channel is actions_only. The detection basis is baseline_impossible_event. Baseline-impossible public mass is 1.0, TV per abstract opportunity is 1.0, and T_detect is 1 comparable abstract opportunity.">
+        <figcaption>
+          Figure 3 presents <code>baseline_impossible_event</code> as a
+          calibration diagnostic for the selected public-observation machinery.
+          KL is not the main visual, and no raw profitability flag is shown.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="tie-reading">
+      <h2 id="tie-reading">Tie-Reading Value Interval</h2>
+      <p>
+        For each fixed-Hero candidate, Villain's response is a best-response
+        correspondence inside the supplied finite tree. The plotted interval is
+        the worst-to-best Hero reading across tied Villain best responses inside
+        the supplied model.
+      </p>
+      <figure class="figure-block">
+        <img
+          src="75_m4_t24_figure4_tie_value_interval_integrated.svg"
+          alt="Interval plot sketch for three fixed-Hero candidates. Each row shows the Hero value interval spanning worst and best Hero readings across tied Villain best responses inside the supplied finite tree. All three intervals collapse to points in this run. The baseline Hero EV marker is at -0.145.">
+        <figcaption>
+          Figure 4 shows that the intervals collapse to points in this run and
+          does not create artificial interval width. The plot is a tie-reading
+          diagnostic, not a claim about actual opponent mixtures or real EV.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="scale-conversion">
+      <h2 id="scale-conversion">Synthetic Scale Conversion</h2>
+      <div class="guardrail">
+        Mandatory adjacency preserved: <code>q_spot=0.01</code> and
+        <code>ceil(1/0.01)=100</code> appear with <strong>synthetic</strong>,
+        <strong>analyst-supplied</strong>, <strong>physical-hand scale units</strong>,
+        and <strong>not estimated by the toolkit</strong>. The converted value is
+        not a standalone badge, axis tick, headline, timeline endpoint, or real-game
+        forecast.
+      </div>
+      <figure class="figure-block">
+        <img
+          src="75_m4_t24_figure5_synthetic_scale_conversion_integrated.svg"
+          alt="Formula-style diagram showing report-side conversion only after a finite opportunity-scale public-signal diagnostic exists. The input is T_detect equals 1 comparable abstract opportunity. The conversion note says synthetic, analyst-supplied q_spot=0.01 is not estimated by the toolkit, and ceil(1/0.01)=100 is displayed as physical-hand scale units.">
+        <figcaption>
+          Figure 5. Synthetic physical-hand scale conversion is applied only
+          after a finite opportunity-scale public-signal diagnostic exists. In
+          this calibration row, <code>T_detect=1</code> comparable abstract
+          opportunity. With synthetic, analyst-supplied <code>q_spot=0.01</code>,
+          not estimated by the toolkit, the report-side conversion displays
+          <code>ceil(1/0.01)=100</code> physical-hand scale units.
+        </figcaption>
+      </figure>
+      <div class="footnote">
+        Footnote. The numeric conversion in Figure 5 is a synthetic
+        scale-conversion example: <code>q_spot=0.01</code> is analyst-supplied
+        and not estimated by the toolkit, and <code>ceil(1/0.01)=100</code> is
+        displayed only as physical-hand scale units.
+      </div>
+    </section>
+
+    <section aria-labelledby="row-excerpt">
+      <h2 id="row-excerpt">Diagnostic Row Excerpt</h2>
+      <p>
+        Table 1 remains a neutral diagnostic row excerpt. The row order is the
+        explanatory order from the production instruction: range-matrix context
+        first, then a separated toy calibration excerpt.
+      </p>
+      <div class="inline-artifact table-fragment table1-fragment">
+<h3 class="fragment-title">Table 1. Diagnostic row excerpt</h3>
+    <p class="note">Neutral audit excerpt. The order is explanatory and grouped by source context.</p>
+    <table aria-describedby="table1-guardrail">
+      <caption>
+        Table 1. Selected report rows show how value, deadline, and public-observation fields are exposed for audit.
+        The range-matrix rows are the main example; the nuts-chop row is a separate toy calibration row for a baseline-impossible public event.
+        The rows are diagnostic excerpts inside supplied finite abstractions.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">example</th>
+          <th scope="col">candidate row</th>
+          <th scope="col">shift</th>
+          <th scope="col">obs. distance</th>
+          <th scope="col">worst-tie EV delta</th>
+          <th scope="col"><code>T_deadline</code></th>
+          <th scope="col"><code>T_detect</code></th>
+          <th scope="col">public-signal basis</th>
+          <th scope="col">article use</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="group"><th scope="rowgroup" colspan="9">Range-matrix main excerpt - abstract row labels</th></tr>
+        <tr>
+          <td>range-matrix main</td>
+          <td><code>hero_chop fold-&gt;call</code></td>
+          <td>0.25</td>
+          <td>0.25</td>
+          <td>-5.997</td>
+          <td>null</td>
+          <td class="muted">no finite estimate under the selected channel/model</td>
+          <td>selected channel KL/TV <code>0.0/0.0</code></td>
+          <td>losing contrast</td>
+        </tr>
+        <tr>
+          <td>range-matrix main</td>
+          <td><code>hero_strong call-&gt;fold</code></td>
+          <td>0.25</td>
+          <td>0.25</td>
+          <td>0.000</td>
+          <td>100</td>
+          <td class="muted">no finite estimate under the selected channel/model</td>
+          <td>selected channel KL/TV <code>0.0/0.0</code></td>
+          <td>Figure 2 main row</td>
+        </tr>
+        <tr>
+          <td>range-matrix main</td>
+          <td><code>hero_strong call-&gt;fold</code></td>
+          <td>1.0</td>
+          <td>1.0</td>
+          <td>-0.855</td>
+          <td>null</td>
+          <td class="muted">no finite estimate under the selected channel/model</td>
+          <td>selected channel KL/TV <code>0.0/0.0</code></td>
+          <td>larger-shift boundary</td>
+        </tr>
+        <tr class="group"><th scope="rowgroup" colspan="9">Toy calibration excerpt - separate diagnostic row excerpt</th></tr>
+        <tr>
+          <td>toy calibration</td>
+          <td><code>IP_vs_bet fold-&gt;call</code></td>
+          <td>1.0</td>
+          <td>1.0</td>
+          <td>0.950</td>
+          <td>49</td>
+          <td>1 comparable abstract opportunity</td>
+          <td><code>baseline_impossible_event</code>, TV <code>1.0</code></td>
+          <td>Figure 3 calibration</td>
+        </tr>
+      </tbody>
+    </table>
+    <section class="guardrail" id="table1-guardrail">
+      Layout note: neutral group divider only; no rank column, icons, winner colors, or desirability sort are used.
+    </section>
+      </div>
+      <div class="guardrail">
+        Table 1 guardrail: no rank numbers, no winner icons, no recommendation
+        language, no green/red success styling, no desirability sort, and no raw
+        <code>robustly_profitable</code>, <code>is_eligible</code>,
+        <code>exclusion_reasons</code>, or ranking boolean values.
+      </div>
+    </section>
+
+    <section aria-labelledby="stt">
+      <h2 id="stt">ICM-Only Abstract STT Side Box</h2>
+      <p>
+        The STT material stays outside the main Figure 1-5 sequence. It is an
+        ICM-only abstract side box showing that the diagnostic report structure
+        can sit on another payoff backend.
+      </p>
+      <div class="inline-artifact stt-fragment">
+<aside aria-label="ICM-only abstract STT side box">
+  <h3 class="fragment-title">ICM-only abstract STT side box</h3>
+  <p>
+    The STT example uses a supplied <code>stt_pushfold-1</code> SB-vs-BB abstraction
+    with Malmuth-Harville ICM prize-EV deltas
+    (<code>value_unit=modelled_tournament_prize_ev_delta</code>). It is included only
+    to show that the same diagnostic report structure can be applied to another payoff backend:
+    fixed-Hero candidate rows, exact response inside the supplied model,
+    <code>T_deadline</code>, and selected-channel <code>T_detect</code>.
+  </p>
+  <div class="meta">
+    <p>
+      Scope metadata:
+      <code>scenario_id=stt_pushfold_2x2</code>;
+      <code>format_version=stt_pushfold-1</code>;
+      <code>model_kind=stt_pushfold_icm</code>;
+      <code>value_unit=modelled_tournament_prize_ev_delta</code>;
+      <code>hero_seat=sb</code>.
+    </p>
+    <p>
+      Bucket ID labels:
+      <code>sb_buckets=strong / weak</code>;
+      <code>bb_buckets=call_good / trash</code>.
+      Detection configuration is scoped to the supplied abstract model and selected public channel.
+    </p>
+  </div>
+  <p class="small">
+    Public-facing fallback: row-level numeric details are intentionally omitted here.
+    Action labels belong to the supplied abstract input vocabulary only. This side box is
+    scope metadata and caution wording, not action advice, not a full STT candidate table,
+    not a <code>shove/fold</code> decision grid, and not a physical-hand conversion.
+  </p>
+</aside>
+      </div>
+      <div class="guardrail">
+        STT guardrail: the side box contains scope metadata and caution wording only. Row-level numeric details are omitted for the public-facing fallback. It is not a full STT candidate
+        table, not a <code>shove/fold</code> decision grid, not action advice, and
+        it does not apply physical-hand conversion to STT.
+      </div>
+    </section>
+
+    <section aria-labelledby="integration-status">
+      <h2 id="integration-status">Integration Status</h2>
+      <ul>
+        <li>Figure SVG assets are integrated by relative reference from this directory.</li>
+        <li>Repo changes for this placement are limited to this artifact directory.</li>
+        <li>Table 1, Table 2, and the STT side box are inline fragments; this artifact does not use iframe.</li>
+        <li>Figure 5, Table 1, STT side box, Figure 2, and Figure 4 remain the priority QA targets after any renderer or layout change.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
