@@ -33,6 +33,29 @@
 - [ ] STT output is described as ICM-only, not Future-ICM / FGS / tournament
       simulation.
 
+### Article artifact and static preview
+
+- [ ] README links to the final article artifact as an internal model-scoped
+      diagnostic artifact, not strategy advice or public advice.
+- [ ] The final article artifact scope note is present and does not describe the
+      artifact as strategy advice, an action chart, a real-money forecast, or an
+      equilibrium certificate.
+- [ ] If GitHub Pages or another static preview is used, the preview is reviewed
+      as a static preview of an internal model-scoped diagnostic artifact, not a
+      published recommendation.
+- [ ] Figure 5 keeps `q_spot=0.01`, `ceil(1/0.01)=100`, synthetic,
+      analyst-supplied, not estimated by the toolkit, and physical-hand scale
+      units adjacent.
+- [ ] Artifact examples keep `T_deadline` as an abstract-opportunity diagnostic
+      and `T_detect` as a selected-channel public-signal diagnostic.
+- [ ] Table 1 remains a neutral diagnostic excerpt: no rank, recommendation,
+      winner styling, desirability sort, or raw audit booleans.
+- [ ] The STT side box remains ICM-only metadata and caution wording, not action
+      advice, a full STT candidate table, or a shove/fold chart.
+- [ ] The five SVG assets referenced by
+      `docs/article_m4_t26_final_artifact/index.html` resolve from that artifact
+      directory.
+
 ### Reproducibility
 
 - [ ] `python scripts/check_mvp.py` passes.
