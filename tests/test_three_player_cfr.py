@@ -109,6 +109,12 @@ def test_zero_sum_degenerate_normal_form_converges_near_known_mixed_strategy():
         "exploitability",
         "best_response",
         "profitable",
+        "solver_grade",
+        "real_money",
+        "advice",
+        "guarantee",
+        "optimal",
+        "nash",
     )
     assert all(key not in result.to_dict() for key in forbidden)
 
@@ -225,6 +231,147 @@ def test_fixed_hero_mixed_transition_is_input_not_regret_updated():
     assert result.average_strategy_by_player["O2"] == {}
 
 
+def test_repeated_opponent_information_set_on_single_path_is_rejected():
+    tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "o1_first",
+            "opponent_1",
+            "O1_loop",
+            (
+                (
+                    "again",
+                    OpponentDecisionNode(
+                        "o1_repeat",
+                        "opponent_1",
+                        "O1_loop",
+                        (("stop", _t("t_repeat_stop", 0.0, 0.0, 0.0)),),
+                    ),
+                ),
+                ("stop", _t("t_first_stop", 0.0, 0.0, 0.0)),
+            ),
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="repeats on a single root-to-terminal path",
+    ):
+        validate_three_player_tree(tree, _empty_hero())
+
+
+def test_reused_information_set_requires_consistent_legal_actions():
+    tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "o1_root",
+            "opponent_1",
+            "O1_root",
+            (
+                (
+                    "a",
+                    OpponentDecisionNode(
+                        "o2_after_a",
+                        "opponent_2",
+                        "O2_shared",
+                        (
+                            ("call", _t("t_a_call", -2.0, 1.0, 1.0)),
+                            ("fold", _t("t_a_fold", 0.0, 0.0, 0.0)),
+                        ),
+                    ),
+                ),
+                (
+                    "b",
+                    OpponentDecisionNode(
+                        "o2_after_b",
+                        "opponent_2",
+                        "O2_shared",
+                        (
+                            ("call", _t("t_b_call", -1.0, 1.0, 0.0)),
+                            ("raise", _t("t_b_raise", -3.0, 1.0, 2.0)),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="inconsistent legal actions"):
+        validate_three_player_tree(tree, _empty_hero())
+
+
+def test_fixed_hero_policy_rejects_unknown_and_missing_info_sets():
+    tree = ThreePlayerGameTree(
+        FixedHeroNode(
+            "hero_lock",
+            "H_lock",
+            (
+                ("left", _t("t_left", 0.0, 0.0, 0.0)),
+                ("right", _t("t_right", 0.0, 0.0, 0.0)),
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="unknown information sets"):
+        validate_three_player_tree(
+            tree,
+            BehaviorStrategy(
+                {
+                    "H_lock": {"left": 0.5, "right": 0.5},
+                    "H_extra": {"unused": 1.0},
+                }
+            ),
+        )
+    with pytest.raises(ValueError, match="missing information set 'H_lock'"):
+        validate_three_player_tree(tree, BehaviorStrategy({}))
+
+
+def test_opponent_strategy_mapping_rejects_missing_extra_and_info_set_keys():
+    tree = _normal_form_tree(
+        {
+            ("A", "L"): (-2.0, 1.0, 1.0),
+            ("A", "R"): (0.0, 0.0, 0.0),
+            ("B", "L"): (0.0, 0.0, 0.0),
+            ("B", "R"): (-2.0, 1.0, 1.0),
+        }
+    )
+    valid_o1 = BehaviorStrategy({"O1_root": {"A": 0.5, "B": 0.5}})
+    valid_o2 = BehaviorStrategy({"O2_root": {"L": 0.5, "R": 0.5}})
+
+    with pytest.raises(ValueError, match="exactly O1 and O2"):
+        evaluate_three_player_profile(tree, _empty_hero(), {"O1": valid_o1})
+    with pytest.raises(ValueError, match="exactly O1 and O2"):
+        evaluate_three_player_profile(
+            tree,
+            _empty_hero(),
+            {"O1": valid_o1, "O2": valid_o2, "H": BehaviorStrategy({})},
+        )
+    with pytest.raises(ValueError, match="unknown information sets"):
+        evaluate_three_player_profile(
+            tree,
+            _empty_hero(),
+            {
+                "O1": BehaviorStrategy(
+                    {
+                        "O1_root": {"A": 0.5, "B": 0.5},
+                        "O1_shadow": {"A": 1.0},
+                    }
+                ),
+                "O2": valid_o2,
+            },
+        )
+    with pytest.raises(ValueError, match="missing information set 'O2_root'"):
+        evaluate_three_player_profile(
+            tree,
+            _empty_hero(),
+            {"O1": valid_o1, "O2": BehaviorStrategy({})},
+        )
+    with pytest.raises(ValueError, match="must assign exactly legal actions"):
+        evaluate_three_player_profile(
+            tree,
+            _empty_hero(),
+            {"O1": BehaviorStrategy({"O1_root": {"A": 1.0}}), "O2": valid_o2},
+        )
+
+
 def test_unilateral_deviation_gain_does_not_evaluate_coalition_joint_deviation():
     """Only one opponent is varied at a time; no coalition deviation is tested."""
 
@@ -320,6 +467,73 @@ def test_safety_caps_reject_before_large_structures_are_needed():
             tree,
             _empty_hero(),
             limits=CfrSafetyLimits(max_actions_per_info_set=1),
+        )
+    with pytest.raises(ValueError, match="max_opponent_info_sets_total"):
+        validate_three_player_tree(
+            tree,
+            _empty_hero(),
+            limits=CfrSafetyLimits(max_opponent_info_sets_total=1),
+        )
+    o1_two_info_tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "o1_a",
+            "opponent_1",
+            "O1_a",
+            (
+                (
+                    "next",
+                    OpponentDecisionNode(
+                        "o1_b",
+                        "opponent_1",
+                        "O1_b",
+                        (("end", _t("t_o1_b_end", 0.0, 0.0, 0.0)),),
+                    ),
+                ),
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="max_info_sets_per_opponent"):
+        validate_three_player_tree(
+            o1_two_info_tree,
+            _empty_hero(),
+            limits=CfrSafetyLimits(max_info_sets_per_opponent=1),
+        )
+    hero_two_info_tree = ThreePlayerGameTree(
+        FixedHeroNode(
+            "h_a",
+            "H_a",
+            (
+                (
+                    "next",
+                    FixedHeroNode(
+                        "h_b",
+                        "H_b",
+                        (("end", _t("t_h_b_end", 0.0, 0.0, 0.0)),),
+                    ),
+                ),
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="max_fixed_hero_info_sets"):
+        validate_three_player_tree(
+            hero_two_info_tree,
+            _empty_hero(),
+            limits=CfrSafetyLimits(max_fixed_hero_info_sets=1),
+        )
+    chance_two_outcome_tree = ThreePlayerGameTree(
+        ThreePlayerChanceNode(
+            "chance",
+            (
+                (0.5, _t("t_chance_a", 0.0, 0.0, 0.0)),
+                (0.5, _t("t_chance_b", 0.0, 0.0, 0.0)),
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="max_chance_outcomes_per_node"):
+        validate_three_player_tree(
+            chance_two_outcome_tree,
+            _empty_hero(),
+            limits=CfrSafetyLimits(max_chance_outcomes_per_node=1),
         )
     with pytest.raises(ValueError, match="iterations"):
         CfrConfig(iterations=2, limits=CfrSafetyLimits(max_iterations=1))
