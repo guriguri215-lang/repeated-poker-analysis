@@ -17,8 +17,18 @@
 
 ## Game-model assumptions
 
-- The tool works on small abstract two-player games.
+- The main supported workflow works on small abstract two-player games.
 - It is not a full poker solver.
+- `repeated_poker.three_player_cfr` is an isolated 3-player river commitment
+  diagnostic prototype for tiny abstract trees with a fixed Hero policy and two
+  strategic opponents. It is separate from the two-player exact-response core
+  and is not exported from the top-level package API.
+- Its CFR-style outputs are regret and unilateral-deviation diagnostics only:
+  they are not an exact best-response solver, not an equilibrium certificate,
+  not a full 3-player poker solver, not solver-grade output, and not
+  profitable-strategy or real-money advice.
+- The unilateral deviation-gain diagnostic varies one opponent at a time and
+  does not test joint or coalition deviations.
 - Rake makes the two-player payoff accounting non-zero-sum.
 - The house / rake account is accounting only; it is **not a strategic player**
   and chooses no actions.
