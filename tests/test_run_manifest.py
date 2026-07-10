@@ -28,6 +28,7 @@ from repeated_poker import (
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SAMPLE = _ROOT / "examples" / "scenarios" / "nuts_chop_steal_bet98.json"
+_RANGE_SAMPLE = _ROOT / "examples" / "scenarios" / "range_equity_steal_bet98.json"
 
 _TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -85,6 +86,100 @@ def test_manifest_records_effective_parameters(result):
     assert parameters["response_mode"] == RESPONSE_MODE_WORST
     assert parameters["tolerance"] == 1e-9
     assert parameters["ranking_criterion"] is None
+    assert parameters["filter_allowed_info_sets"] is None
+    assert parameters["filter_max_l1_distance"] is None
+    assert parameters["filter_min_required_observations"] is None
+
+
+def test_manifest_distinguishes_default_and_empty_allowed_filter():
+    default = run_river_scenario_analysis(
+        _RANGE_SAMPLE, RiverScenarioAnalysisConfig(markdown=False)
+    )
+    empty = run_river_scenario_analysis(
+        _RANGE_SAMPLE,
+        RiverScenarioAnalysisConfig(filter_allowed_info_sets=[], markdown=False),
+    )
+
+    assert default.manifest.parameters["filter_allowed_info_sets"] is None
+    assert empty.manifest.parameters["filter_allowed_info_sets"] == []
+    assert default.pipeline_result.filter_result.summary_counts.kept == 6
+    assert empty.pipeline_result.filter_result.summary_counts.kept == 0
+
+
+@pytest.mark.parametrize(
+    "allowed_info_sets",
+    [
+        [
+            "IP_vs_bet::hero_strong",
+            "IP_vs_bet::hero_medium",
+            "IP_vs_bet::hero_strong",
+        ],
+        (
+            "IP_vs_bet::hero_medium",
+            "IP_vs_bet::hero_strong",
+            "IP_vs_bet::hero_medium",
+        ),
+        {"IP_vs_bet::hero_strong", "IP_vs_bet::hero_medium"},
+    ],
+)
+def test_manifest_canonicalizes_allowed_filter_collection(allowed_info_sets):
+    result = run_river_scenario_analysis(
+        _RANGE_SAMPLE,
+        RiverScenarioAnalysisConfig(
+            filter_allowed_info_sets=allowed_info_sets,
+            markdown=False,
+        ),
+    )
+
+    assert result.manifest.parameters["filter_allowed_info_sets"] == [
+        "IP_vs_bet::hero_medium",
+        "IP_vs_bet::hero_strong",
+    ]
+
+
+def test_manifest_canonicalization_does_not_accept_non_string_filter_values():
+    with pytest.raises(ValueError, match="must contain only strings"):
+        run_river_scenario_analysis(
+            _RANGE_SAMPLE,
+            RiverScenarioAnalysisConfig(filter_allowed_info_sets={1, 2}),
+        )
+
+
+def test_set_allowed_filter_serializes_in_strict_json(tmp_path):
+    result = run_river_scenario_analysis(
+        _RANGE_SAMPLE,
+        RiverScenarioAnalysisConfig(
+            filter_allowed_info_sets={
+                "IP_vs_bet::hero_strong",
+                "IP_vs_bet::hero_medium",
+            },
+            markdown=False,
+        ),
+    )
+    path = tmp_path / "set_filter.json"
+    write_analysis_json(result, path, strict=True)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["manifest"]["parameters"]["filter_allowed_info_sets"] == [
+        "IP_vs_bet::hero_medium",
+        "IP_vs_bet::hero_strong",
+    ]
+
+
+def test_manifest_records_effective_numeric_filter_overrides():
+    result = run_river_scenario_analysis(
+        _RANGE_SAMPLE,
+        RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            filter_max_l1_distance=0.5,
+            filter_min_required_observations=2,
+            markdown=False,
+        ),
+    )
+
+    parameters = result.manifest.parameters
+    assert parameters["filter_max_l1_distance"] == 0.5
+    assert parameters["filter_min_required_observations"] == 2
 
 
 def test_manifest_parameters_follow_overrides():
@@ -264,6 +359,37 @@ def test_batch_manifest_records_physical_conversion_override_and_resolved_value(
     assert batch.manifest.parameters[parameter_name] == 0.25
     (scenario_result,) = batch.results.values()
     assert scenario_result.manifest.parameters[parameter_name] == 0.25
+
+
+def test_batch_manifest_records_canonical_requested_and_effective_filters():
+    config = BatchScenarioAnalysisConfig(
+        analysis=RiverScenarioAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            filter_allowed_info_sets=(
+                "IP_vs_bet::hero_strong",
+                "IP_vs_bet::hero_medium",
+                "IP_vs_bet::hero_strong",
+            ),
+            filter_max_l1_distance=0.5,
+            filter_min_required_observations=2,
+            markdown=False,
+        )
+    )
+    batch = run_batch_scenario_analysis(_RANGE_SAMPLE, config)
+
+    expected_allowed = [
+        "IP_vs_bet::hero_medium",
+        "IP_vs_bet::hero_strong",
+    ]
+    batch_parameters = batch.manifest.parameters
+    assert batch_parameters["filter_allowed_info_sets"] == expected_allowed
+    assert batch_parameters["filter_max_l1_distance"] == 0.5
+    assert batch_parameters["filter_min_required_observations"] == 2
+    (scenario_result,) = batch.results.values()
+    scenario_parameters = scenario_result.manifest.parameters
+    assert scenario_parameters["filter_allowed_info_sets"] == expected_allowed
+    assert scenario_parameters["filter_max_l1_distance"] == 0.5
+    assert scenario_parameters["filter_min_required_observations"] == 2
 
 
 def test_batch_json_export_contains_manifests(tmp_path, batch):

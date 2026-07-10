@@ -22,12 +22,16 @@ keeping the successful scenarios' detailed results.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from .detection import resolve_detection_observation_model
-from .run_manifest import RunManifest, build_run_manifest
+from .run_manifest import (
+    RunManifest,
+    build_run_manifest,
+    canonicalize_filter_parameters,
+)
 from .scenario_pipeline import (
     RiverScenarioAnalysisConfig,
     RiverScenarioAnalysisResult,
@@ -284,34 +288,44 @@ def run_batch_scenario_analysis(
 
     config = config or BatchScenarioAnalysisConfig()
     paths = expand_scenario_inputs(inputs)
+    filter_parameters = canonicalize_filter_parameters(
+        allowed_info_sets=config.analysis.filter_allowed_info_sets,
+        max_l1_distance=config.analysis.filter_max_l1_distance,
+        min_required_observations=config.analysis.filter_min_required_observations,
+    )
+    analysis = replace(
+        config.analysis,
+        filter_allowed_info_sets=filter_parameters["filter_allowed_info_sets"],
+    )
     resolved_detection_observation_model = resolve_detection_observation_model(
-        config.analysis.detection_method,
-        config.analysis.detection_observation_model,
+        analysis.detection_method,
+        analysis.detection_observation_model,
     )
 
     manifest = build_run_manifest(
         parameters={
-            "horizon": config.analysis.horizon,
-            "discount": config.analysis.discount,
-            "response_mode": config.analysis.response_mode,
-            "profit_tolerance": config.analysis.profit_tolerance,
-            "max_selection_l1_distance": config.analysis.max_selection_l1_distance,
+            "horizon": analysis.horizon,
+            "discount": analysis.discount,
+            "response_mode": analysis.response_mode,
+            "profit_tolerance": analysis.profit_tolerance,
+            "max_selection_l1_distance": analysis.max_selection_l1_distance,
             "detection_log_likelihood_threshold": (
-                config.analysis.detection_log_likelihood_threshold
+                analysis.detection_log_likelihood_threshold
             ),
             "detection_occurrence_probability_per_opportunity": (
-                config.analysis.detection_occurrence_probability_per_opportunity
+                analysis.detection_occurrence_probability_per_opportunity
             ),
             "comparable_spot_occurrence_probability_per_physical_hand": (
-                config.analysis.detection_comparable_spot_occurrence_probability_per_physical_hand
+                analysis.detection_comparable_spot_occurrence_probability_per_physical_hand
             ),
-            "detection_method": config.analysis.detection_method,
+            "detection_method": analysis.detection_method,
             "detection_observation_model": resolved_detection_observation_model,
-            "max_detection_terminals": config.analysis.max_detection_terminals,
-            "tolerance": config.analysis.tolerance,
-            "max_pure_strategies": config.analysis.max_pure_strategies,
-            "ranking_criterion": config.analysis.ranking_criterion,
+            "max_detection_terminals": analysis.max_detection_terminals,
+            "tolerance": analysis.tolerance,
+            "max_pure_strategies": analysis.max_pure_strategies,
+            "ranking_criterion": analysis.ranking_criterion,
             "continue_on_error": config.continue_on_error,
+            **filter_parameters,
         },
     )
 
@@ -320,7 +334,7 @@ def run_batch_scenario_analysis(
     for path in paths:
         display = display_scenario_path(path)
         try:
-            result = run_river_scenario_analysis(path, config.analysis)
+            result = run_river_scenario_analysis(path, analysis)
         except Exception as exc:  # noqa: BLE001 - surfaced via row or re-raised
             if not config.continue_on_error:
                 raise ValueError(

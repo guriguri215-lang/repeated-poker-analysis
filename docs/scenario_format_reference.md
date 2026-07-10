@@ -423,8 +423,10 @@ not a scenario input field, and it changes no analysis result. Fields:
 - `timestamp_utc`: run time as an ISO 8601 UTC string (`...Z`).
 - `parameters`: the effective analysis parameters (resolved horizon, discount,
   response mode, tolerances, detection settings including method / observation
-  model / terminal cap, optional comparable spot occurrence probability, ranking
-  criterion). The
+  model / terminal cap, optional comparable spot occurrence probability, candidate
+  filter settings, ranking criterion). Allowed filter information sets are stored
+  as a de-duplicated, stably sorted JSON list (with `null` and `[]` remaining
+  distinct). The
   batch-level manifest records the *requested* overrides instead; each
   per-scenario manifest records that scenario's resolved values.
 

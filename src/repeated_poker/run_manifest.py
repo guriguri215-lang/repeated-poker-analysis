@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Iterable, Optional, Union
 
 PathLike = Union[str, Path]
 
@@ -68,6 +68,39 @@ def sha256_of_file(path: PathLike) -> str:
     """Return the SHA-256 hex digest of the file's raw bytes."""
 
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def canonicalize_filter_parameters(
+    *,
+    allowed_info_sets: Optional[Iterable[str]],
+    max_l1_distance: Optional[float],
+    min_required_observations: Optional[int],
+) -> Dict[str, Any]:
+    """Return deterministic, JSON-safe candidate-filter manifest fields.
+
+    Callers pass the filter values forwarded to the candidate pipeline.  An
+    unspecified allowed collection stays ``None``; an empty collection stays an
+    empty list; and a non-empty collection is de-duplicated and sorted.  Numeric
+    values are recorded unchanged so the manifest reflects the validated
+    effective values used by the filter.
+    """
+
+    if allowed_info_sets is None:
+        canonical_allowed = None
+    else:
+        allowed = set(allowed_info_sets)
+        for value in allowed:
+            if not isinstance(value, str):
+                raise ValueError(
+                    "allowed_info_sets must contain only strings, "
+                    f"got {value!r}"
+                )
+        canonical_allowed = sorted(allowed)
+    return {
+        "filter_allowed_info_sets": canonical_allowed,
+        "filter_max_l1_distance": max_l1_distance,
+        "filter_min_required_observations": min_required_observations,
+    }
 
 
 @lru_cache(maxsize=1)

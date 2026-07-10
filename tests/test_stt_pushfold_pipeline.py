@@ -89,6 +89,28 @@ def test_manifest_contains_stt_format_version_and_prize_unit(tmp_path):
         == "modelled_tournament_prize_ev_delta"
     )
     assert payload["build_metadata"]["baseline_villain_source"] == "explicit"
+    parameters = payload["manifest"]["parameters"]
+    assert parameters["filter_allowed_info_sets"] is None
+    assert parameters["filter_max_l1_distance"] is None
+    assert parameters["filter_min_required_observations"] is None
+
+
+def test_manifest_records_canonical_effective_filters():
+    result = run_stt_pushfold_analysis(
+        _SAMPLE,
+        SttPushFoldAnalysisConfig(
+            detection_log_likelihood_threshold=3.0,
+            filter_allowed_info_sets=("SB:weak", "SB:strong", "SB:weak"),
+            filter_max_l1_distance=0.5,
+            filter_min_required_observations=2,
+            markdown=False,
+        ),
+    )
+
+    parameters = result.manifest.parameters
+    assert parameters["filter_allowed_info_sets"] == ["SB:strong", "SB:weak"]
+    assert parameters["filter_max_l1_distance"] == 0.5
+    assert parameters["filter_min_required_observations"] == 2
 
 
 def test_local_detection_runs_without_error():
