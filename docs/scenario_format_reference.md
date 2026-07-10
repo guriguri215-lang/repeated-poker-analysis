@@ -69,6 +69,7 @@ work (a form/GUI input layer; see [gui_input_design.md](gui_input_design.md)).
 | `villain_range` | required (matrix modes) | matrix | array | Weighted Villain buckets (see section 4). |
 | `showdown_matrix` | one matrix required (matrix modes) | matrix | object | `[hero_id][villain_id]` -> `"chop"` / `"hero"` / `"villain"`. Mutually exclusive with `equity_matrix`. |
 | `equity_matrix` | one matrix required (matrix modes) | matrix | object | `[hero_id][villain_id]` -> Hero pot share before rake in `[0, 1]`. Mutually exclusive with `showdown_matrix`. |
+| `max_matchups` | optional | matrix | integer >= 1 | Safety cap for `len(hero_range) * len(villain_range)`; defaults to `100000`. Bools and non-integers are rejected. |
 | `betting_tree` | optional | matrix only | object | Adds the one-street betting tree (see the betting-tree mode below). |
 | `candidate_generation` | optional (required by the analysis runner) | all | object | `{ "shift_amounts": [number > 0, ...], "max_simultaneous_info_sets": 1 or 2 }` (see section 6). `max_simultaneous_info_sets` is optional (default `1`); `2` also generates simultaneous two-information-set shift candidates. |
 | `repeated` | optional | all | object | `{ "horizons": [int >= 1, ...] or null, "discount": number in (0, 1] }` (see section 6). |
@@ -235,6 +236,10 @@ not a raw solver-export parser and introduces no new manifest field.
 - A chance node draws the Hero bucket (Hero-range-only mode) or the
   `(hero, villain)` pair with probability `hero_weight * villain_weight` (matrix
   modes).
+- In matrix modes, `len(hero_range) * len(villain_range)` must not exceed
+  `max_matchups` (default `100000`). The parser checks this before converting the
+  full matrix grid, and the builder checks it again before creating simple-tree
+  or betting-tree matchup nodes and terminals.
 - Observation model: Hero knows its own bucket but not Villain's, and Villain
   knows its own bucket but not Hero's. This is why each side's information sets
   are keyed by that side's id and shared across the other side's buckets.

@@ -4,9 +4,11 @@ import copy
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import repeated_poker.scenario_io as scenario_io
 
 from repeated_poker import (
     build_river_steal_game_from_scenario,
@@ -53,6 +55,7 @@ def test_sample_matrix_scenario_loads():
     assert all(h.showdown is None for h in scenario.hero_range.hands)
     assert scenario.showdown_matrix["hero_chop"]["villain_strong"] == "villain"
     assert scenario.showdown_matrix["hero_strong"]["villain_chop"] == "hero"
+    assert scenario.max_matchups == 100_000
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +74,8 @@ def test_matrix_metadata_mode():
         "villain_chop",
         "villain_strong",
     ]
+    assert build.metadata["max_matchups"] == 100_000
+    assert build.metadata["matchup_count"] == 4
 
 
 def test_matrix_root_is_chance_node():
@@ -178,6 +183,51 @@ def test_run_does_not_mutate_matrix_scenario_dict():
 # ---------------------------------------------------------------------------
 # Validation rejections
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_value", [True, False, 1.5, "4", 0, -1])
+def test_invalid_max_matchups_is_rejected(bad_value):
+    data = _sample_dict()
+    data["max_matchups"] = bad_value
+    with pytest.raises(ValueError, match="max_matchups must"):
+        river_scenario_from_dict(data)
+
+
+def test_showdown_matrix_matchup_cap_is_checked_before_matrix_conversion(monkeypatch):
+    data = _sample_dict()
+    data["max_matchups"] = 3
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("matrix conversion started before matchup cap check")
+
+    monkeypatch.setattr(scenario_io, "_parse_showdown_matrix", fail_if_called)
+    with pytest.raises(
+        ValueError, match="river matrix matchup count 4 exceeds max_matchups=3"
+    ):
+        river_scenario_from_dict(data)
+
+
+def test_programmatic_matrix_scenario_cannot_bypass_build_cap(monkeypatch):
+    scenario = replace(
+        river_scenario_from_dict({**_sample_dict(), "max_matchups": 4}),
+        max_matchups=3,
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("tree materialization started before matchup cap check")
+
+    monkeypatch.setattr(scenario_io, "_build_matrix_tree", fail_if_called)
+    with pytest.raises(
+        ValueError, match="river matrix matchup count 4 exceeds max_matchups=3"
+    ):
+        build_river_steal_game_from_scenario(scenario)
+
+
+def test_matrix_matchup_count_equal_to_cap_is_accepted():
+    scenario = river_scenario_from_dict({**_sample_dict(), "max_matchups": 4})
+    build = build_river_steal_game_from_scenario(scenario)
+    assert build.metadata["max_matchups"] == 4
+    assert build.metadata["matchup_count"] == 4
 
 
 def test_villain_range_without_matrix_is_rejected():

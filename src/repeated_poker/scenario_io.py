@@ -115,6 +115,7 @@ _TOLERANCE = 1e-9
 # future JSON schema and later versions such as ``"1.1"`` / ``"2"``.
 DEFAULT_FORMAT_VERSION = "1"
 SUPPORTED_FORMAT_VERSIONS = ("1",)
+DEFAULT_MAX_RIVER_MATCHUPS = 100_000
 _SHOWDOWN_RESULTS = (CHOP, HERO, VILLAIN)
 _OOP_INFO_SET = "OOP_river"
 _IP_INFO_SET = "IP_vs_bet"
@@ -263,6 +264,9 @@ class RiverScenario:
     # legacy behaviour) or ``2`` (also the simultaneous two-information-set shift
     # candidates, M2-T2). Appended last for positional-constructor compatibility.
     max_simultaneous_info_sets: int = 1
+    # Allocation guard for matrix-mode Hero x Villain matchup materialization.
+    # Appended last for positional-constructor compatibility.
+    max_matchups: int = DEFAULT_MAX_RIVER_MATCHUPS
 
     @property
     def is_range_mode(self) -> bool:
@@ -335,6 +339,31 @@ def _require_positive(value: float, name: str) -> float:
     if value <= 0:
         raise ValueError(f"{name} must be positive, got {value!r}")
     return value
+
+
+def _parse_positive_int(value, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1, got {value}")
+    return value
+
+
+def _validate_matrix_matchup_cap(
+    hero_range: RiverScenarioHeroRange,
+    villain_range: RiverScenarioVillainRange,
+    max_matchups,
+) -> int:
+    """Validate and return the matrix matchup count before materialization."""
+
+    cap = _parse_positive_int(max_matchups, "max_matchups")
+    matchup_count = len(hero_range.hands) * len(villain_range.hands)
+    if matchup_count > cap:
+        raise ValueError(
+            "river matrix matchup count "
+            f"{matchup_count} exceeds max_matchups={cap}"
+        )
+    return matchup_count
 
 
 def _validate_action_distribution(distribution, legal_actions, name: str) -> Dict[str, float]:
@@ -818,6 +847,9 @@ def river_scenario_from_dict(data) -> RiverScenario:
 
     rake = _parse_rake(data.get("rake"))
     initial_commitment = _parse_initial_commitment(data.get("initial_commitment"))
+    max_matchups = _parse_positive_int(
+        data.get("max_matchups", DEFAULT_MAX_RIVER_MATCHUPS), "max_matchups"
+    )
 
     has_hero_range = "hero_range" in data
     has_villain_range = "villain_range" in data
@@ -879,6 +911,10 @@ def river_scenario_from_dict(data) -> RiverScenario:
             data.get("hero_range"), require_showdown=False, betting_tree=has_betting_tree
         )
         villain_range = _parse_villain_range(data.get("villain_range"))
+        # Reject oversized pair products before validating or converting every
+        # matrix cell. The same guard is repeated by the public builder so a
+        # programmatically constructed RiverScenario cannot bypass it.
+        _validate_matrix_matchup_cap(hero_range, villain_range, max_matchups)
         if has_showdown_matrix:
             showdown_matrix = _parse_showdown_matrix(
                 data.get("showdown_matrix"), hero_range, villain_range
@@ -971,6 +1007,7 @@ def river_scenario_from_dict(data) -> RiverScenario:
         betting_tree=betting_tree,
         baseline_villain_strategy=baseline_villain_strategy,
         max_simultaneous_info_sets=max_simultaneous_info_sets,
+        max_matchups=max_matchups,
     )
 
 
@@ -997,6 +1034,14 @@ def build_river_steal_game_from_scenario(
     fuller one-street tree in betting-tree mode.
     """
 
+    matchup_count: Optional[int] = None
+    if scenario.is_matrix_mode:
+        # This is deliberately before either simple-tree or betting-tree mode
+        # dispatch, so no matchup nodes or terminals are materialized first.
+        matchup_count = _validate_matrix_matchup_cap(
+            scenario.hero_range, scenario.villain_range, scenario.max_matchups
+        )
+
     if scenario.is_betting_tree_mode:
         tree, baseline_hero_strategy, metadata, terminal_reveals = _build_betting_tree(
             scenario
@@ -1013,6 +1058,10 @@ def build_river_steal_game_from_scenario(
         tree, baseline_hero_strategy, metadata, terminal_reveals = (
             _build_single_hand_tree(scenario)
         )
+
+    if matchup_count is not None:
+        metadata["max_matchups"] = scenario.max_matchups
+        metadata["matchup_count"] = matchup_count
 
     validate_hero_strategy(tree, baseline_hero_strategy)
 

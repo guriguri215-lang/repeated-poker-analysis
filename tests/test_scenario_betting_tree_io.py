@@ -4,9 +4,11 @@ import copy
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import repeated_poker.scenario_io as scenario_io
 
 from repeated_poker import (
     build_river_steal_game_from_scenario,
@@ -63,6 +65,8 @@ def test_betting_tree_metadata():
         "ip_bet_after_check_size": 98.0,
         "ip_raise_size": 196.0,
     }
+    assert build.metadata["max_matchups"] == 100_000
+    assert build.metadata["matchup_count"] == 4
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +190,31 @@ def test_run_does_not_mutate_scenario_dict():
 # ---------------------------------------------------------------------------
 # Validation rejections
 # ---------------------------------------------------------------------------
+
+
+def test_betting_tree_matchup_cap_is_rejected():
+    data = _sample_dict()
+    data["max_matchups"] = 3
+    with pytest.raises(
+        ValueError, match="river matrix matchup count 4 exceeds max_matchups=3"
+    ):
+        river_scenario_from_dict(data)
+
+
+def test_programmatic_betting_tree_cap_precedes_tree_materialization(monkeypatch):
+    scenario = replace(
+        river_scenario_from_dict({**_sample_dict(), "max_matchups": 4}),
+        max_matchups=3,
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("betting tree materialization started before cap check")
+
+    monkeypatch.setattr(scenario_io, "build_betting_tree_from_scenario", fail_if_called)
+    with pytest.raises(
+        ValueError, match="river matrix matchup count 4 exceeds max_matchups=3"
+    ):
+        build_river_steal_game_from_scenario(scenario)
 
 
 def test_missing_oop_bet_size_is_rejected():

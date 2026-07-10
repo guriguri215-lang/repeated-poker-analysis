@@ -89,6 +89,8 @@ def test_equity_metadata_matrix_type():
     build = _build_sample()
     assert build.metadata["mode"] == "range_matrix"
     assert build.metadata["matrix_type"] == "equity"
+    assert build.metadata["max_matchups"] == 100_000
+    assert build.metadata["matchup_count"] == 4
 
 
 def test_equity_root_is_chance_node():
@@ -130,6 +132,15 @@ def test_run_does_not_mutate_equity_scenario_dict():
 # ---------------------------------------------------------------------------
 # Validation rejections
 # ---------------------------------------------------------------------------
+
+
+def test_equity_matrix_matchup_cap_is_rejected():
+    data = _sample_dict()
+    data["max_matchups"] = 3
+    with pytest.raises(
+        ValueError, match="river matrix matchup count 4 exceeds max_matchups=3"
+    ):
+        river_scenario_from_dict(data)
 
 
 def test_both_matrices_present_is_rejected():
