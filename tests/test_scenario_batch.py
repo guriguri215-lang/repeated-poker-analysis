@@ -174,6 +174,27 @@ def test_continue_on_error_records_error_row(tmp_path):
     assert str(tmp_path) not in bad_row.source_path
 
 
+@pytest.mark.parametrize(
+    "bare_allowed_info_sets",
+    ["IP_vs_bet::hero_strong", b"IP_vs_bet::hero_strong"],
+)
+def test_batch_rejects_bare_allowed_filter(bare_allowed_info_sets):
+    analysis = RiverScenarioAnalysisConfig(
+        filter_allowed_info_sets=bare_allowed_info_sets,
+        markdown=False,
+    )
+    for continue_on_error in (False, True):
+        config = BatchScenarioAnalysisConfig(
+            analysis=analysis,
+            continue_on_error=continue_on_error,
+        )
+        with pytest.raises(
+            ValueError,
+            match="collection of strings, not a bare string",
+        ):
+            run_batch_scenario_analysis([_RANGE], config)
+
+
 # ---------------------------------------------------------------------------
 # Exporters
 # ---------------------------------------------------------------------------

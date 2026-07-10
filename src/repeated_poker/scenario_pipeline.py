@@ -32,7 +32,11 @@ from .pipeline import (
 )
 from .ranking import CandidateRankingResult, rank_candidate_rows
 from .repeated import RESPONSE_MODE_WORST
-from .run_manifest import RunManifest, build_run_manifest
+from .run_manifest import (
+    RunManifest,
+    build_run_manifest,
+    canonicalize_filter_parameters,
+)
 from .scenario_io import (
     RiverScenario,
     RiverScenarioBuildResult,
@@ -226,6 +230,13 @@ def run_river_scenario_analysis(
     horizon = _resolve_horizon(resolved_scenario, config)
     discount = _resolve_discount(resolved_scenario, config)
     filtering = _build_filter_config(config)
+    filter_parameters = canonicalize_filter_parameters(
+        allowed_info_sets=(filtering.allowed_info_sets if filtering else None),
+        max_l1_distance=(filtering.max_l1_distance if filtering else None),
+        min_required_observations=(
+            filtering.min_required_observations if filtering else None
+        ),
+    )
     resolved_detection_observation_model = resolve_detection_observation_model(
         config.detection_method, config.detection_observation_model
     )
@@ -254,6 +265,7 @@ def run_river_scenario_analysis(
             "tolerance": config.tolerance,
             "max_pure_strategies": config.max_pure_strategies,
             "ranking_criterion": config.ranking_criterion,
+            **filter_parameters,
         },
     )
 
