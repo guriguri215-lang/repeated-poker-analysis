@@ -85,6 +85,11 @@ def canonicalize_filter_parameters(
     effective values used by the filter.
     """
 
+    if isinstance(allowed_info_sets, (str, bytes)):
+        raise ValueError(
+            "filter_allowed_info_sets must be a collection of strings, not a "
+            f"bare string; got {allowed_info_sets!r}"
+        )
     if allowed_info_sets is None:
         canonical_allowed = None
     else:
