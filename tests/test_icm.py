@@ -27,6 +27,25 @@ def test_icm_winner_take_all_matches_chip_share():
     assert_equities_close(equities, (50, 30, 20))
 
 
+def test_icm_high_dynamic_range_is_finite_symmetric_and_conserves_prizes():
+    prizes = (1.0, 0.5, 0.0)
+
+    equities = calculate_icm_equities((1e308, 1.0, 1.0), prizes)
+
+    assert all(math.isfinite(equity) and equity >= 0.0 for equity in equities)
+    assert equities[1] == pytest.approx(equities[2], abs=1e-15)
+    assert math.fsum(equities) == pytest.approx(math.fsum(prizes), abs=1e-15)
+
+
+def test_icm_near_maximum_stacks_are_scale_invariant_without_total_overflow():
+    prizes = (100.0, 60.0, 20.0)
+    expected = calculate_icm_equities((8.0, 7.0, 6.0), prizes)
+
+    equities = calculate_icm_equities((8e307, 7e307, 6e307), prizes)
+
+    assert_equities_close(equities, expected)
+
+
 @pytest.mark.parametrize(
     "stacks, prizes, expected",
     [
