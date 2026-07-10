@@ -74,7 +74,6 @@ def calculate_icm_equities(
         prizes=full_prizes,
         remaining_indices=tuple(positive_indices),
         remaining_stacks=remaining_stacks,
-        remaining_total=math.fsum(remaining_stacks.values()),
         place=0,
         max_places=paid_positive_places,
         path_probability=1.0,
@@ -164,14 +163,17 @@ def _add_positive_stack_equities(
     prizes: Sequence[float],
     remaining_indices: Sequence[int],
     remaining_stacks: dict[int, float],
-    remaining_total: float,
     place: int,
     max_places: int,
     path_probability: float,
 ) -> None:
     prize = prizes[place]
+    maximum_stack = max(remaining_stacks[idx] for idx in remaining_indices)
+    scaled_total = math.fsum(
+        remaining_stacks[idx] / maximum_stack for idx in remaining_indices
+    )
     for idx in remaining_indices:
-        finish_probability = remaining_stacks[idx] / remaining_total
+        finish_probability = (remaining_stacks[idx] / maximum_stack) / scaled_total
         branch_probability = path_probability * finish_probability
         equities[idx] += branch_probability * prize
 
@@ -187,7 +189,6 @@ def _add_positive_stack_equities(
             prizes=prizes,
             remaining_indices=next_remaining,
             remaining_stacks=remaining_stacks,
-            remaining_total=remaining_total - remaining_stacks[idx],
             place=next_place,
             max_places=max_places,
             path_probability=branch_probability,
