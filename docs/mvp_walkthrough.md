@@ -23,15 +23,19 @@ tutorial on poker strategy and not promotional material.
 ## What this project does not yet do
 
 - It is **not a full poker solver**.
-- It does not import real solver ranges yet.
+- It does not parse raw solver exports. External profiles must be prepared
+  outside the repository as scenario-native abstract mixed-strategy maps under
+  the existing [baseline profile import contract](baseline_solution_import_format.md).
+- It does not import or evaluate real-card ranges, perform card removal, or run
+  large-scale range solving.
 - It does not model cross-spot detection or real opponent learning. Within one
   analysed spot, opt-in `reach_weighted_v1` does include root-to-terminal reach
   in a per-hand public observation distribution.
 - It does not model real opponent psychology or learning speed.
 - It does not guarantee profitable poker play.
 - It does not provide gambling, bankroll, or financial advice.
-- It does not yet support large-scale range solving.
-- It does not yet implement STT / ICM / preflop push-fold analysis.
+- The experimental STT ICM path is limited to abstract SB-vs-BB push/fold
+  scenarios; it is not a push/fold chart or tournament simulation.
 
 ## Quick start
 
@@ -182,7 +186,10 @@ its result with `--output-json`, `--output-markdown`, and `--output-csv` (these
 go under the git-ignored `reports/` by convention). To compare several scenarios
 at once, `python scripts/run_scenario_batch.py <dir-or-files>` runs the same
 per-scenario analysis on each and emits one comparison row per scenario. For the
-full field-by-field JSON specification of every mode, see the
+compact validate-then-analyse progression through the three bundled matrix
+scenarios, see the
+[River range-matrix workflow](examples_guide.md#river-range-matrix-workflow).
+For the full field-by-field JSON specification of every mode, see the
 [Scenario Format Reference](scenario_format_reference.md).
 
 Parameters:
@@ -227,7 +234,8 @@ Interpretation:
 3. Apply conservative pre-filters.
 4. Compare kept candidates exactly.
 5. Inspect Markdown summaries.
-6. Only then consider adding richer game trees or external solver adapters.
+6. Only then consider richer small abstract trees or externally prepared
+   scenario-native profiles.
 
 ## Known limitations
 
@@ -243,18 +251,13 @@ Interpretation:
   assume monotonicity.
 - Detection is a local, reach-conditional sensitivity estimate, not a
   prediction of real adaptation.
-- No real card ranges, card removal, external solver I/O, CLI, file output, or
-  STT / ICM are implemented yet.
+- Scenario inputs remain abstract and scenario-native. Raw solver export
+  parsing, real-card range import or evaluation, card removal, and large-scale
+  range solving are unsupported.
+- CLI runners, file exporters, and feature-frozen local GUI prototypes are thin
+  input/output layers over the same small-tree analysis core.
+- The experimental STT ICM runner covers only the documented abstract SB-vs-BB
+  push/fold model, not tournament simulation or a real-hand chart.
 
 For a more explicit list of modelling assumptions and non-claims, see
 [Assumptions and Limitations](assumptions_and_limitations.md).
-
-## Roadmap after MVP
-
-- better candidate generation
-- real input adapters
-- more examples
-- STT / ICM push-fold prototype
-- documentation and DEV.to development notes
-
-Longer-form development notes may later be published separately.
