@@ -30,6 +30,45 @@ generation / filtering, to the full pipeline, and finally to presentation and
 contrast examples. For a quick MVP sanity check, `analysis_pipeline.py` is the
 single most important example to run.
 
+## River range-matrix workflow
+
+The three bundled matrix scenarios form this progression:
+
+1. `examples/scenarios/range_matrix_steal_bet98.json` supplies a discrete
+   `showdown_matrix`.
+
+   ```powershell
+   python scripts/validate_river_scenario.py examples/scenarios/range_matrix_steal_bet98.json
+   python scripts/run_river_scenario_analysis.py examples/scenarios/range_matrix_steal_bet98.json
+   ```
+
+2. `examples/scenarios/range_equity_steal_bet98.json` replaces the discrete
+   results with a supplied Hero pot-share `equity_matrix`.
+
+   ```powershell
+   python scripts/validate_river_scenario.py examples/scenarios/range_equity_steal_bet98.json
+   python scripts/run_river_scenario_analysis.py examples/scenarios/range_equity_steal_bet98.json
+   ```
+
+3. `examples/scenarios/range_equity_betting_tree_bet98.json` keeps a supplied
+   `equity_matrix` and adds a one-street IP stab and one IP raise line.
+
+   ```powershell
+   python scripts/validate_river_scenario.py examples/scenarios/range_equity_betting_tree_bet98.json
+   python scripts/run_river_scenario_analysis.py examples/scenarios/range_equity_betting_tree_bet98.json
+   ```
+
+In all three files, range weights, matchup results, and equities are
+scenario-native abstract inputs. An `equity_matrix` cell is a directly supplied
+Hero pot share, not equity computed by a real-card engine. This workflow does
+not parse real cards, evaluate hands, import real-card ranges, or parse raw
+solver exports. Its results are small-tree diagnostics, not solver-grade output,
+real-money recommendations, or guarantees of profitable play.
+
+Betting-tree v1 remains one river street with one IP stab after an OOP check and
+one IP raise line versus the OOP bet. It has no re-raises, multiple sizes per
+node, nested trees, or street transitions.
+
 ## Example reference
 
 ### `examples/nuts_chop_river.py`
@@ -422,8 +461,8 @@ The wizard starts from a template and prompts for the common top-level fields
 / discount, and the output path); an empty answer keeps the template default, and
 anything passed as a flag is not asked. It validates before writing and will not
 overwrite an existing file without `--force`. Range buckets and matrices keep the
-template's toy values, so edit those in the JSON afterwards. The wizard is the
-precursor to a future GUI/form input layer, which is not implemented yet.
+template's toy values, so edit those in the JSON afterwards. The wizard is a CLI
+helper; the separate local GUI prototypes are feature-frozen (bug fixes only).
 
 ### Guided end-to-end workflow
 
