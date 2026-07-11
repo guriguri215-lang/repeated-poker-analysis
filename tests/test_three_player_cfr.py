@@ -614,3 +614,49 @@ def test_chance_and_probability_validation_rejects_bool_probability():
 
     with pytest.raises(ValueError, match="finite number"):
         validate_three_player_tree(tree, _empty_hero())
+
+
+def test_finite_high_dynamic_range_inputs_fail_closed_on_non_finite_derivations():
+    high = 1.797693134e308
+    tree = ThreePlayerGameTree(
+        FixedHeroNode(
+            "hero_high",
+            "H_high",
+            (("only", _t("t_high", high, -high, 0.0)),),
+        )
+    )
+    hero_policy = BehaviorStrategy({"H_high": {"only": 1.0000000005}})
+    opponent_strategies = {"O1": BehaviorStrategy({}), "O2": BehaviorStrategy({})}
+
+    with pytest.raises(ValueError, match="utility accumulation for H.*non-finite"):
+        evaluate_three_player_profile(tree, hero_policy, opponent_strategies)
+    with pytest.raises(ValueError, match="utility accumulation for H.*non-finite"):
+        run_three_player_cfr_diagnostic(
+            tree,
+            hero_policy,
+            config=CfrConfig(iterations=1),
+        )
+    with pytest.raises(ValueError, match="utility accumulation for H.*non-finite"):
+        compute_unilateral_deviation_gains(
+            tree,
+            hero_policy,
+            opponent_strategies,
+        )
+
+    regret_tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "o1_high",
+            "opponent_1",
+            "O1_high",
+            (
+                ("high", _t("t_o1_high", -high, high, 0.0)),
+                ("low", _t("t_o1_low", high, -high, 0.0)),
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="regret advantage.*non-finite"):
+        run_three_player_cfr_diagnostic(
+            regret_tree,
+            _empty_hero(),
+            config=CfrConfig(iterations=2),
+        )
