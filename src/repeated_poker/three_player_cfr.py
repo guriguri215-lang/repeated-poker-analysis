@@ -15,7 +15,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, Literal, Mapping, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, Literal, Mapping, Optional, Tuple, Union
 
 Action = str
 InfoSetId = str
@@ -75,7 +75,10 @@ class UtilityVector:
     def conservation_residual(self) -> float:
         """Return ``H + O1 + O2 + R`` for payoff-conservation diagnostics."""
 
-        return self.H + self.O1 + self.O2 + self.R
+        return _checked_float_sum(
+            (self.H, self.O1, self.O2, self.R),
+            "utility conservation residual",
+        )
 
     def to_dict(self) -> Dict[str, float]:
         """Return a deterministic JSON-friendly dictionary."""
@@ -568,7 +571,11 @@ def compute_unilateral_deviation_gains(
             ).for_player(player)
             if utility > candidate_utility:
                 candidate_utility = utility
-        gain = candidate_utility - current_utility.for_player(player)
+        gain = _checked_float_subtract(
+            candidate_utility,
+            current_utility.for_player(player),
+            f"unilateral deviation gain for {player}",
+        )
         gains[player] = 0.0 if abs(gain) <= tolerance else gain
 
     return {
@@ -587,6 +594,58 @@ def _require_number(value: float, name: str) -> None:
         raise ValueError(f"{name} must be a finite number, got {value!r}")
     if not math.isfinite(value):
         raise ValueError(f"{name} must be finite, got {value!r}")
+
+
+def _require_finite_derived(value: float, label: str) -> float:
+    try:
+        finite = math.isfinite(value)
+    except (OverflowError, TypeError) as exc:
+        raise ValueError(
+            f"{label} could not be represented as a finite float"
+        ) from exc
+    if not finite:
+        raise ValueError(f"{label} became non-finite")
+    return value
+
+
+def _checked_float_add(left: float, right: float, label: str) -> float:
+    try:
+        result = left + right
+    except OverflowError as exc:
+        raise ValueError(f"{label} overflowed") from exc
+    return _require_finite_derived(result, label)
+
+
+def _checked_float_subtract(left: float, right: float, label: str) -> float:
+    try:
+        result = left - right
+    except OverflowError as exc:
+        raise ValueError(f"{label} overflowed") from exc
+    return _require_finite_derived(result, label)
+
+
+def _checked_float_multiply(left: float, right: float, label: str) -> float:
+    try:
+        result = left * right
+    except OverflowError as exc:
+        raise ValueError(f"{label} overflowed") from exc
+    return _require_finite_derived(result, label)
+
+
+def _checked_float_divide(numerator: float, denominator: float, label: str) -> float:
+    try:
+        result = numerator / denominator
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError(f"{label} could not be computed") from exc
+    return _require_finite_derived(result, label)
+
+
+def _checked_float_sum(values: Iterable[float], label: str) -> float:
+    total = 0.0
+    for value in values:
+        _require_finite_derived(value, label)
+        total = _checked_float_add(total, value, label)
+    return total
 
 
 def _require_valid_tolerance(value: float, name: str = "tolerance") -> None:
@@ -630,11 +689,23 @@ def _zero() -> UtilityVector:
 
 
 def _add_scaled(left: UtilityVector, scale: float, right: UtilityVector) -> UtilityVector:
+    def component(left_value: float, right_value: float, name: str) -> float:
+        scaled = _checked_float_multiply(
+            scale,
+            right_value,
+            f"utility accumulation for {name}",
+        )
+        return _checked_float_add(
+            left_value,
+            scaled,
+            f"utility accumulation for {name}",
+        )
+
     return UtilityVector(
-        left.H + scale * right.H,
-        left.O1 + scale * right.O1,
-        left.O2 + scale * right.O2,
-        left.R + scale * right.R,
+        component(left.H, right.H, "H"),
+        component(left.O1, right.O1, "O1"),
+        component(left.O2, right.O2, "O2"),
+        component(left.R, right.R, "R"),
     )
 
 
@@ -753,7 +824,11 @@ def _collect_tree_metadata(
             total = 0.0
             for prob, child in node.children:
                 _require_probability(prob, f"chance node {node.node_id!r} probability")
-                total += prob
+                total = _checked_float_add(
+                    total,
+                    prob,
+                    f"chance node {node.node_id!r} probability sum",
+                )
                 walk(child, seen_o1, seen_o2)
             if abs(total - 1.0) > tolerance:
                 raise ValueError(
@@ -848,7 +923,11 @@ def _validate_behavior_strategy(
         for action in legal_actions:
             probability = distribution[action]
             _require_probability(probability, f"{label} probability {info_set}.{action}")
-            total += probability
+            total = _checked_float_add(
+                total,
+                probability,
+                f"{label} policy for {info_set!r} probability sum",
+            )
         if abs(total - 1.0) > tolerance:
             raise ValueError(
                 f"{label} policy for {info_set!r} sums to {total}, expected 1"
@@ -937,11 +1016,25 @@ def _strategy_from_regrets(
     for player in OPPONENT_PLAYERS:
         for info_set in sorted(info_sets[player]):
             actions = info_sets[player][info_set]
-            positives = [max(regrets[player][info_set][action], 0.0) for action in actions]
-            total = sum(positives)
+            positives = []
+            for action in actions:
+                regret = regrets[player][info_set][action]
+                _require_finite_derived(
+                    regret,
+                    f"regret matching value for {player}.{info_set}.{action}",
+                )
+                positives.append(max(regret, 0.0))
+            total = _checked_float_sum(
+                positives,
+                f"regret matching total for {player}.{info_set}",
+            )
             if total > 0.0:
                 strategy[player][info_set] = {
-                    action: positive / total
+                    action: _checked_float_divide(
+                        positive,
+                        total,
+                        f"regret matching probability for {player}.{info_set}.{action}",
+                    )
                     for action, positive in zip(actions, positives)
                 }
             else:
@@ -958,10 +1051,25 @@ def _average_strategy(
     for player in OPPONENT_PLAYERS:
         for info_set in sorted(info_sets[player]):
             actions = info_sets[player][info_set]
-            total = sum(strategy_sums[player][info_set][action] for action in actions)
+            action_sums = []
+            for action in actions:
+                action_sum = strategy_sums[player][info_set][action]
+                _require_finite_derived(
+                    action_sum,
+                    f"average strategy sum for {player}.{info_set}.{action}",
+                )
+                action_sums.append(action_sum)
+            total = _checked_float_sum(
+                action_sums,
+                f"average strategy total for {player}.{info_set}",
+            )
             if total > 0.0:
                 average[player][info_set] = {
-                    action: strategy_sums[player][info_set][action] / total
+                    action: _checked_float_divide(
+                        strategy_sums[player][info_set][action],
+                        total,
+                        f"average strategy probability for {player}.{info_set}.{action}",
+                    )
                     for action in actions
                 }
             else:
@@ -976,12 +1084,26 @@ def _positive_regret_stats(
     average: Dict[str, float] = {}
     maximum: Dict[str, float] = {}
     for player in OPPONENT_PLAYERS:
-        values = [
-            max(value, 0.0)
-            for info_set in regrets[player].values()
-            for value in info_set.values()
-        ]
-        average[player] = sum(values) / len(values) if values else 0.0
+        values = []
+        for info_set_id, info_set in regrets[player].items():
+            for action, value in info_set.items():
+                _require_finite_derived(
+                    value,
+                    f"positive regret statistic for {player}.{info_set_id}.{action}",
+                )
+                values.append(max(value, 0.0))
+        if values:
+            total = _checked_float_sum(
+                values,
+                f"positive regret statistic total for {player}",
+            )
+            average[player] = _checked_float_divide(
+                total,
+                len(values),
+                f"average positive regret for {player}",
+            )
+        else:
+            average[player] = 0.0
         maximum[player] = max(values) if values else 0.0
     return {"average": average, "max": maximum}
 
@@ -1011,7 +1133,11 @@ def _cfr_traverse(
                 current_strategy,
                 regrets,
                 strategy_sums,
-                chance_hero_reach=chance_hero_reach * prob,
+                chance_hero_reach=_checked_float_multiply(
+                    chance_hero_reach,
+                    prob,
+                    "chance reach",
+                ),
                 o1_reach=o1_reach,
                 o2_reach=o2_reach,
             )
@@ -1030,7 +1156,11 @@ def _cfr_traverse(
                 current_strategy,
                 regrets,
                 strategy_sums,
-                chance_hero_reach=chance_hero_reach * prob,
+                chance_hero_reach=_checked_float_multiply(
+                    chance_hero_reach,
+                    prob,
+                    "fixed Hero reach",
+                ),
                 o1_reach=o1_reach,
                 o2_reach=o2_reach,
             )
@@ -1044,8 +1174,16 @@ def _cfr_traverse(
         node_value = _zero()
         for action, child in node.actions:
             prob = strategy[action]
-            next_o1 = o1_reach * prob if player == "O1" else o1_reach
-            next_o2 = o2_reach * prob if player == "O2" else o2_reach
+            next_o1 = (
+                _checked_float_multiply(o1_reach, prob, "O1 reach")
+                if player == "O1"
+                else o1_reach
+            )
+            next_o2 = (
+                _checked_float_multiply(o2_reach, prob, "O2 reach")
+                if player == "O2"
+                else o2_reach
+            )
             child_value = _cfr_traverse(
                 child,
                 fixed_hero_policy,
@@ -1059,18 +1197,42 @@ def _cfr_traverse(
             action_values[action] = child_value
             node_value = _add_scaled(node_value, prob, child_value)
 
-        counterfactual_reach = chance_hero_reach * (
-            o2_reach if player == "O1" else o1_reach
+        counterfactual_reach = _checked_float_multiply(
+            chance_hero_reach,
+            o2_reach if player == "O1" else o1_reach,
+            f"counterfactual reach for {player}",
         )
         owner_reach = o1_reach if player == "O1" else o2_reach
-        average_weight = chance_hero_reach * owner_reach
+        average_weight = _checked_float_multiply(
+            chance_hero_reach,
+            owner_reach,
+            f"average strategy weight for {player}",
+        )
         for action, _ in node.actions:
-            regrets[player][node.info_set][action] += counterfactual_reach * (
-                action_values[action].for_player(player)
-                - node_value.for_player(player)
+            action_advantage = _checked_float_subtract(
+                action_values[action].for_player(player),
+                node_value.for_player(player),
+                f"regret advantage for {player}.{node.info_set}.{action}",
             )
-            strategy_sums[player][node.info_set][action] += (
-                average_weight * strategy[action]
+            regret_delta = _checked_float_multiply(
+                counterfactual_reach,
+                action_advantage,
+                f"regret update for {player}.{node.info_set}.{action}",
+            )
+            regrets[player][node.info_set][action] = _checked_float_add(
+                regrets[player][node.info_set][action],
+                regret_delta,
+                f"cumulative regret for {player}.{node.info_set}.{action}",
+            )
+            strategy_delta = _checked_float_multiply(
+                average_weight,
+                strategy[action],
+                f"strategy averaging update for {player}.{node.info_set}.{action}",
+            )
+            strategy_sums[player][node.info_set][action] = _checked_float_add(
+                strategy_sums[player][node.info_set][action],
+                strategy_delta,
+                f"cumulative strategy sum for {player}.{node.info_set}.{action}",
             )
         return node_value
 
