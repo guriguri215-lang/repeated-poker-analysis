@@ -400,15 +400,38 @@ def test_finite_float_input_is_indeterminate_without_representation_enclosure():
     assert result.deviations == ()
 
 
-def test_finite_float_error_bound_is_indeterminate_without_representation_enclosure():
+@pytest.mark.parametrize("component", [0.0, 0.1])
+def test_finite_float_error_bound_is_indeterminate_without_representation_enclosure(component):
     tree = GameTree(_leaf("t", 0))
-    bound = NumericErrorBound(0.0, F(0), F(0), F(0), F(0), F(0), F(0), F(0), True)
+    bound = NumericErrorBound(component, F(0), F(0), F(0), F(0), F(0), F(0), F(0), True)
     result = _run(tree, numeric_error_bound=bound)
     assert result.status == DiagnosticStatus.INDETERMINATE
     assert result.deviations == ()
 
 
-@pytest.mark.parametrize("component", [float("nan"), float("inf"), F(-1)])
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "probability_representation",
+        "probability_normalization",
+        "stage_expectation",
+        "continuation_expectation",
+        "subtraction",
+        "maximum",
+        "bellman_residual",
+        "residual_evaluation",
+    ),
+)
+def test_negative_finite_float_error_bound_is_an_input_error(field_name):
+    tree = GameTree(_leaf("t", 0))
+    bound = replace(exact_zero_error_bound(), **{field_name: -0.1})
+    with pytest.raises(ValueError, match=rf"{field_name} must be non-negative"):
+        _run(tree, numeric_error_bound=bound)
+
+
+@pytest.mark.parametrize(
+    "component", [float("nan"), float("inf"), float("-inf"), F(-1), -1]
+)
 def test_invalid_numeric_error_bound_remains_an_input_error(component):
     tree = GameTree(_leaf("t", 0))
     bound = NumericErrorBound(component, F(0), F(0), F(0), F(0), F(0), F(0), F(0), True)

@@ -582,7 +582,10 @@ def _validate_error_bound(bound: NumericErrorBound) -> None:
         "bellman_residual",
         "residual_evaluation",
     ):
-        value = _fraction(getattr(bound, field_name), f"numeric_error_bound.{field_name}")
+        component = getattr(bound, field_name)
+        if isinstance(component, float) and math.isfinite(component) and component < 0:
+            raise ValueError(f"numeric_error_bound.{field_name} must be non-negative")
+        value = _fraction(component, f"numeric_error_bound.{field_name}")
         if value < 0:
             raise ValueError(f"numeric_error_bound.{field_name} must be non-negative")
     if not isinstance(bound.enclosure_established, bool):
