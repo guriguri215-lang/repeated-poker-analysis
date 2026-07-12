@@ -97,10 +97,16 @@ class ModelClassAttestation:
 
 @dataclass(frozen=True)
 class RecallHistory:
-    """A player's own observation and action history at an attested node."""
+    """A player's prior observations, own actions, and information sets.
+
+    ``information_sets`` and ``own_actions`` are checked against the stage-tree
+    path.  ``observations`` retains fixture-specific manual evidence that the
+    tree cannot derive.
+    """
 
     observations: Tuple[str, ...]
     own_actions: Tuple[str, ...]
+    information_sets: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -277,6 +283,68 @@ def _member_nodes(tree: GameTree) -> Mapping[str, Mapping[str, Tuple[str, ...]]]
     }
 
 
+def _member_path_histories(
+    tree: GameTree,
+) -> Mapping[str, Mapping[str, Mapping[str, RecallHistory]]]:
+    """Derive each member's prior own information sets and actions."""
+
+    histories = {HERO: {}, VILLAIN: {}}
+
+    def walk(
+        node: Node,
+        hero_information_sets: Tuple[str, ...],
+        hero_actions: Tuple[str, ...],
+        villain_information_sets: Tuple[str, ...],
+        villain_actions: Tuple[str, ...],
+    ) -> None:
+        if isinstance(node, TerminalNode):
+            return
+        if isinstance(node, ChanceNode):
+            for _, child in node.children:
+                walk(
+                    child,
+                    hero_information_sets,
+                    hero_actions,
+                    villain_information_sets,
+                    villain_actions,
+                )
+            return
+        if isinstance(node, HeroNode):
+            histories[HERO].setdefault(node.info_set, {})[node.node_id] = RecallHistory(
+                observations=(),
+                own_actions=hero_actions,
+                information_sets=hero_information_sets,
+            )
+            for action, child in node.actions:
+                walk(
+                    child,
+                    hero_information_sets + (node.info_set,),
+                    hero_actions + (action,),
+                    villain_information_sets,
+                    villain_actions,
+                )
+            return
+        if isinstance(node, VillainNode):
+            histories[VILLAIN].setdefault(node.info_set, {})[node.node_id] = RecallHistory(
+                observations=(),
+                own_actions=villain_actions,
+                information_sets=villain_information_sets,
+            )
+            for action, child in node.actions:
+                walk(
+                    child,
+                    hero_information_sets,
+                    hero_actions,
+                    villain_information_sets + (node.info_set,),
+                    villain_actions + (action,),
+                )
+            return
+        raise TypeError(f"unknown node type: {type(node)!r}")
+
+    walk(tree.root, (), (), (), ())
+    return histories
+
+
 def _validate_unique_node_ids(tree: GameTree) -> None:
     ids = [node.node_id for node in iter_nodes(tree.root)]
     if len(ids) != len(set(ids)):
@@ -369,6 +437,7 @@ def _unsupported_attestation_reason(
 
     expected_actions = _info_sets(tree)
     expected_members = _member_nodes(tree)
+    expected_histories = _member_path_histories(tree)
     if set(attestation.information_set_members) != set(PLAYERS):
         return "manual perfect-recall attestation player set does not match"
     if set(attestation.member_histories) != set(PLAYERS):
@@ -390,6 +459,13 @@ def _unsupported_attestation_reason(
             values = [by_node[node_id] for node_id in nodes]
             if not all(isinstance(value, RecallHistory) for value in values):
                 return "manual perfect-recall attestation has an invalid history record"
+            for node_id, value in zip(nodes, values):
+                actual = expected_histories[player][info_set][node_id]
+                if (
+                    value.information_sets != actual.information_sets
+                    or value.own_actions != actual.own_actions
+                ):
+                    return f"manual perfect-recall history does not match tree path at {node_id!r}"
             if values and any(value != values[0] for value in values[1:]):
                 return f"manual perfect-recall histories differ within {info_set!r}"
     return None
@@ -694,9 +770,8 @@ def diagnose_stage_plan_deviations(
         raise ValueError("max_plans_per_player must be positive")
     if not isinstance(fixture_version, str) or not fixture_version:
         raise ValueError("fixture_version must be a non-empty string")
-    _validate_error_bound(numeric_error_bound)
-
     try:
+        _validate_error_bound(numeric_error_bound)
         exact_delta = _fraction(delta, "delta")
         payoff_bound = _fraction(stage_payoff_bound, "stage_payoff_bound")
         tolerance = _fraction(input_tolerance, "input_tolerance")

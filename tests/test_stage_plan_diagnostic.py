@@ -1,3 +1,4 @@
+from dataclasses import replace
 from fractions import Fraction as F
 from pathlib import Path
 
@@ -62,20 +63,57 @@ def _info_sets(tree):
 
 def _attestation(tree, *, version="v1", invalidated=False, valid_through=None):
     members = {HERO: {}, VILLAIN: {}}
-    for node in iter_nodes(tree.root):
+    histories = {HERO: {}, VILLAIN: {}}
+
+    def walk(
+        node,
+        hero_information_sets=(),
+        hero_actions=(),
+        villain_information_sets=(),
+        villain_actions=(),
+    ):
+        if isinstance(node, TerminalNode):
+            return
+        if isinstance(node, ChanceNode):
+            for _, child in node.children:
+                walk(
+                    child,
+                    hero_information_sets,
+                    hero_actions,
+                    villain_information_sets,
+                    villain_actions,
+                )
+            return
         if isinstance(node, HeroNode):
             members[HERO].setdefault(node.info_set, []).append(node.node_id)
-        elif isinstance(node, VillainNode):
-            members[VILLAIN].setdefault(node.info_set, []).append(node.node_id)
+            histories[HERO].setdefault(node.info_set, {})[node.node_id] = RecallHistory(
+                (), hero_actions, hero_information_sets
+            )
+            for action, child in node.actions:
+                walk(
+                    child,
+                    hero_information_sets + (node.info_set,),
+                    hero_actions + (action,),
+                    villain_information_sets,
+                    villain_actions,
+                )
+            return
+        members[VILLAIN].setdefault(node.info_set, []).append(node.node_id)
+        histories[VILLAIN].setdefault(node.info_set, {})[node.node_id] = RecallHistory(
+            (), villain_actions, villain_information_sets
+        )
+        for action, child in node.actions:
+            walk(
+                child,
+                hero_information_sets,
+                hero_actions,
+                villain_information_sets + (node.info_set,),
+                villain_actions + (action,),
+            )
+
+    walk(tree.root)
     frozen_members = {
         player: {info: tuple(nodes) for info, nodes in members[player].items()}
-        for player in PLAYERS
-    }
-    histories = {
-        player: {
-            info: {node_id: RecallHistory((), ()) for node_id in nodes}
-            for info, nodes in frozen_members[player].items()
-        }
         for player in PLAYERS
     }
     return ManualPerfectRecallAttestation(
@@ -360,6 +398,66 @@ def test_finite_float_input_is_indeterminate_without_representation_enclosure():
     result = _run(tree, delta=0.5)
     assert result.status == DiagnosticStatus.INDETERMINATE
     assert result.deviations == ()
+
+
+def test_finite_float_error_bound_is_indeterminate_without_representation_enclosure():
+    tree = GameTree(_leaf("t", 0))
+    bound = NumericErrorBound(0.0, F(0), F(0), F(0), F(0), F(0), F(0), F(0), True)
+    result = _run(tree, numeric_error_bound=bound)
+    assert result.status == DiagnosticStatus.INDETERMINATE
+    assert result.deviations == ()
+
+
+@pytest.mark.parametrize("component", [float("nan"), float("inf"), F(-1)])
+def test_invalid_numeric_error_bound_remains_an_input_error(component):
+    tree = GameTree(_leaf("t", 0))
+    bound = NumericErrorBound(component, F(0), F(0), F(0), F(0), F(0), F(0), F(0), True)
+    with pytest.raises(ValueError, match="finite|non-negative"):
+        _run(tree, numeric_error_bound=bound)
+
+
+def test_attested_empty_history_cannot_hide_forgotten_own_action():
+    tree = GameTree(
+        HeroNode(
+            "h0",
+            "H0",
+            (
+                ("a", HeroNode("ha", "I", (("x", _leaf("tax", 0)),))),
+                ("b", HeroNode("hb", "I", (("x", _leaf("tbx", 0)),))),
+            ),
+        )
+    )
+    attestation = _attestation(tree)
+    histories = {
+        player: {
+            info_set: dict(by_node)
+            for info_set, by_node in attestation.member_histories[player].items()
+        }
+        for player in PLAYERS
+    }
+    histories[HERO]["I"] = {
+        "ha": RecallHistory((), ()),
+        "hb": RecallHistory((), ()),
+    }
+    result = _run(tree, attestation=replace(attestation, member_histories=histories))
+    assert result.status == DiagnosticStatus.UNSUPPORTED
+    assert result.deviations == ()
+
+
+def test_correct_nonempty_history_is_accepted_for_multistage_tree():
+    tree = GameTree(
+        HeroNode(
+            "h0",
+            "H0",
+            (("a", HeroNode("h1", "H1", (("x", _leaf("t", 0)),))),),
+        )
+    )
+    attestation = _attestation(tree)
+    assert attestation.member_histories[HERO]["H1"]["h1"] == RecallHistory(
+        (), ("a",), ("H0",)
+    )
+    result = _run(tree, attestation=attestation)
+    assert result.status == DiagnosticStatus.PASS
 
 
 def test_interval_crossing_epsilon_claim_is_indeterminate():
