@@ -711,6 +711,93 @@ def test_high_dynamic_range_is_normalized_and_regret_overflow_fails_closed():
         )
 
 
+def test_unrepresentable_numeric_inputs_fail_closed_at_all_public_boundaries():
+    huge = 10**1000
+    terminal_tree = ThreePlayerGameTree(_t("huge", huge, -huge, 0.0))
+    chance_tree = ThreePlayerGameTree(
+        ThreePlayerChanceNode(
+            "chance_huge",
+            ((huge, _t("chance_a", 0.0, 0.0, 0.0)), (0.0, _t("chance_b", 0.0, 0.0, 0.0))),
+        )
+    )
+    hero_tree = ThreePlayerGameTree(
+        FixedHeroNode(
+            "hero_huge",
+            "H_huge",
+            (("a", _t("hero_a", 0.0, 0.0, 0.0)), ("b", _t("hero_b", 0.0, 0.0, 0.0))),
+        )
+    )
+    opponent_tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "opponent_huge",
+            "opponent_1",
+            "O1_huge",
+            (("a", _t("opponent_a", 0.0, 0.0, 0.0)), ("b", _t("opponent_b", 0.0, 0.0, 0.0))),
+        )
+    )
+
+    cases = (
+        lambda: run_three_player_cfr_diagnostic(
+            terminal_tree,
+            _empty_hero(),
+            config=CfrConfig(iterations=1),
+            attestation=_attest(terminal_tree),
+        ),
+        lambda: run_three_player_cfr_diagnostic(
+            chance_tree,
+            _empty_hero(),
+            config=CfrConfig(iterations=1),
+            attestation=_attest(chance_tree),
+        ),
+        lambda: run_three_player_cfr_diagnostic(
+            hero_tree,
+            BehaviorStrategy({"H_huge": {"a": huge, "b": 0.0}}),
+            config=CfrConfig(iterations=1),
+            attestation=_attest(hero_tree),
+        ),
+        lambda: compute_unilateral_deviation_gains(
+            opponent_tree,
+            _empty_hero(),
+            {
+                "O1": BehaviorStrategy({"O1_huge": {"a": huge, "b": 0.0}}),
+                "O2": BehaviorStrategy({}),
+            },
+            attestation=_attest(opponent_tree),
+        ),
+    )
+    for invoke in cases:
+        with pytest.raises(DiagnosticContractError) as failure:
+            invoke()
+        assert failure.value.status == NUMERIC_FAILURE
+        assert "finite float" in str(failure.value)
+
+
+def test_oracle_pure_gain_overflow_is_numeric_failure_before_hashing():
+    high = 1.797693134e308
+    tree = ThreePlayerGameTree(
+        OpponentDecisionNode(
+            "o1_gain_overflow",
+            "opponent_1",
+            "O1_gain_overflow",
+            (
+                ("high", _t("gain_high", -high, high, 0.0)),
+                ("low", _t("gain_low", high, -high, 0.0)),
+            ),
+        )
+    )
+    with pytest.raises(DiagnosticContractError) as failure:
+        run_three_player_cfr_diagnostic(
+            tree,
+            _empty_hero(),
+            config=CfrConfig(
+                iterations=1, request_oracle=True, include_oracle_rows=True
+            ),
+            attestation=_attest(tree),
+        )
+    assert failure.value.status == NUMERIC_FAILURE
+    assert "oracle pure gain for O1" in str(failure.value)
+
+
 def test_attestation_is_required_confirmed_and_bound_to_tree_content():
     tree = _normal_form_tree(
         {key: (0.0, 0.0, 0.0) for key in (("A", "L"), ("A", "R"), ("B", "L"), ("B", "R"))}
@@ -958,6 +1045,7 @@ def test_oracle_matches_utilities_mixture_and_gains_and_not_requested_status():
     result = _oracle_result(tree)
     assert result.oracle_attachment["status"] == "MATCH"
     assert result.overall_status == "DIAGNOSTIC_COMPLETE"
+    assert result.oracle_attachment["comparisons"]["pure_utility_max_delta"] == 0.0
     assert all(value == 0.0 for key, value in result.oracle_attachment["comparisons"].items() if key.endswith("delta"))
     not_requested = run_three_player_cfr_diagnostic(
         tree, _empty_hero(), config=CfrConfig(iterations=1), attestation=_attest(tree)
@@ -989,6 +1077,24 @@ def test_oracle_mismatch_and_tolerance_crossing_fail_closed(monkeypatch):
         tree, oracle_compare_tolerance=1e-9, reproducibility_tolerance=1e-12
     )
     assert crossing.overall_status == INDETERMINATE_TOLERANCE
+
+
+def test_pure_utility_reference_path_detects_one_sided_perturbation(monkeypatch):
+    tree = _normal_form_tree(
+        {key: (0.0, 0.0, 0.0) for key in (("A", "L"), ("A", "R"), ("B", "L"), ("B", "R"))}
+    )
+    original = three_player_module._oracle_direct_evaluate
+
+    def perturb_reference_only(*args, **kwargs):
+        value = original(*args, **kwargs)
+        return UtilityVector(value.H + 1e-6, value.O1, value.O2, value.R)
+
+    monkeypatch.setattr(
+        three_player_module, "_oracle_direct_evaluate", perturb_reference_only
+    )
+    mismatch = _oracle_result(tree, oracle_compare_tolerance=1e-9)
+    assert mismatch.overall_status == ORACLE_MISMATCH
+    assert mismatch.oracle_attachment["comparisons"]["pure_utility_max_delta"] == pytest.approx(1e-6)
 
 
 def test_semantic_result_is_exact_order_stable_finite_and_uses_bounded_wording():

@@ -1124,7 +1124,50 @@ def _oracle_direct_evaluate(
     hero: BehaviorStrategy,
     profiles: Mapping[OpponentId, BehaviorStrategy],
 ) -> UtilityVector:
-    return _expected_utility(tree.root, hero, profiles)
+    totals = {player: 0.0 for player in ("H", "O1", "O2", "R")}
+
+    def visit(node: ThreePlayerNode, reach: float) -> None:
+        if isinstance(node, ThreePlayerTerminalNode):
+            for player in totals:
+                contribution = _checked_float_multiply(
+                    reach,
+                    getattr(node.utility, player),
+                    f"oracle reference utility contribution for {player}",
+                )
+                totals[player] = _checked_float_add(
+                    totals[player],
+                    contribution,
+                    f"oracle reference utility total for {player}",
+                )
+            return
+        if isinstance(node, ThreePlayerChanceNode):
+            branches = node.children
+        elif isinstance(node, FixedHeroNode):
+            branches = tuple(
+                (hero.action_probability(node.info_set, action), child)
+                for action, child in node.actions
+            )
+        elif isinstance(node, OpponentDecisionNode):
+            player = _owner_to_player(node.owner)
+            branches = tuple(
+                (
+                    profiles[player].action_probability(node.info_set, action),
+                    child,
+                )
+                for action, child in node.actions
+            )
+        else:
+            raise TypeError(f"unknown node type: {type(node)!r}")
+        for probability, child in branches:
+            if probability == 0.0:
+                continue
+            child_reach = _checked_float_multiply(
+                reach, probability, "oracle reference path probability"
+            )
+            visit(child, child_reach)
+
+    visit(tree.root, 1.0)
+    return UtilityVector(**totals)
 
 
 def _build_oracle_attachment(
@@ -1197,7 +1240,13 @@ def _build_oracle_attachment(
             )
             evaluation_count += 2
             for player in ("H", "O1", "O2", "R"):
-                delta = abs(getattr(utility, player) - getattr(direct, player))
+                delta = abs(
+                    _checked_float_subtract(
+                        getattr(utility, player),
+                        getattr(direct, player),
+                        f"pure utility comparison for {player}",
+                    )
+                )
                 max_pure_delta = max(max_pure_delta, delta)
             table_row.append(utility)
         table.append(table_row)
@@ -1220,7 +1269,13 @@ def _build_oracle_attachment(
     )
     evaluation_count += 1
     mixed_utility_delta = max(
-        abs(getattr(mixture_utility, p) - getattr(direct_average, p))
+        abs(
+            _checked_float_subtract(
+                getattr(mixture_utility, p),
+                getattr(direct_average, p),
+                f"average profile utility comparison for {p}",
+            )
+        )
         for p in ("H", "O1", "O2", "R")
     )
 
@@ -1287,11 +1342,19 @@ def _build_oracle_attachment(
             if n1 == 1:
                 gain1 = 0.0
             else:
-                gain1 = max(table[k][j].O1 for k in range(n1) if k != i) - utility.O1
+                gain1 = _checked_float_subtract(
+                    max(table[k][j].O1 for k in range(n1) if k != i),
+                    utility.O1,
+                    "oracle pure gain for O1",
+                )
             if n2 == 1:
                 gain2 = 0.0
             else:
-                gain2 = max(table[i][k].O2 for k in range(n2) if k != j) - utility.O2
+                gain2 = _checked_float_subtract(
+                    max(table[i][k].O2 for k in range(n2) if k != j),
+                    utility.O2,
+                    "oracle pure gain for O2",
+                )
             profile_id = f"O1:{i}|O2:{j}"
             stable = (
                 gain1 <= config.epsilon_deviation
@@ -1311,7 +1374,13 @@ def _build_oracle_attachment(
                 rows.append(row)
 
     gain_delta = max(
-        abs(oracle_mixed_gains[p] - direct_mixed_gains[p])
+        abs(
+            _checked_float_subtract(
+                oracle_mixed_gains[p],
+                direct_mixed_gains[p],
+                f"unilateral gain comparison for {p}",
+            )
+        )
         for p in OPPONENT_PLAYERS
     )
     maximum_delta = max(max_pure_delta, mixed_utility_delta, gain_delta)
@@ -1371,7 +1440,14 @@ def _limits_or_default(limits: Optional[CfrSafetyLimits]) -> CfrSafetyLimits:
 def _require_number(value: float, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name} must be a finite number, got {value!r}")
-    if not math.isfinite(value):
+    try:
+        represented = float(value)
+        finite = math.isfinite(represented)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{name} could not be represented as a finite float"
+        ) from exc
+    if not finite:
         raise ValueError(f"{name} must be finite, got {value!r}")
 
 
