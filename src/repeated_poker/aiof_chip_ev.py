@@ -8,6 +8,7 @@ optimal charts, profitability claims, or real-money recommendations.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .aiof_cards import (
@@ -176,6 +177,22 @@ def _finite_number(value: object, name: str) -> float:
     return number
 
 
+def _finite_derived(value: float, name: str) -> float:
+    if not math.isfinite(value):
+        raise AiofContractError(AiofStatus.NUMERIC_FAILURE, f"{name} is non-finite")
+    return value
+
+
+def _finite_fsum(values: Iterable[float], name: str) -> float:
+    try:
+        total = math.fsum(values)
+    except (OverflowError, ValueError) as exc:
+        raise AiofContractError(
+            AiofStatus.NUMERIC_FAILURE, f"{name} aggregation failed"
+        ) from exc
+    return _finite_derived(total, name)
+
+
 def _validate_game(game: HeadsUpChipEvGame) -> _GameValues:
     if not isinstance(game, HeadsUpChipEvGame):
         raise AiofContractError(AiofStatus.INVALID_INPUT, "game must be HeadsUpChipEvGame")
@@ -194,10 +211,15 @@ def _validate_game(game: HeadsUpChipEvGame) -> _GameValues:
         raise AiofContractError(AiofStatus.INVALID_INPUT, "side_pot must be bool")
     if fee != 0.0 or dead_money != 0.0 or game.side_pot:
         raise AiofContractError(AiofStatus.UNSUPPORTED_MODEL, "fee, third-party money, and side pots are unsupported")
-    if sb_stack < small_blind + ante or bb_stack < big_blind + ante:
+    sb_post = _finite_derived(small_blind + ante, "SB mandatory post")
+    bb_post = _finite_derived(big_blind + ante, "BB mandatory post")
+    if sb_stack < sb_post or bb_stack < bb_post:
         raise AiofContractError(AiofStatus.UNSUPPORTED_MODEL, "a stack cannot fully cover its mandatory post")
-    tolerance = max(1e-9, 1e-12 * max(1.0, sb_stack + bb_stack))
-    return _GameValues(-(small_blind + ante), big_blind + ante, min(sb_stack, bb_stack), tolerance)
+    stack_total = _finite_derived(sb_stack + bb_stack, "accounting stack total")
+    tolerance = _finite_derived(
+        max(1e-9, 1e-12 * max(1.0, stack_total)), "accounting tolerance"
+    )
+    return _GameValues(-sb_post, bb_post, min(sb_stack, bb_stack), tolerance)
 
 
 def _validate_deviation_request(request: PushFoldRequest) -> float:
@@ -268,9 +290,11 @@ def _showdown_from_counts(counts: OutcomeCounts, effective: float) -> float:
 
 
 def _check_conservation(sb_value: float, bb_value: float, tolerance: float) -> None:
-    if not math.isfinite(sb_value) or not math.isfinite(bb_value):
-        raise AiofContractError(AiofStatus.NUMERIC_FAILURE, "ChipEV is non-finite")
-    if abs(sb_value + bb_value) > tolerance:
+    _finite_derived(sb_value, "SB ChipEV")
+    _finite_derived(bb_value, "BB ChipEV")
+    _finite_derived(tolerance, "accounting tolerance")
+    total = _finite_derived(sb_value + bb_value, "ChipEV accounting sum")
+    if abs(total) > tolerance:
         raise AiofContractError(AiofStatus.ACCOUNTING_MISMATCH, "ChipEV conservation failed")
 
 
@@ -298,8 +322,12 @@ def _profile_sb_value(
 def _best_actions(
     actions: tuple[str, ...], values: tuple[float, ...], tolerance: float
 ) -> tuple[str, ...]:
+    for action, value in zip(actions, values):
+        _finite_derived(value, f"{action} action value")
+    _finite_derived(tolerance, "deviation tolerance")
     maximum = max(values)
-    return tuple(action for action, value in zip(actions, values) if value >= maximum - tolerance)
+    threshold = _finite_derived(maximum - tolerance, "best-action comparison threshold")
+    return tuple(action for action, value in zip(actions, values) if value >= threshold)
 
 
 def _analysis_identities(
@@ -385,11 +413,21 @@ def _exact_analysis(
             trace.append(
                 EquityTracePoint(matchup_index, sb_combo.combo, bb_combo.combo, None, counts, pair_probability, None)
             )
-    profile_sb = math.fsum(profile_terms)
+    profile_sb = _finite_fsum(profile_terms, "profile ChipEV")
     profile_bb = -profile_sb
     _check_conservation(profile_sb, profile_bb, values.tolerance)
-    probabilities = OutcomeProbabilities(math.fsum(weighted_win), math.fsum(weighted_loss), math.fsum(weighted_tie))
-    if abs(math.fsum((probabilities.win, probabilities.loss, probabilities.tie)) - 1.0) > 1e-10:
+    probabilities = OutcomeProbabilities(
+        _finite_fsum(weighted_win, "weighted win probability"),
+        _finite_fsum(weighted_loss, "weighted loss probability"),
+        _finite_fsum(weighted_tie, "weighted tie probability"),
+    )
+    if abs(
+        _finite_fsum(
+            (probabilities.win, probabilities.loss, probabilities.tie),
+            "showdown probability",
+        )
+        - 1.0
+    ) > 1e-10:
         raise AiofContractError(AiofStatus.NUMERIC_FAILURE, "showdown probabilities do not sum to one")
 
     responses: list[UnilateralBestResponse] = []
@@ -399,11 +437,20 @@ def _exact_analysis(
         marginal_by_combo = {item.combo: item.probability for item in prepared.sb_marginals}
         for combo in (item.combo for item in prepared.sb_marginals):
             marginal = marginal_by_combo[combo]
-            shove_value = sb_shove_numerators[combo] / marginal
-            fold_value = values.sb_fold
+            shove_value = _finite_derived(
+                sb_shove_numerators[combo] / marginal, "SB shove action value"
+            )
+            fold_value = _finite_derived(values.sb_fold, "SB fold action value")
             best = _best_actions(SB_ACTIONS, (shove_value, fold_value), tolerance)
-            supplied = sb_strategy[combo] * shove_value + (1.0 - sb_strategy[combo]) * fold_value
-            gain = marginal * (max(shove_value, fold_value) - supplied)
+            supplied = _finite_derived(
+                sb_strategy[combo] * shove_value
+                + (1.0 - sb_strategy[combo]) * fold_value,
+                "supplied SB action value",
+            )
+            action_gap = _finite_derived(
+                max(shove_value, fold_value) - supplied, "SB action-value gap"
+            )
+            gain = _finite_derived(marginal * action_gap, "SB row gain")
             gains.append(gain)
             rows.append(
                 BestResponseRow(
@@ -416,8 +463,11 @@ def _exact_analysis(
                     gain,
                 )
             )
-        gain = math.fsum(gains)
-        responses.append(UnilateralBestResponse("sb", profile_sb, profile_sb + gain, gain, tuple(rows)))
+        gain = _finite_fsum(gains, "SB aggregate gain")
+        best_response_value = _finite_derived(profile_sb + gain, "SB best-response value")
+        responses.append(
+            UnilateralBestResponse("sb", profile_sb, best_response_value, gain, tuple(rows))
+        )
     if "bb" in request.best_response_seats:
         rows = []
         gains = []
@@ -438,11 +488,20 @@ def _exact_analysis(
                     )
                 )
                 continue
-            call_value = bb_call_numerators[combo] / reach
-            fold_value = -values.sb_shove_bb_fold
+            call_value = _finite_derived(
+                bb_call_numerators[combo] / reach, "BB call action value"
+            )
+            fold_value = _finite_derived(-values.sb_shove_bb_fold, "BB fold action value")
             best = _best_actions(BB_ACTIONS, (call_value, fold_value), tolerance)
-            supplied = bb_strategy[combo] * call_value + (1.0 - bb_strategy[combo]) * fold_value
-            gain = reach * (max(call_value, fold_value) - supplied)
+            supplied = _finite_derived(
+                bb_strategy[combo] * call_value
+                + (1.0 - bb_strategy[combo]) * fold_value,
+                "supplied BB action value",
+            )
+            action_gap = _finite_derived(
+                max(call_value, fold_value) - supplied, "BB action-value gap"
+            )
+            gain = _finite_derived(reach * action_gap, "BB row gain")
             gains.append(gain)
             rows.append(
                 BestResponseRow(
@@ -455,8 +514,11 @@ def _exact_analysis(
                     gain,
                 )
             )
-        gain = math.fsum(gains)
-        responses.append(UnilateralBestResponse("bb", profile_bb, profile_bb + gain, gain, tuple(rows)))
+        gain = _finite_fsum(gains, "BB aggregate gain")
+        best_response_value = _finite_derived(profile_bb + gain, "BB best-response value")
+        responses.append(
+            UnilateralBestResponse("bb", profile_bb, best_response_value, gain, tuple(rows))
+        )
     input_id, runtime_id, run_id = _analysis_identities(
         request, prepared, None, None, sb_strategy, bb_strategy
     )

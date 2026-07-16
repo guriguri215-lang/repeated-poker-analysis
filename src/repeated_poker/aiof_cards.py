@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from itertools import combinations
@@ -228,6 +229,18 @@ def _content_identity(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _finite_fsum(values: Iterable[float], name: str) -> float:
+    try:
+        total = math.fsum(values)
+    except (OverflowError, ValueError) as exc:
+        raise AiofContractError(
+            AiofStatus.NUMERIC_FAILURE, f"{name} aggregation failed"
+        ) from exc
+    if not math.isfinite(total):
+        raise AiofContractError(AiofStatus.NUMERIC_FAILURE, f"{name} is non-finite")
+    return total
+
+
 def card_id(card: str) -> int:
     """Return the canonical integer ID for one strict two-character card."""
 
@@ -347,7 +360,12 @@ def expand_range(
             raise AiofContractError(AiofStatus.INVALID_RANGE, "range contains a non-RangeEntry")
         if isinstance(entry.weight, bool) or not isinstance(entry.weight, (int, float)):
             raise AiofContractError(AiofStatus.INVALID_RANGE, "range weight must be a number")
-        weight = float(entry.weight)
+        try:
+            weight = float(entry.weight)
+        except (OverflowError, ValueError) as exc:
+            raise AiofContractError(
+                AiofStatus.INVALID_RANGE, "range weight is not representable as binary64"
+            ) from exc
         if not math.isfinite(weight) or weight <= 0.0:
             raise AiofContractError(AiofStatus.INVALID_RANGE, "range weight must be finite and positive")
         if not isinstance(entry.weight_basis, WeightBasis):
@@ -387,16 +405,18 @@ def expand_range(
             generated[ids] = ExpandedCombo(combo, ids, mass, canonical)
             before_masses.append(mass)
 
-    before = math.fsum(before_masses)
-    if not generated or not math.isfinite(before) or before <= 0.0:
+    before = _finite_fsum(before_masses, "range mass before dead-card removal")
+    if not generated or before <= 0.0:
         raise AiofContractError(AiofStatus.EMPTY_COMPATIBLE_SUPPORT, "range has no positive support")
     surviving = tuple(
         generated[ids]
         for ids in sorted(generated)
         if ids[0] not in dead_set and ids[1] not in dead_set
     )
-    after = math.fsum(combo.raw_mass for combo in surviving)
-    if not surviving or not math.isfinite(after) or after <= 0.0:
+    after = _finite_fsum(
+        (combo.raw_mass for combo in surviving), "range mass after dead-card removal"
+    )
+    if not surviving or after <= 0.0:
         raise AiofContractError(AiofStatus.EMPTY_COMPATIBLE_SUPPORT, "dead cards remove all range support")
     identity = _content_identity(
         {
@@ -449,19 +469,22 @@ def prepare_compatible_ranges(
             if not math.isfinite(joint) or joint <= 0.0:
                 raise AiofContractError(AiofStatus.NUMERIC_FAILURE, "invalid joint mass")
             row_terms.append(joint)
-        row_mass = math.fsum(row_terms)
+        row_mass = _finite_fsum(row_terms, "SB compatible marginal")
         sb_compatible.append(row_mass)
         row_joint_masses.append(row_mass)
     bb_compatible = [
-        math.fsum(
-            sb_combo.raw_mass * bb_combo.raw_mass
-            for sb_combo in sb_range.combos
-            if _disjoint(sb_combo.card_ids, bb_combo.card_ids)
+        _finite_fsum(
+            (
+                sb_combo.raw_mass * bb_combo.raw_mass
+                for sb_combo in sb_range.combos
+                if _disjoint(sb_combo.card_ids, bb_combo.card_ids)
+            ),
+            "BB compatible marginal",
         )
         for bb_combo in bb_range.combos
     ]
-    joint_mass = math.fsum(row_joint_masses)
-    if compatible_count == 0 or not math.isfinite(joint_mass) or joint_mass <= 0.0:
+    joint_mass = _finite_fsum(row_joint_masses, "compatible joint mass")
+    if compatible_count == 0 or joint_mass <= 0.0:
         status = AiofStatus.NUMERIC_FAILURE if compatible_count else AiofStatus.EMPTY_COMPATIBLE_SUPPORT
         raise AiofContractError(status, "compatible joint support has no finite positive mass")
     if any(value <= 0.0 for value in sb_compatible) or any(value <= 0.0 for value in bb_compatible):
@@ -482,8 +505,12 @@ def prepare_compatible_ranges(
         ComboMarginal(combo.combo, combo.card_ids, combo.raw_mass, mass, mass * factor)
         for combo, mass in zip(bb_range.combos, bb_compatible)
     )
-    sb_probability_sum = math.fsum(item.probability for item in sb_marginals)
-    bb_probability_sum = math.fsum(item.probability for item in bb_marginals)
+    sb_probability_sum = _finite_fsum(
+        (item.probability for item in sb_marginals), "SB normalized marginal"
+    )
+    bb_probability_sum = _finite_fsum(
+        (item.probability for item in bb_marginals), "BB normalized marginal"
+    )
     if (
         not math.isfinite(sb_probability_sum)
         or not math.isfinite(bb_probability_sum)

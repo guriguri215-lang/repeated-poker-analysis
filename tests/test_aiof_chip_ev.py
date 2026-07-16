@@ -190,6 +190,23 @@ def test_fixed_sb_shoves_and_bb_wins_makes_bb_call_best_response():
     assert result.analysis.best_responses[0].rows[0].best_actions == ("call",)
 
 
+def test_exact_bb_best_response_numeric_overflow_fails_closed():
+    result = analyze_pushfold(
+        make_request(
+            "KsKh",
+            "AsAh",
+            WIN_BOARD,
+            shove=1.0,
+            call=0.0,
+            game_value=HeadsUpChipEvGame(1e308, 1e308, 5e307, 1e308, 0.0),
+            best=("bb",),
+        )
+    )
+    assert result.status is AiofStatus.NUMERIC_FAILURE
+    assert result.analysis is None
+    assert result.error_message
+
+
 def test_exact_bb_tie_retains_full_response_set():
     result = analyze_pushfold(
         make_request(

@@ -109,6 +109,19 @@ def test_invalid_weights_are_rejected(weight):
     assert error.value.status is AiofStatus.INVALID_RANGE
 
 
+def test_huge_integer_weight_uses_invalid_range_contract_error():
+    with pytest.raises(AiofContractError) as error:
+        expand_range(RangeSpec((class_entry("AA", 10**400),)), (), AiofLimits())
+    assert error.value.status is AiofStatus.INVALID_RANGE
+
+
+def test_finite_weight_aggregate_overflow_is_numeric_failure():
+    spec = RangeSpec((combo_entry("AsAh", 1e308), combo_entry("KsKh", 1e308)))
+    with pytest.raises(AiofContractError) as error:
+        expand_range(spec, (), AiofLimits())
+    assert error.value.status is AiofStatus.NUMERIC_FAILURE
+
+
 def test_wrong_weight_basis_is_rejected():
     with pytest.raises(AiofContractError):
         expand_range(
