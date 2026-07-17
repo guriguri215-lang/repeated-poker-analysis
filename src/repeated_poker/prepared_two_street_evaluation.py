@@ -731,6 +731,8 @@ class _ResponseShape:
     pure_count: int
     best_count: int
     response_records: int
+    action_set_records: int
+    materialized_records: int
     representative: tuple[tuple[str, str], ...]
     action_sets: tuple[tuple[str, tuple[str, ...]], ...] | None
     variation: tuple[tuple[str, tuple[str, ...]], ...]
@@ -738,7 +740,13 @@ class _ResponseShape:
     materialized: tuple[tuple[tuple[str, str], ...], ...]
 
 
-def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool) -> _ResponseShape:
+def _response_shape(
+    result: Any,
+    legal: dict[str, tuple[str, ...]],
+    *,
+    require_action_sets: bool,
+    record_cap: int,
+) -> _ResponseShape:
     if type(result) is not BestResponseResult:
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response result type")
     numeric = tuple(_finite_core(v, n) for v, n in zip((result.villain_max_ev, result.ev_h_worst, result.ev_h_best, result.expected_house_rake_worst, result.expected_house_rake_best), ("villain max", "Hero worst", "Hero best", "rake worst", "rake best")))
@@ -766,6 +774,23 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
         strategy_keys.append(tuple(key))
     if len(strategy_keys) != len(set(strategy_keys)):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "duplicate materialized response")
+    materialized_records = 0
+    for strategy_key in strategy_keys:
+        materialized_records = _checked_add(
+            materialized_records,
+            1,
+            record_cap,
+            "result-cap",
+            "materialized full response outer records",
+        )
+        for _assignment in strategy_key:
+            materialized_records = _checked_add(
+                materialized_records,
+                1,
+                record_cap,
+                "result-cap",
+                "materialized full response assignments",
+            )
     raw_sets = result.best_response_action_sets
     if require_action_sets and (not isinstance(raw_sets, dict) or set(raw_sets) != set(legal)):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "conditional action sets are incomplete")
@@ -823,6 +848,8 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
         result.num_villain_pure_strategies,
         result.num_best_response_strategies,
         records,
+        action_set_records,
+        materialized_records,
         strategy_keys[0],
         action_sets,
         tuple(canonical_variation),
@@ -833,7 +860,12 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
 
 def _response_summary(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool, shape: _ResponseShape | None = None) -> _ResponseSummary:
     if shape is None:
-        shape = _response_shape(result, legal, require_action_sets=require_action_sets)
+        shape = _response_shape(
+            result,
+            legal,
+            require_action_sets=require_action_sets,
+            record_cap=_DEFAULT_LIMITS.max_result_records,
+        )
     representative = _canonical_response(result.best_response_strategies[0], legal)
     action_sets = []
     if result.best_response_action_sets is not None:
@@ -898,14 +930,31 @@ def _result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: 
     return total
 
 
-def _raw_result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: PreparedFixedProfileValue | None, shape: _ResponseShape, trace_count: int, full_count: int, villain_info_count: int, cap: int) -> int:
+def _raw_result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: PreparedFixedProfileValue | None, shape: _ResponseShape, trace_count: int, full_records: int, cap: int) -> int:
     total = 3 + 1 + len(hero_norm.records) + trace_count
     if villain_norm is not None:
         total += 1 + len(villain_norm.records)
     if fixed is not None:
         total += 1
     total = _checked_add(total, shape.response_records, cap, "result-cap", "result records")
-    return _checked_add(total, _checked_mul(full_count, 1 + villain_info_count, cap, "result-cap", "full correspondence records"), cap, "result-cap", "result records")
+    return _checked_add(total, full_records, cap, "result-cap", "full correspondence records")
+
+
+def _projected_full_response_records(best_count: int, villain_info_count: int, cap: int) -> int:
+    records_per_response = _checked_add(
+        1,
+        villain_info_count,
+        cap,
+        "result-cap",
+        "full response outer plus assignments",
+    )
+    return _checked_mul(
+        best_count,
+        records_per_response,
+        cap,
+        "result-cap",
+        "full correspondence records",
+    )
 
 
 def _trace(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: bool, oracle: bool, full: bool) -> tuple[PreparedEvaluationTraceRecord, ...]:
@@ -985,7 +1034,12 @@ def evaluate_prepared_two_street(
             dp_first = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=1, method="dp", allow_negative_residual=False)
         except Exception as exc:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", f"DP failed: {type(exc).__name__}")
-        dp_shape = _response_shape(dp_first, view.villain_actions, require_action_sets=True)
+        dp_shape = _response_shape(
+            dp_first,
+            view.villain_actions,
+            require_action_sets=True,
+            record_cap=limits.max_result_records,
+        )
         if dp_shape.pure_count != pure_count:
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "exact-response", "DP pure count mismatch")
 
@@ -1007,17 +1061,43 @@ def evaluate_prepared_two_street(
             if generation > limits.max_full_correspondence_strategies or dp_shape.best_count > limits.max_full_correspondence_strategies:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "full-correspondence", "full correspondence cap exceeded")
             _checked_mul(dp_shape.best_count, len(view.villain_actions), limits.max_result_records, "result-cap", "nested full assignments")
-        full_result_count = dp_shape.best_count if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0
-        final_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, dp_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
+        projected_full_records = (
+            _projected_full_response_records(
+                dp_shape.best_count,
+                len(view.villain_actions),
+                limits.max_result_records,
+            )
+            if request.correspondence_mode is PreparedCorrespondenceMode.FULL
+            else 0
+        )
+        final_records = _raw_result_record_count(
+            hero_norm,
+            villain_norm,
+            fixed_value,
+            dp_shape,
+            trace_count,
+            projected_full_records,
+            limits.max_result_records,
+        )
         if request.oracle_check:
             if pure_count > limits.max_enumerator_pure_strategies:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "oracle", "enumerator pure-strategy cap exceeded")
-        diagnostic_total = 0
+        diagnostics = 0
         if request.oracle_check:
             diagnostics = _checked_mul(pure_count, len(view.villain_actions) + 2, limits.max_result_records, "oracle", "enumerator diagnostic records")
-            comparison = _checked_mul(dp_shape.best_count, 1 + len(view.villain_actions), limits.max_result_records, "oracle", "oracle correspondence records")
-            diagnostic_total = _checked_add(diagnostics, comparison, limits.max_result_records, "oracle", "oracle diagnostic records")
-            _checked_add(diagnostic_total, final_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+            projected_comparison = _projected_full_response_records(
+                dp_shape.best_count,
+                len(view.villain_actions),
+                limits.max_result_records,
+            )
+            projected_diagnostics = _checked_add(
+                diagnostics,
+                projected_comparison,
+                limits.max_result_records,
+                "oracle",
+                "oracle diagnostic records",
+            )
+            _checked_add(projected_diagnostics, final_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
         if need_dp_full:
             dp_cap = limits.max_full_correspondence_strategies if request.correspondence_mode is PreparedCorrespondenceMode.FULL else limits.max_enumerator_pure_strategies
             if generation > dp_cap or dp_shape.best_count > dp_cap:
@@ -1026,10 +1106,35 @@ def evaluate_prepared_two_street(
                 dp_full_result = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=dp_cap, method="dp", allow_negative_residual=False)
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "full-correspondence", f"second DP failed: {type(exc).__name__}")
-            dp_second_shape = _response_shape(dp_full_result, view.villain_actions, require_action_sets=True)
-            dp_second_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, dp_second_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
+            dp_second_shape = _response_shape(
+                dp_full_result,
+                view.villain_actions,
+                require_action_sets=True,
+                record_cap=limits.max_result_records,
+            )
+            dp_second_full_records = (
+                dp_second_shape.materialized_records
+                if request.correspondence_mode is PreparedCorrespondenceMode.FULL
+                else 0
+            )
+            dp_second_records = _raw_result_record_count(
+                hero_norm,
+                villain_norm,
+                fixed_value,
+                dp_second_shape,
+                trace_count,
+                dp_second_full_records,
+                limits.max_result_records,
+            )
             if request.oracle_check:
-                _checked_add(diagnostic_total, dp_second_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+                dp_second_diagnostics = _checked_add(
+                    diagnostics,
+                    dp_second_shape.materialized_records,
+                    limits.max_result_records,
+                    "oracle",
+                    "oracle diagnostic records",
+                )
+                _checked_add(dp_second_diagnostics, dp_second_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
             if not _raw_repeated_dp_equal(dp_shape, dp_second_shape):
                 _fail(PreparedEvaluationStatus.NON_REPRODUCIBLE, "full-correspondence", "repeated DP result mismatch")
 
@@ -1040,9 +1145,42 @@ def evaluate_prepared_two_street(
                 enum_result = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=limits.max_enumerator_pure_strategies, method="enumerate", allow_negative_residual=False)
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "oracle", f"enumerator failed: {type(exc).__name__}")
-            enum_shape = _response_shape(enum_result, view.villain_actions, require_action_sets=False)
-            enum_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, enum_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
-            _checked_add(diagnostic_total, enum_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+            enum_shape = _response_shape(
+                enum_result,
+                view.villain_actions,
+                require_action_sets=False,
+                record_cap=limits.max_result_records,
+            )
+            enum_full_records = (
+                enum_shape.materialized_records
+                if request.correspondence_mode is PreparedCorrespondenceMode.FULL
+                else 0
+            )
+            enum_records = _raw_result_record_count(
+                hero_norm,
+                villain_norm,
+                fixed_value,
+                enum_shape,
+                trace_count,
+                enum_full_records,
+                limits.max_result_records,
+            )
+            if request.method == "enumerate" and enum_shape.action_sets is None:
+                enum_records = _checked_add(
+                    enum_records,
+                    dp_shape.action_set_records,
+                    limits.max_result_records,
+                    "result-cap",
+                    "DP conditional action-set records",
+                )
+            enum_diagnostics = _checked_add(
+                diagnostics,
+                enum_shape.materialized_records,
+                limits.max_result_records,
+                "oracle",
+                "oracle diagnostic records",
+            )
+            _checked_add(enum_diagnostics, enum_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
             if not _raw_oracle_equal(dp_second_shape, enum_shape):
                 _fail(PreparedEvaluationStatus.ORACLE_MISMATCH, "oracle", "DP and enumerator disagree")
 

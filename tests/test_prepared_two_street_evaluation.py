@@ -243,6 +243,23 @@ def _count_prepared_response_conversions(monkeypatch):
     return calls
 
 
+def _add_distinct_materialized_response(result, artifact):
+    representative = dict(result.best_response_strategies[0])
+    alternate = dict(representative)
+    alternate[artifact.info_set_id] = next(
+        action
+        for action in artifact.legal_action_labels
+        if action != representative[artifact.info_set_id]
+    )
+    result.num_best_response_strategies += 1
+    result.best_response_strategies = [*result.best_response_strategies, alternate]
+    result.best_response_action_variation = {
+        **result.best_response_action_variation,
+        artifact.info_set_id: list(artifact.legal_action_labels),
+    }
+    return result
+
+
 def _ordered_tree_record(node):
     if isinstance(node, TerminalNode):
         return ("terminal", node.node_id, node.hero_ev.hex(), node.villain_ev.hex(), node.house_rake.hex())
@@ -813,6 +830,131 @@ def test_enumerator_raw_count_and_mismatch_precede_prepared_conversion(monkeypat
         build,
         hero,
         limits=replace(PreparedEvaluationLimits(), max_result_records=exact + 1),
+        request=request,
+    )
+    _assert_failure(within_cap, PreparedEvaluationStatus.ORACLE_MISMATCH)
+    assert solve_calls == {"count": 3}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+
+def test_second_dp_materialized_full_count_uses_fault_response_exact_boundary(monkeypatch):
+    build = _build(_one_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    root = _artifact(build, PreparedPlayer.VILLAIN, ("check", "bet::open-2"))
+    request = PreparedEvaluationRequest(correspondence_mode=PreparedCorrespondenceMode.FULL)
+    baseline = evaluate_prepared_two_street(build, hero, request=request)
+    _assert_success(baseline)
+    baseline_exact = _returned_record_count(baseline)
+    assert baseline_exact == 23
+    villain_info_count = len(
+        baseline.evaluation.exact_response.representative_pure_response.assignments
+    )
+    assert villain_info_count == 1
+    added_variation_records = 1 + len(root.legal_action_labels)
+    added_full_response_records = 1 + villain_info_count
+    fault_exact = baseline_exact + added_variation_records + added_full_response_records
+    assert fault_exact == 28
+
+    conversions = _count_prepared_response_conversions(monkeypatch)
+    original = evaluation_module.solve_exact_response
+    solve_calls = {"count": 0}
+
+    def materialized_second_response(*args, **kwargs):
+        result = original(*args, **kwargs)
+        solve_calls["count"] += 1
+        if solve_calls["count"] == 2:
+            return _add_distinct_materialized_response(result, root)
+        return result
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", materialized_second_response)
+    for cap in (26, fault_exact - 1):
+        solve_calls["count"] = 0
+        for key in conversions:
+            conversions[key] = 0
+        capped = evaluate_prepared_two_street(
+            build,
+            hero,
+            limits=replace(PreparedEvaluationLimits(), max_result_records=cap),
+            request=request,
+        )
+        _assert_failure(capped, PreparedEvaluationStatus.CAP_EXCEEDED)
+        assert solve_calls == {"count": 2}
+        assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+    solve_calls["count"] = 0
+    for key in conversions:
+        conversions[key] = 0
+    within_cap = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=fault_exact),
+        request=request,
+    )
+    _assert_failure(within_cap, PreparedEvaluationStatus.NON_REPRODUCIBLE)
+    assert solve_calls == {"count": 2}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+
+def test_enumerator_materialized_full_count_uses_fault_response_exact_boundary(monkeypatch):
+    build = _build(_one_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    root = _artifact(build, PreparedPlayer.VILLAIN, ("check", "bet::open-2"))
+    request = PreparedEvaluationRequest(
+        method="enumerate",
+        correspondence_mode=PreparedCorrespondenceMode.FULL,
+        oracle_check=True,
+    )
+    baseline = evaluate_prepared_two_street(build, hero, request=request)
+    _assert_success(baseline)
+    baseline_returned = _returned_record_count(baseline)
+    assert baseline_returned == 24
+    exact_response = baseline.evaluation.exact_response
+    villain_info_count = len(exact_response.representative_pure_response.assignments)
+    assert villain_info_count == 1
+    diagnostics = exact_response.num_villain_pure_strategies * (villain_info_count + 2)
+    baseline_comparison = exact_response.num_best_response_strategies * (villain_info_count + 1)
+    baseline_exact = baseline_returned + diagnostics + baseline_comparison
+    assert baseline_exact == 32
+    added_variation_records = 1 + len(root.legal_action_labels)
+    added_full_response_records = 1 + villain_info_count
+    fault_returned = baseline_returned + added_variation_records + added_full_response_records
+    fault_comparison = 2 * (villain_info_count + 1)
+    fault_exact = fault_returned + diagnostics + fault_comparison
+    assert fault_exact == 39
+
+    conversions = _count_prepared_response_conversions(monkeypatch)
+    original = evaluation_module.solve_exact_response
+    solve_calls = {"count": 0}
+
+    def materialized_enumerator_response(*args, **kwargs):
+        result = original(*args, **kwargs)
+        solve_calls["count"] += 1
+        if kwargs["method"] == "enumerate":
+            return _add_distinct_materialized_response(result, root)
+        return result
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", materialized_enumerator_response)
+    for cap in range(33, fault_exact):
+        solve_calls["count"] = 0
+        for key in conversions:
+            conversions[key] = 0
+        capped = evaluate_prepared_two_street(
+            build,
+            hero,
+            limits=replace(PreparedEvaluationLimits(), max_result_records=cap),
+            request=request,
+        )
+        _assert_failure(capped, PreparedEvaluationStatus.CAP_EXCEEDED)
+        assert solve_calls == {"count": 3}
+        assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+    solve_calls["count"] = 0
+    for key in conversions:
+        conversions[key] = 0
+    within_cap = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=fault_exact),
         request=request,
     )
     _assert_failure(within_cap, PreparedEvaluationStatus.ORACLE_MISMATCH)
