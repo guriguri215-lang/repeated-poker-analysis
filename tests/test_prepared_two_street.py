@@ -235,6 +235,52 @@ def _two_street_spec(*, probabilities=(0.6, 0.4)) -> PreparedTwoStreetSpec:
     )
 
 
+def _initial_all_in_two_street_spec() -> PreparedTwoStreetSpec:
+    s1, s2, transition = "flop", "turn", "deal-turn"
+    close = PreparedStreetCloseEvent(s1, PreparedRoundCloseReason.ALL_IN_CALL)
+    before_chance = (close,)
+    row = PreparedTransitionRow(
+        transition,
+        prepared_public_history_id(before_chance),
+        "H0",
+        "V0",
+        (
+            PreparedChanceEdge("low", "H0", "V0", 0.25),
+            PreparedChanceEdge("high", "H0", "V0", 0.75),
+        ),
+    )
+    return PreparedTwoStreetSpec(
+        PREPARED_TWO_STREET_CONTRACT_VERSION,
+        _attestation(),
+        PreparedHeadsUpChips(1.0, 1.0),
+        PreparedHeadsUpChips(1.0, 1.0),
+        PreparedRake(0.0, None),
+        (
+            PreparedStreet(s1, "First", PreparedPlayer.VILLAIN, 1.0),
+            PreparedStreet(s2, "Second", PreparedPlayer.HERO, 1.0),
+        ),
+        (PreparedBucket("H0", 1.0),),
+        (PreparedBucket("V0", 1.0),),
+        (),
+        transition,
+        (row,),
+        (
+            PreparedShowdownValue(
+                prepared_public_history_id(before_chance + (PreparedChanceEvent(transition, "low"),)),
+                "H0",
+                "V0",
+                0.0,
+            ),
+            PreparedShowdownValue(
+                prepared_public_history_id(before_chance + (PreparedChanceEvent(transition, "high"),)),
+                "H0",
+                "V0",
+                1.0,
+            ),
+        ),
+    )
+
+
 def _private_update_spec() -> PreparedTwoStreetSpec:
     base = _two_street_spec(probabilities=(0.5, 0.5))
     s1, s2, transition = "flop", "turn", "deal-turn"
@@ -388,6 +434,43 @@ def test_chance_one_time_fsum_normalization_is_auditable():
     assert math.fsum(record.effective_probabilities) == pytest.approx(1.0)
 
 
+def test_initial_all_in_two_street_requires_transition_and_uses_outcome_values():
+    spec = _initial_all_in_two_street_spec()
+    result = _build(spec)
+    assert result.status is PreparedTwoStreetStatus.SUCCESS
+    assert result.error is None and result.build is not None
+    build = result.build
+    assert build.counts == pts.PreparedBuildCounts(1, 1, 3, 0, 2, 4, 2, 0, 0, 1, 1)
+    assert len(build.chance_normalization) == 1
+    record = build.chance_normalization[0]
+    assert record.edge_identities == (("high", "H0", "V0"), ("low", "H0", "V0"))
+    assert isinstance(build.tree.root, ChanceNode)
+    transition_node = build.tree.root.children[0][1]
+    assert isinstance(transition_node, ChanceNode)
+    assert all(isinstance(child, TerminalNode) for _, child in transition_node.children)
+
+    hero, villain = _strategy_for_tree(build.tree)
+    fixed = evaluate_fixed_profile(build.tree, hero, villain)
+    # Independent helper-free oracle: pot=2, no rake, low loses 1 and high wins 1.
+    expected_hero = 0.25 * (2.0 * 0.0 - 1.0) + 0.75 * (2.0 * 1.0 - 1.0)
+    assert fixed.hero_ev == pytest.approx(expected_hero)
+    assert fixed.villain_ev == pytest.approx(-expected_hero)
+    assert fixed.house_rake == 0.0
+
+
+def test_initial_all_in_two_street_rejects_missing_and_extra_transition_rows():
+    spec = _initial_all_in_two_street_spec()
+    _assert_failure(
+        _build(replace(spec, transition_rows=())),
+        PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+    )
+    extra = replace(spec.transition_rows[0], source_public_state_id="sha256:" + "0" * 64)
+    _assert_failure(
+        _build(replace(spec, transition_rows=spec.transition_rows + (extra,))),
+        PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+    )
+
+
 def test_public_outcome_is_separate_from_private_successor_updates_and_no_leakage():
     build = _build(_private_update_spec()).build
     second = [item for item in build.information_sets if item.key.street_id == "turn"]
@@ -467,9 +550,13 @@ def test_derived_nonfinite_and_positive_root_underflow_are_numeric_failures():
     [
         (lambda edges: (), PreparedTwoStreetStatus.EMPTY_CHANCE_SUPPORT),
         (lambda edges: edges + (edges[0],), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
-        (lambda edges: (replace(edges[0], probability=0.0), edges[1]), PreparedTwoStreetStatus.INVALID_INPUT),
-        (lambda edges: (replace(edges[0], probability=-0.1), edges[1]), PreparedTwoStreetStatus.INVALID_INPUT),
-        (lambda edges: (replace(edges[0], probability=math.nan), edges[1]), PreparedTwoStreetStatus.INVALID_INPUT),
+        (lambda edges: (replace(edges[0], probability=0.0), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
+        (lambda edges: (replace(edges[0], probability=-0.1), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
+        (lambda edges: (replace(edges[0], probability=math.nan), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
+        (lambda edges: (replace(edges[0], probability=math.inf), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
+        (lambda edges: (replace(edges[0], probability=-math.inf), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
+        (lambda edges: (replace(edges[0], probability=True), edges[1]), PreparedTwoStreetStatus.INVALID_INPUT),
+        (lambda edges: (replace(edges[0], probability="0.6"), edges[1]), PreparedTwoStreetStatus.INVALID_INPUT),
         (lambda edges: (replace(edges[0], probability=0.7), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
         (lambda edges: (replace(edges[0], next_hero_bucket_id="UNKNOWN"), edges[1]), PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT),
     ],

@@ -450,6 +450,18 @@ def _number(value: Any, name: str, *, minimum: float | None = None, positive: bo
     return result
 
 
+def _chance_probability(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(PreparedTwoStreetStatus.INVALID_INPUT, "chance", f"{name} must be a non-bool number")
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        _fail(PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, "chance", f"{name} must be finite and strictly positive")
+    if not math.isfinite(result) or result <= 0.0:
+        _fail(PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, "chance", f"{name} must be finite and strictly positive")
+    return result
+
+
 def _finite_derived(value: float, name: str, *, positive_reach: bool = False) -> float:
     if not math.isfinite(value):
         _fail(PreparedTwoStreetStatus.NUMERIC_FAILURE, "numeric", f"non-finite derived {name}")
@@ -630,7 +642,10 @@ def _validate_flat_entries(
             _require_string(edge.public_outcome_id, f"transition_rows[{row_index}].edges[{edge_index}].public_outcome_id")
             if edge.next_hero_bucket_id not in hero_ids or edge.next_villain_bucket_id not in villain_ids:
                 _fail(PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, "chance", "transition edge references unknown successor bucket")
-            _number(edge.probability, f"transition_rows[{row_index}].edges[{edge_index}].probability", positive=True)
+            _chance_probability(
+                edge.probability,
+                f"transition_rows[{row_index}].edges[{edge_index}].probability",
+            )
 
     for index, value in enumerate(spec.showdown_values):
         _require_string(value.public_state_id, f"showdown_values[{index}].public_state_id")
@@ -1348,6 +1363,28 @@ def _walk_round(
     # fold/call response.  Skip decisions only after no unmatched response is
     # pending (for example after an all-in call and refund).
     if (state.stack_hero == 0.0 or state.stack_villain == 0.0) and state.pending_uncalled == 0.0:
+        if street_index < len(spec.streets) - 1:
+            close_events = events + (
+                PreparedStreetCloseEvent(
+                    spec.streets[street_index].street_id,
+                    PreparedRoundCloseReason.ALL_IN_CALL,
+                ),
+            )
+            return _after_round_close(
+                preflight,
+                materialize=materialize,
+                street_index=street_index,
+                state=state,
+                hero_bucket=hero_bucket,
+                villain_bucket=villain_bucket,
+                hero_history=hero_history,
+                villain_history=villain_history,
+                hero_actions=hero_actions,
+                villain_actions=villain_actions,
+                events=close_events,
+                depth=depth,
+                path_info=path_info,
+            )
         return _finish_showdown(
             preflight,
             materialize=materialize,
