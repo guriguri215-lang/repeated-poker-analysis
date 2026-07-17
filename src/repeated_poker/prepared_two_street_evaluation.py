@@ -731,6 +731,11 @@ class _ResponseShape:
     pure_count: int
     best_count: int
     response_records: int
+    representative: tuple[tuple[str, str], ...]
+    action_sets: tuple[tuple[str, tuple[str, ...]], ...] | None
+    variation: tuple[tuple[str, tuple[str, ...]], ...]
+    off_path: tuple[str, ...]
+    materialized: tuple[tuple[tuple[str, str], ...], ...]
 
 
 def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool) -> _ResponseShape:
@@ -767,19 +772,25 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
     if raw_sets is not None and (not isinstance(raw_sets, dict) or set(raw_sets) != set(legal)):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid conditional action-set structure")
     action_set_records = 0
+    action_sets = None
     if raw_sets is not None:
+        canonical_sets = []
         for info_id in sorted(legal):
             values = raw_sets.get(info_id)
             if not isinstance(values, list) or not values or len(values) != len(set(values)) or any(v not in legal[info_id] for v in values):
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid conditional action set")
             if require_action_sets and result.best_response_strategies[0][info_id] not in values:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "representative disagrees with conditional action set")
+            ordered = tuple(action for action in legal[info_id] if action in values)
+            canonical_sets.append((info_id, ordered))
             action_set_records += 1 + len(values)
+        action_sets = tuple(canonical_sets)
     if not isinstance(result.best_response_action_variation, dict):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response variation")
     if any(not isinstance(info_id, str) or info_id not in legal for info_id in result.best_response_action_variation):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "unknown variation information set")
     variation_records = 0
+    canonical_variation = []
     for info_id in sorted(result.best_response_action_variation):
         if info_id not in legal:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "unknown variation information set")
@@ -788,6 +799,7 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response variation actions")
         if result.best_response_strategies[0][info_id] not in values:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "representative disagrees with response variation")
+        canonical_variation.append((info_id, tuple(action for action in legal[info_id] if action in values)))
         variation_records += 1 + len(values)
     if not isinstance(result.off_path_info_sets, list) or any(not isinstance(i, str) for i in result.off_path_info_sets) or result.off_path_info_sets != sorted(result.off_path_info_sets) or len(result.off_path_info_sets) != len(set(result.off_path_info_sets)) or any(i not in legal for i in result.off_path_info_sets):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid off-path information sets")
@@ -806,7 +818,17 @@ def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_a
         if {info_id: actions for info_id, actions in materialized_variation.items() if len(actions) > 1} != expected_variation:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "full responses disagree with response variation")
     records = 1 + len(legal) + action_set_records + variation_records + len(result.off_path_info_sets)
-    return _ResponseShape(numeric, result.num_villain_pure_strategies, result.num_best_response_strategies, records)
+    return _ResponseShape(
+        numeric,
+        result.num_villain_pure_strategies,
+        result.num_best_response_strategies,
+        records,
+        strategy_keys[0],
+        action_sets,
+        tuple(canonical_variation),
+        tuple(result.off_path_info_sets),
+        tuple(sorted(strategy_keys)),
+    )
 
 
 def _response_summary(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool, shape: _ResponseShape | None = None) -> _ResponseSummary:
@@ -834,8 +856,32 @@ def _full_tuple(result: BestResponseResult, legal: dict[str, tuple[str, ...]], e
     return values
 
 
-def _summary_equal(left: _ResponseSummary, right: _ResponseSummary) -> bool:
-    return all(abs(a - b) <= 1e-9 for a, b in zip(left.numeric, right.numeric)) and left.pure_count == right.pure_count and left.best_count == right.best_count and left.variation == right.variation and left.off_path == right.off_path
+def _raw_summary_equal(left: _ResponseShape, right: _ResponseShape) -> bool:
+    return (
+        all(abs(a - b) <= 1e-9 for a, b in zip(left.numeric, right.numeric))
+        and left.pure_count == right.pure_count
+        and left.best_count == right.best_count
+        and left.variation == right.variation
+        and left.off_path == right.off_path
+    )
+
+
+def _raw_repeated_dp_equal(first: _ResponseShape, second: _ResponseShape) -> bool:
+    return (
+        _raw_summary_equal(first, second)
+        and first.representative == second.representative
+        and first.action_sets == second.action_sets
+        and len(second.materialized) == second.best_count
+        and second.representative in second.materialized
+    )
+
+
+def _raw_oracle_equal(dp: _ResponseShape, enumerated: _ResponseShape) -> bool:
+    return (
+        _raw_summary_equal(dp, enumerated)
+        and enumerated.action_sets is None
+        and dp.materialized == enumerated.materialized
+    )
 
 
 def _result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: PreparedFixedProfileValue | None, summary: _ResponseSummary, trace_count: int, full_count: int, villain_info_count: int, cap: int) -> int:
@@ -956,7 +1002,6 @@ def evaluate_prepared_two_street(
 
         need_dp_full = request.correspondence_mode is PreparedCorrespondenceMode.FULL or request.oracle_check
         dp_full_result = None
-        dp_full = None
         trace_count = 7 + len(hero_norm.records) + (len(villain_norm.records) if villain_norm else 0) + 1 + (1 if fixed_value else 0) + (1 if request.oracle_check else 0) + (1 if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0)
         if request.correspondence_mode is PreparedCorrespondenceMode.FULL:
             if generation > limits.max_full_correspondence_strategies or dp_shape.best_count > limits.max_full_correspondence_strategies:
@@ -967,11 +1012,12 @@ def evaluate_prepared_two_street(
         if request.oracle_check:
             if pure_count > limits.max_enumerator_pure_strategies:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "oracle", "enumerator pure-strategy cap exceeded")
+        diagnostic_total = 0
+        if request.oracle_check:
             diagnostics = _checked_mul(pure_count, len(view.villain_actions) + 2, limits.max_result_records, "oracle", "enumerator diagnostic records")
             comparison = _checked_mul(dp_shape.best_count, 1 + len(view.villain_actions), limits.max_result_records, "oracle", "oracle correspondence records")
             diagnostic_total = _checked_add(diagnostics, comparison, limits.max_result_records, "oracle", "oracle diagnostic records")
             _checked_add(diagnostic_total, final_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
-        dp_summary = _response_summary(dp_first, view.villain_actions, require_action_sets=True, shape=dp_shape)
         if need_dp_full:
             dp_cap = limits.max_full_correspondence_strategies if request.correspondence_mode is PreparedCorrespondenceMode.FULL else limits.max_enumerator_pure_strategies
             if generation > dp_cap or dp_shape.best_count > dp_cap:
@@ -981,31 +1027,37 @@ def evaluate_prepared_two_street(
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "full-correspondence", f"second DP failed: {type(exc).__name__}")
             dp_second_shape = _response_shape(dp_full_result, view.villain_actions, require_action_sets=True)
-            dp_second_summary = _response_summary(dp_full_result, view.villain_actions, require_action_sets=True, shape=dp_second_shape)
-            if not _summary_equal(dp_summary, dp_second_summary) or dp_summary.action_sets != dp_second_summary.action_sets or dp_summary.representative != dp_second_summary.representative:
+            dp_second_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, dp_second_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
+            if request.oracle_check:
+                _checked_add(diagnostic_total, dp_second_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+            if not _raw_repeated_dp_equal(dp_shape, dp_second_shape):
                 _fail(PreparedEvaluationStatus.NON_REPRODUCIBLE, "full-correspondence", "repeated DP result mismatch")
-            dp_full = _full_tuple(dp_full_result, view.villain_actions, dp_summary.best_count)
-            if dp_summary.representative not in dp_full:
-                _fail(PreparedEvaluationStatus.NON_REPRODUCIBLE, "full-correspondence", "representative is absent from full correspondence")
 
-        primary_summary = dp_summary
-        primary_full = dp_full
+        enum_result = None
+        enum_shape = None
         if request.oracle_check:
             try:
                 enum_result = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=limits.max_enumerator_pure_strategies, method="enumerate", allow_negative_residual=False)
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "oracle", f"enumerator failed: {type(exc).__name__}")
             enum_shape = _response_shape(enum_result, view.villain_actions, require_action_sets=False)
-            enum_summary_raw = _response_summary(enum_result, view.villain_actions, require_action_sets=False, shape=enum_shape)
-            enum_summary = replace(enum_summary_raw, action_sets=dp_summary.action_sets)
-            enum_full = _full_tuple(enum_result, view.villain_actions, enum_summary.best_count)
-            if not _summary_equal(dp_summary, enum_summary) or dp_full != enum_full:
+            enum_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, enum_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
+            _checked_add(diagnostic_total, enum_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+            if not _raw_oracle_equal(dp_second_shape, enum_shape):
                 _fail(PreparedEvaluationStatus.ORACLE_MISMATCH, "oracle", "DP and enumerator disagree")
-            if request.method == "enumerate":
-                primary_summary = enum_summary
-                primary_full = enum_full
 
-        returned_full = primary_full if request.correspondence_mode is PreparedCorrespondenceMode.FULL else None
+        dp_summary = _response_summary(dp_first, view.villain_actions, require_action_sets=True, shape=dp_shape)
+        primary_summary = dp_summary
+        full_source = dp_full_result
+        if request.oracle_check:
+            if request.method == "enumerate":
+                enum_summary_raw = _response_summary(enum_result, view.villain_actions, require_action_sets=False, shape=enum_shape)
+                primary_summary = replace(enum_summary_raw, action_sets=dp_summary.action_sets)
+                full_source = enum_result
+
+        returned_full = None
+        if request.correspondence_mode is PreparedCorrespondenceMode.FULL:
+            returned_full = _full_tuple(full_source, view.villain_actions, primary_summary.best_count)
         _result_record_count(hero_norm, villain_norm, fixed_value, primary_summary, trace_count, len(returned_full) if returned_full else 0, len(view.villain_actions), limits.max_result_records)
         trace = _trace(hero_norm, villain_norm, fixed_value is not None, request.oracle_check, request.correspondence_mode is PreparedCorrespondenceMode.FULL)
         exact = PreparedExactResponseValue(

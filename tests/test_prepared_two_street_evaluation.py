@@ -221,6 +221,28 @@ def _returned_record_count(result):
     return total
 
 
+def _count_prepared_response_conversions(monkeypatch):
+    calls = {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+    names = (
+        ("PreparedResponseAssignment", "assignment"),
+        ("PreparedPureResponse", "pure"),
+        ("PreparedResponseActionSet", "action_set"),
+        ("PreparedResponseVariation", "variation"),
+        ("_response_summary", "summary"),
+        ("_full_tuple", "full"),
+        ("_trace", "trace"),
+    )
+    for name, key in names:
+        original = getattr(evaluation_module, name)
+
+        def counted(*args, _key=key, _original=original, **kwargs):
+            calls[_key] += 1
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(evaluation_module, name, counted)
+    return calls
+
+
 def _ordered_tree_record(node):
     if isinstance(node, TerminalNode):
         return ("terminal", node.node_id, node.hero_ev.hex(), node.villain_ev.hex(), node.house_rake.hex())
@@ -700,6 +722,102 @@ def test_exact_response_record_cap_precedes_prepared_nested_conversion(monkeypat
         PreparedEvaluationStatus.CAP_EXCEEDED,
     )
     assert calls == {"dp": 1, "canonical": 0, "trace": 0}
+
+
+def test_second_dp_raw_count_and_mismatch_precede_prepared_conversion(monkeypatch):
+    build = _build(_one_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    root = _artifact(build, PreparedPlayer.VILLAIN, ("check", "bet::open-2"))
+    request = PreparedEvaluationRequest(correspondence_mode=PreparedCorrespondenceMode.FULL)
+    baseline = evaluate_prepared_two_street(build, hero, request=request)
+    _assert_success(baseline)
+    exact = _returned_record_count(baseline)
+    assert exact == 23
+
+    conversions = _count_prepared_response_conversions(monkeypatch)
+    original = evaluation_module.solve_exact_response
+    solve_calls = {"count": 0}
+
+    def larger_second_response(*args, **kwargs):
+        result = original(*args, **kwargs)
+        solve_calls["count"] += 1
+        if solve_calls["count"] == 2:
+            result.best_response_action_sets = {root.info_set_id: list(root.legal_action_labels)}
+        return result
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", larger_second_response)
+    capped = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=exact),
+        request=request,
+    )
+    _assert_failure(capped, PreparedEvaluationStatus.CAP_EXCEEDED)
+    assert solve_calls == {"count": 2}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+    solve_calls["count"] = 0
+    for key in conversions:
+        conversions[key] = 0
+    within_cap = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=exact + 1),
+        request=request,
+    )
+    _assert_failure(within_cap, PreparedEvaluationStatus.NON_REPRODUCIBLE)
+    assert solve_calls == {"count": 2}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+
+def test_enumerator_raw_count_and_mismatch_precede_prepared_conversion(monkeypatch):
+    build = _build(_one_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    root = _artifact(build, PreparedPlayer.VILLAIN, ("check", "bet::open-2"))
+    request = PreparedEvaluationRequest(oracle_check=True)
+    baseline = evaluate_prepared_two_street(build, hero, request=request)
+    _assert_success(baseline)
+    exact_response = baseline.evaluation.exact_response
+    villain_info_count = len(exact_response.representative_pure_response.assignments)
+    diagnostics = exact_response.num_villain_pure_strategies * (villain_info_count + 2)
+    comparison = exact_response.num_best_response_strategies * (villain_info_count + 1)
+    exact = _returned_record_count(baseline) + diagnostics + comparison
+    assert exact == 29
+
+    conversions = _count_prepared_response_conversions(monkeypatch)
+    original = evaluation_module.solve_exact_response
+    solve_calls = {"count": 0}
+
+    def larger_enumerator_response(*args, **kwargs):
+        result = original(*args, **kwargs)
+        solve_calls["count"] += 1
+        if kwargs["method"] == "enumerate":
+            result.best_response_action_sets = {root.info_set_id: list(root.legal_action_labels)}
+        return result
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", larger_enumerator_response)
+    capped = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=exact),
+        request=request,
+    )
+    _assert_failure(capped, PreparedEvaluationStatus.CAP_EXCEEDED)
+    assert solve_calls == {"count": 3}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
+
+    solve_calls["count"] = 0
+    for key in conversions:
+        conversions[key] = 0
+    within_cap = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=exact + 1),
+        request=request,
+    )
+    _assert_failure(within_cap, PreparedEvaluationStatus.ORACLE_MISMATCH)
+    assert solve_calls == {"count": 3}
+    assert conversions == {"assignment": 0, "pure": 0, "action_set": 0, "variation": 0, "summary": 0, "full": 0, "trace": 0}
 
 
 def test_same_runtime_identity_output_hash_and_expected_hash_contract():
