@@ -221,6 +221,57 @@ def _returned_record_count(result):
     return total
 
 
+def _ordered_tree_record(node):
+    if isinstance(node, TerminalNode):
+        return ("terminal", node.node_id, node.hero_ev.hex(), node.villain_ev.hex(), node.house_rake.hex())
+    if isinstance(node, ChanceNode):
+        return ("chance", node.node_id, tuple((probability.hex(), _ordered_tree_record(child)) for probability, child in node.children))
+    kind = "hero" if isinstance(node, HeroNode) else "villain"
+    return (kind, node.node_id, node.info_set, tuple((action, _ordered_tree_record(child)) for action, child in node.actions))
+
+
+def _transition_node_id(record):
+    transition, source, hero_bucket, villain_bucket = record.row_identity
+    return "node:sha256:" + evaluation_module._sha({
+        "kind": "transition",
+        "public_history_id": source,
+        "hero_bucket_history": (hero_bucket,),
+        "villain_bucket_history": (villain_bucket,),
+        "discriminator": transition,
+    })
+
+
+def _replace_transition_probabilities_and_rehash(build, probabilities):
+    target = _transition_node_id(build.chance_normalization[0])
+
+    def rewrite(node):
+        if node.node_id == target:
+            return replace(node, children=tuple((probability, child) for probability, (_, child) in zip(probabilities, node.children)))
+        if isinstance(node, ChanceNode):
+            return replace(node, children=tuple((probability, rewrite(child)) for probability, child in node.children))
+        if isinstance(node, (HeroNode, VillainNode)):
+            return replace(node, actions=tuple((action, rewrite(child)) for action, child in node.actions))
+        return node
+
+    tree = GameTree(rewrite(build.tree.root))
+    ordered = evaluation_module._sha({
+        "algorithm": "betting-tree-v2-ordered-tree-sha256-v1",
+        "tree": _ordered_tree_record(tree.root),
+    })
+    identity = replace(build.identity, ordered_tree_sha256=ordered)
+    identity = replace(identity, run_identity=evaluation_module._sha({
+        "contract_version": identity.contract_version,
+        "builder_id": identity.builder_id,
+        "action_label_id": identity.action_label_id,
+        "normalization_id": identity.normalization_id,
+        "information_key_id": identity.information_key_id,
+        "raw_sha256": identity.raw_sha256,
+        "semantic_sha256": identity.semantic_sha256,
+        "ordered_tree_sha256": identity.ordered_tree_sha256,
+    }))
+    return replace(build, tree=tree, identity=identity)
+
+
 def test_exact_public_api_constants_enums_fields_and_signature():
     expected = [
         "PREPARED_TWO_STREET_EVALUATION_ADAPTER_ID", "PREPARED_PROFILE_NORMALIZATION_ID", "PREPARED_PROFILE_RAW_ID",
@@ -458,6 +509,38 @@ def test_build_tree_count_info_normalization_run_identity_fault_injection():
         _assert_failure(evaluate_prepared_two_street(faulty, hero), status)
 
 
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda record: replace(record, raw_sum=2.0, normalization_factor=0.5),
+        lambda record: replace(record, raw_sum=1.0 + 5e-10),
+        lambda record: replace(record, normalization_factor=math.nextafter(record.normalization_factor, math.inf)),
+        lambda record: replace(record, effective_probabilities=tuple(reversed(record.effective_probabilities))),
+    ],
+)
+def test_normalization_raw_factor_and_effective_faults_fail_before_core(monkeypatch, mutate):
+    build = _build(_two_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    record = build.chance_normalization[0]
+    faulty = replace(build, chance_normalization=(mutate(record),))
+    calls = {"fixed": 0, "dp": 0}
+    monkeypatch.setattr(evaluation_module, "evaluate_fixed_profile", lambda *a, **k: calls.__setitem__("fixed", calls["fixed"] + 1))
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", lambda *a, **k: calls.__setitem__("dp", calls["dp"] + 1))
+    _assert_failure(evaluate_prepared_two_street(faulty, hero), PreparedEvaluationStatus.BUILD_MISMATCH)
+    assert calls == {"fixed": 0, "dp": 0}
+
+
+def test_normalization_artifact_is_bound_to_materialized_transition_probabilities(monkeypatch):
+    build = _build(_two_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    record = build.chance_normalization[0]
+    faulty = _replace_transition_probabilities_and_rehash(build, tuple(reversed(record.effective_probabilities)))
+    calls = {"dp": 0}
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", lambda *a, **k: calls.__setitem__("dp", calls["dp"] + 1))
+    _assert_failure(evaluate_prepared_two_street(faulty, hero), PreparedEvaluationStatus.BUILD_MISMATCH)
+    assert calls == {"dp": 0}
+
+
 def test_duplicate_node_id_dag_cycle_faults_are_rejected():
     build = _build(_two_street_spec())
     hero = _profile(build, PreparedPlayer.HERO)
@@ -552,6 +635,73 @@ def test_result_and_oracle_record_caps_accept_exact_and_reject_cap_minus_one():
     _assert_failure(evaluate_prepared_two_street(build, hero, limits=replace(PreparedEvaluationLimits(), max_result_records=oracle_exact - 1), request=PreparedEvaluationRequest(oracle_check=True)), PreparedEvaluationStatus.CAP_EXCEEDED)
 
 
+def test_minimum_result_cap_precedes_mapping_strategy_core_and_nested_allocations(monkeypatch):
+    build = _build(_one_street_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    calls = {"normalize": 0, "strategy": 0, "dp": 0, "canonical": 0, "full": 0, "trace": 0}
+    originals = {
+        "normalize": evaluation_module._normalize_profile,
+        "strategy": evaluation_module.HeroStrategy,
+        "dp": evaluation_module.solve_exact_response,
+        "canonical": evaluation_module._canonical_response,
+        "full": evaluation_module._full_tuple,
+        "trace": evaluation_module._trace,
+    }
+
+    def counted(name):
+        def call(*args, **kwargs):
+            calls[name] += 1
+            return originals[name](*args, **kwargs)
+        return call
+
+    monkeypatch.setattr(evaluation_module, "_normalize_profile", counted("normalize"))
+    monkeypatch.setattr(evaluation_module, "HeroStrategy", counted("strategy"))
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", counted("dp"))
+    monkeypatch.setattr(evaluation_module, "_canonical_response", counted("canonical"))
+    monkeypatch.setattr(evaluation_module, "_full_tuple", counted("full"))
+    monkeypatch.setattr(evaluation_module, "_trace", counted("trace"))
+    result = evaluate_prepared_two_street(
+        build,
+        hero,
+        limits=replace(PreparedEvaluationLimits(), max_result_records=1),
+    )
+    _assert_failure(result, PreparedEvaluationStatus.CAP_EXCEEDED)
+    assert calls == {"normalize": 0, "strategy": 0, "dp": 0, "canonical": 0, "full": 0, "trace": 0}
+
+
+def test_exact_response_record_cap_precedes_prepared_nested_conversion(monkeypatch):
+    build = _build(_one_street_spec(check_share=0.0, rake=0.0))
+    hero = _profile(build, PreparedPlayer.HERO)
+    baseline = evaluate_prepared_two_street(build, hero)
+    _assert_success(baseline)
+    exact = _returned_record_count(baseline)
+    calls = {"dp": 0, "canonical": 0, "trace": 0}
+    original_dp = evaluation_module.solve_exact_response
+    original_canonical = evaluation_module._canonical_response
+    original_trace = evaluation_module._trace
+
+    def counted_dp(*args, **kwargs):
+        calls["dp"] += 1
+        return original_dp(*args, **kwargs)
+
+    def counted_canonical(*args, **kwargs):
+        calls["canonical"] += 1
+        return original_canonical(*args, **kwargs)
+
+    def counted_trace(*args, **kwargs):
+        calls["trace"] += 1
+        return original_trace(*args, **kwargs)
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", counted_dp)
+    monkeypatch.setattr(evaluation_module, "_canonical_response", counted_canonical)
+    monkeypatch.setattr(evaluation_module, "_trace", counted_trace)
+    _assert_failure(
+        evaluate_prepared_two_street(build, hero, limits=replace(PreparedEvaluationLimits(), max_result_records=exact - 1)),
+        PreparedEvaluationStatus.CAP_EXCEEDED,
+    )
+    assert calls == {"dp": 1, "canonical": 0, "trace": 0}
+
+
 def test_same_runtime_identity_output_hash_and_expected_hash_contract():
     build = _build(_one_street_spec())
     hero = _profile(build, PreparedPlayer.HERO)
@@ -573,6 +723,60 @@ def test_pinned_deterministic_identity_profile_and_output_hash():
     assert result.identity.hero_raw_profile_sha256 == "71dcfb4951ccacedafa6868730f3adf0b90ce3b5534252d1410f26739c24e944"
     assert result.identity.hero_effective_profile_sha256 == "3d4f4879a5fd2102cf50eef9fce9386d3679d983b988521445fd5532ef70b718"
     assert result.identity.output_semantic_sha256 == "f84a0b8d4fa40b62d8d887b2f7bf256813ebfaefee113cfd92eb570469f6d996"
+
+
+@pytest.mark.parametrize("fault", ["best_gt_pure", "duplicate_full", "variation", "off_path"])
+def test_invalid_exact_response_count_and_discrete_structure_fail_without_partial(monkeypatch, fault):
+    build = _build(_one_street_spec(check_share=0.0, rake=0.0))
+    hero = _profile(build, PreparedPlayer.HERO)
+    original = evaluation_module.solve_exact_response
+
+    def broken(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if fault == "best_gt_pure":
+            result.num_best_response_strategies = result.num_villain_pure_strategies + 1
+        elif fault == "duplicate_full":
+            result.best_response_strategies = [result.best_response_strategies[0], result.best_response_strategies[0]]
+            result.num_best_response_strategies = 2
+        elif fault == "variation":
+            info_id = next(iter(result.best_response_action_variation))
+            result.best_response_action_variation[info_id] = ["unknown", result.best_response_action_variation[info_id][0]]
+        else:
+            result.off_path_info_sets = ["info:sha256:" + "f" * 64]
+        return result
+
+    monkeypatch.setattr(evaluation_module, "solve_exact_response", broken)
+    _assert_failure(evaluate_prepared_two_street(build, hero), PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE)
+
+
+def test_positive_subnormal_stays_positive_and_nonfinite_derived_fails_numeric(monkeypatch):
+    build = _build(_one_street_spec())
+    facing = _artifact(build, PreparedPlayer.HERO, ("fold", "call"))
+    hero = _profile(build, PreparedPlayer.HERO, {facing.info_set_id: {"fold": math.ulp(0.0), "call": 1.0}})
+    accepted = evaluate_prepared_two_street(build, hero)
+    _assert_success(accepted)
+    record = next(item for item in accepted.evaluation.hero_profile_normalization.records if item.info_set_id == facing.info_set_id)
+    assert record.raw_probabilities[0] > 0.0 and record.effective_probabilities[0] > 0.0
+
+    original_fsum = evaluation_module.math.fsum
+    original_verify = evaluation_module._verify_build
+    calls = {"count": 0, "armed": False}
+
+    def nonfinite_effective(values):
+        if calls["armed"]:
+            calls["count"] += 1
+        if calls["armed"] and calls["count"] == 2:
+            return math.inf
+        return original_fsum(values)
+
+    def verify_then_arm(candidate):
+        view = original_verify(candidate)
+        calls["armed"] = True
+        return view
+
+    monkeypatch.setattr(evaluation_module.math, "fsum", nonfinite_effective)
+    monkeypatch.setattr(evaluation_module, "_verify_build", verify_then_arm)
+    _assert_failure(evaluate_prepared_two_street(build, hero), PreparedEvaluationStatus.NUMERIC_FAILURE)
 
 
 def test_fixed_dp_oracle_injected_failures_have_no_partial_payload(monkeypatch):

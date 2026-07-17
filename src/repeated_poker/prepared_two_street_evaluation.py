@@ -419,6 +419,17 @@ def _outer_caps(build: PreparedTwoStreetBuild, hero: PreparedPlayerProfile, vill
     trace_count = 7 + len(hero.entries) + (len(villain.entries) if villain is not None else 0) + 1 + (1 if villain is not None else 0) + (1 if request.oracle_check else 0) + (1 if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0)
     if trace_count > limits.max_validation_trace_records:
         _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "trace-cap", "validation trace cap exceeded")
+    if type(build.counts) is PreparedBuildCounts:
+        villain_info_count = build.counts.villain_information_sets
+        minimum_records = 3 + 1 + len(hero.entries) + trace_count
+        if villain is not None:
+            minimum_records += 2 + len(villain.entries)
+        minimum_records += 1 + villain_info_count
+        minimum_records += 2 * villain_info_count
+        if request.correspondence_mode is PreparedCorrespondenceMode.FULL:
+            minimum_records += 1 + villain_info_count
+        if minimum_records > limits.max_result_records:
+            _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "result-cap", "minimum result record cap exceeded")
 
 
 @dataclass(frozen=True)
@@ -462,6 +473,7 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
 
     seen_objects: set[int] = set()
     seen_ids: dict[str, Any] = {}
+    transition_probabilities: dict[str, tuple[float, ...]] = {}
     decision = terminal = chance_edges = total = max_depth = 0
 
     def walk(node: Any, depth: int) -> Any:
@@ -493,10 +505,15 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
             if chance_edges > 100_000 or chance_edges > counts.chance_edges:
                 _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "ordered-tree", "chance edge count exceeds bound")
             rows = []
+            probabilities = []
             for probability, child in node.children:
                 if isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(float(probability)):
                     _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "ordered-tree", "invalid chance probability")
-                rows.append((float(probability).hex(), walk(child, depth + 1)))
+                number = float(probability)
+                probabilities.append(number)
+                rows.append((number.hex(), walk(child, depth + 1)))
+            if node_id != "node:prepared-two-street-root":
+                transition_probabilities[node_id] = tuple(probabilities)
             return ("chance", node_id, tuple(rows))
         if type(node) in (HeroNode, VillainNode):
             if not isinstance(node.actions, tuple) or any(not isinstance(edge, tuple) or len(edge) != 2 or not isinstance(edge[0], str) for edge in node.actions):
@@ -520,6 +537,7 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
         _fail(PreparedEvaluationStatus.IDENTITY_MISMATCH, "ordered-tree", "ordered-tree identity mismatch")
 
     row_ids: set[tuple[str, str, str, str]] = set()
+    transition_node_ids: set[str] = set()
     previous_row: tuple[str, str, str, str] | None = None
     transition_edge_count = 0
     for item in build.chance_normalization:
@@ -536,11 +554,29 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
         values = (item.raw_sum, item.normalization_factor, *item.effective_probabilities)
         if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)) or float(v) <= 0 for v in values):
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "invalid normalization numeric")
-        if len(item.edge_identities) != len(item.effective_probabilities) or abs(float(item.raw_sum) * float(item.normalization_factor) - 1.0) > 1e-9 or abs(math.fsum(item.effective_probabilities) - 1.0) > 1e-9:
+        raw_sum = float(item.raw_sum)
+        factor = float(item.normalization_factor)
+        effective = tuple(float(value) for value in item.effective_probabilities)
+        if abs(raw_sum - 1.0) > 1e-9 or factor != 1.0 / raw_sum:
+            _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "normalization raw sum or factor mismatch")
+        transition_id, source_id, hero_bucket, villain_bucket = item.row_identity
+        transition_node_id = "node:sha256:" + _sha({
+            "kind": "transition",
+            "public_history_id": source_id,
+            "hero_bucket_history": (hero_bucket,),
+            "villain_bucket_history": (villain_bucket,),
+            "discriminator": transition_id,
+        })
+        if transition_node_id in transition_node_ids or transition_probabilities.get(transition_node_id) != effective:
+            _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "normalization artifact disagrees with materialized transition")
+        transition_node_ids.add(transition_node_id)
+        if len(item.edge_identities) != len(effective) or abs(math.fsum(effective) - 1.0) > 1e-9:
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "normalization arithmetic mismatch")
         transition_edge_count += len(item.edge_identities)
     if transition_edge_count != counts.chance_edges - counts.root_matchups:
         _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "normalization edge count disagrees with tree counts")
+    if transition_node_ids != set(transition_probabilities):
+        _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "normalization-artifacts", "normalization rows do not exactly cover materialized transitions")
 
     hero_artifacts: dict[str, tuple[str, ...]] = {}
     villain_artifacts: dict[str, tuple[str, ...]] = {}
@@ -689,7 +725,15 @@ class _ResponseSummary:
     off_path: tuple[str, ...]
 
 
-def _response_summary(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool) -> _ResponseSummary:
+@dataclass(frozen=True)
+class _ResponseShape:
+    numeric: tuple[float, float, float, float, float]
+    pure_count: int
+    best_count: int
+    response_records: int
+
+
+def _response_shape(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool) -> _ResponseShape:
     if type(result) is not BestResponseResult:
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response result type")
     numeric = tuple(_finite_core(v, n) for v, n in zip((result.villain_max_ev, result.ev_h_worst, result.ev_h_best, result.expected_house_rake_worst, result.expected_house_rake_best), ("villain max", "Hero worst", "Hero best", "rake worst", "rake best")))
@@ -698,33 +742,87 @@ def _response_summary(result: Any, legal: dict[str, tuple[str, ...]], *, require
     for value in (result.num_villain_pure_strategies, result.num_best_response_strategies):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response count")
+    if result.num_best_response_strategies > result.num_villain_pure_strategies:
+        _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "best-response count exceeds pure-strategy count")
     if not isinstance(result.best_response_strategies, list) or not result.best_response_strategies:
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "response representative is absent")
-    representative = _canonical_response(result.best_response_strategies[0], legal)
+    if len(result.best_response_strategies) not in (1, result.num_best_response_strategies):
+        _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid materialized response count")
+    strategy_keys = []
+    for strategy in result.best_response_strategies:
+        if not isinstance(strategy, dict) or set(strategy) != set(legal):
+            _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "response does not exactly cover Villain information sets")
+        key = []
+        for info_id in sorted(legal):
+            action = strategy[info_id]
+            if action not in legal[info_id]:
+                _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "response contains an illegal action")
+            key.append((info_id, action))
+        strategy_keys.append(tuple(key))
+    if len(strategy_keys) != len(set(strategy_keys)):
+        _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "duplicate materialized response")
     raw_sets = result.best_response_action_sets
     if require_action_sets and (not isinstance(raw_sets, dict) or set(raw_sets) != set(legal)):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "conditional action sets are incomplete")
-    action_sets = []
+    if raw_sets is not None and (not isinstance(raw_sets, dict) or set(raw_sets) != set(legal)):
+        _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid conditional action-set structure")
+    action_set_records = 0
     if raw_sets is not None:
         for info_id in sorted(legal):
             values = raw_sets.get(info_id)
             if not isinstance(values, list) or not values or len(values) != len(set(values)) or any(v not in legal[info_id] for v in values):
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid conditional action set")
-            ordered = tuple(action for action in legal[info_id] if action in values)
-            action_sets.append(PreparedResponseActionSet(info_id, ordered))
+            if require_action_sets and result.best_response_strategies[0][info_id] not in values:
+                _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "representative disagrees with conditional action set")
+            action_set_records += 1 + len(values)
     if not isinstance(result.best_response_action_variation, dict):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response variation")
-    variation = []
+    if any(not isinstance(info_id, str) or info_id not in legal for info_id in result.best_response_action_variation):
+        _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "unknown variation information set")
+    variation_records = 0
     for info_id in sorted(result.best_response_action_variation):
         if info_id not in legal:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "unknown variation information set")
         values = result.best_response_action_variation[info_id]
         if not isinstance(values, list) or len(values) < 2 or len(values) != len(set(values)) or any(v not in legal[info_id] for v in values):
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid response variation actions")
-        variation.append(PreparedResponseVariation(info_id, tuple(action for action in legal[info_id] if action in values)))
-    if not isinstance(result.off_path_info_sets, list) or len(result.off_path_info_sets) != len(set(result.off_path_info_sets)) or any(i not in legal for i in result.off_path_info_sets):
+        if result.best_response_strategies[0][info_id] not in values:
+            _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "representative disagrees with response variation")
+        variation_records += 1 + len(values)
+    if not isinstance(result.off_path_info_sets, list) or any(not isinstance(i, str) for i in result.off_path_info_sets) or result.off_path_info_sets != sorted(result.off_path_info_sets) or len(result.off_path_info_sets) != len(set(result.off_path_info_sets)) or any(i not in legal for i in result.off_path_info_sets):
         _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "invalid off-path information sets")
-    return _ResponseSummary(numeric, result.num_villain_pure_strategies, result.num_best_response_strategies, representative, tuple(action_sets), tuple(variation), tuple(sorted(result.off_path_info_sets)))
+    for info_id in result.off_path_info_sets:
+        if len(legal[info_id]) > 1 and set(result.best_response_action_variation.get(info_id, ())) != set(legal[info_id]):
+            _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "off-path freedom disagrees with response variation")
+    if len(result.best_response_strategies) == result.num_best_response_strategies:
+        materialized_variation = {
+            info_id: {strategy[info_id] for strategy in result.best_response_strategies}
+            for info_id in legal
+        }
+        expected_variation = {
+            info_id: set(actions)
+            for info_id, actions in result.best_response_action_variation.items()
+        }
+        if {info_id: actions for info_id, actions in materialized_variation.items() if len(actions) > 1} != expected_variation:
+            _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", "full responses disagree with response variation")
+    records = 1 + len(legal) + action_set_records + variation_records + len(result.off_path_info_sets)
+    return _ResponseShape(numeric, result.num_villain_pure_strategies, result.num_best_response_strategies, records)
+
+
+def _response_summary(result: Any, legal: dict[str, tuple[str, ...]], *, require_action_sets: bool, shape: _ResponseShape | None = None) -> _ResponseSummary:
+    if shape is None:
+        shape = _response_shape(result, legal, require_action_sets=require_action_sets)
+    representative = _canonical_response(result.best_response_strategies[0], legal)
+    action_sets = []
+    if result.best_response_action_sets is not None:
+        for info_id in sorted(legal):
+            values = result.best_response_action_sets[info_id]
+            action_sets.append(PreparedResponseActionSet(info_id, tuple(action for action in legal[info_id] if action in values)))
+    variation = []
+    for info_id in sorted(result.best_response_action_variation):
+        values = result.best_response_action_variation[info_id]
+        variation.append(PreparedResponseVariation(info_id, tuple(action for action in legal[info_id] if action in values)))
+    return _ResponseSummary(shape.numeric, shape.pure_count, shape.best_count, representative, tuple(action_sets), tuple(variation), tuple(result.off_path_info_sets))
 
 
 def _full_tuple(result: BestResponseResult, legal: dict[str, tuple[str, ...]], expected: int) -> tuple[PreparedPureResponse, ...]:
@@ -752,6 +850,16 @@ def _result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: 
     total += len(summary.off_path)
     total = _checked_add(total, _checked_mul(full_count, 1 + villain_info_count, cap, "result-cap", "full correspondence records"), cap, "result-cap", "result records")
     return total
+
+
+def _raw_result_record_count(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: PreparedFixedProfileValue | None, shape: _ResponseShape, trace_count: int, full_count: int, villain_info_count: int, cap: int) -> int:
+    total = 3 + 1 + len(hero_norm.records) + trace_count
+    if villain_norm is not None:
+        total += 1 + len(villain_norm.records)
+    if fixed is not None:
+        total += 1
+    total = _checked_add(total, shape.response_records, cap, "result-cap", "result records")
+    return _checked_add(total, _checked_mul(full_count, 1 + villain_info_count, cap, "result-cap", "full correspondence records"), cap, "result-cap", "result records")
 
 
 def _trace(hero_norm: PreparedProfileNormalization, villain_norm: PreparedProfileNormalization | None, fixed: bool, oracle: bool, full: bool) -> tuple[PreparedEvaluationTraceRecord, ...]:
@@ -831,11 +939,11 @@ def evaluate_prepared_two_street(
             dp_first = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=1, method="dp", allow_negative_residual=False)
         except Exception as exc:
             _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "exact-response", f"DP failed: {type(exc).__name__}")
-        dp_summary = _response_summary(dp_first, view.villain_actions, require_action_sets=True)
-        if dp_summary.pure_count != pure_count:
+        dp_shape = _response_shape(dp_first, view.villain_actions, require_action_sets=True)
+        if dp_shape.pure_count != pure_count:
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "exact-response", "DP pure count mismatch")
 
-        variation = {item.info_set_id: item.action_labels for item in dp_summary.variation}
+        variation = dp_first.best_response_action_variation
         generation = 1
         generation_cap = None
         if request.correspondence_mode is PreparedCorrespondenceMode.FULL:
@@ -851,27 +959,29 @@ def evaluate_prepared_two_street(
         dp_full = None
         trace_count = 7 + len(hero_norm.records) + (len(villain_norm.records) if villain_norm else 0) + 1 + (1 if fixed_value else 0) + (1 if request.oracle_check else 0) + (1 if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0)
         if request.correspondence_mode is PreparedCorrespondenceMode.FULL:
-            if generation > limits.max_full_correspondence_strategies or dp_summary.best_count > limits.max_full_correspondence_strategies:
+            if generation > limits.max_full_correspondence_strategies or dp_shape.best_count > limits.max_full_correspondence_strategies:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "full-correspondence", "full correspondence cap exceeded")
-            _checked_mul(dp_summary.best_count, len(view.villain_actions), limits.max_result_records, "result-cap", "nested full assignments")
-            _result_record_count(hero_norm, villain_norm, fixed_value, dp_summary, trace_count, dp_summary.best_count, len(view.villain_actions), limits.max_result_records)
+            _checked_mul(dp_shape.best_count, len(view.villain_actions), limits.max_result_records, "result-cap", "nested full assignments")
+        full_result_count = dp_shape.best_count if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0
+        final_records = _raw_result_record_count(hero_norm, villain_norm, fixed_value, dp_shape, trace_count, full_result_count, len(view.villain_actions), limits.max_result_records)
         if request.oracle_check:
             if pure_count > limits.max_enumerator_pure_strategies:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "oracle", "enumerator pure-strategy cap exceeded")
             diagnostics = _checked_mul(pure_count, len(view.villain_actions) + 2, limits.max_result_records, "oracle", "enumerator diagnostic records")
-            comparison = _checked_mul(dp_summary.best_count, 1 + len(view.villain_actions), limits.max_result_records, "oracle", "oracle correspondence records")
+            comparison = _checked_mul(dp_shape.best_count, 1 + len(view.villain_actions), limits.max_result_records, "oracle", "oracle correspondence records")
             diagnostic_total = _checked_add(diagnostics, comparison, limits.max_result_records, "oracle", "oracle diagnostic records")
-            final_records = _result_record_count(hero_norm, villain_norm, fixed_value, dp_summary, trace_count, dp_summary.best_count if request.correspondence_mode is PreparedCorrespondenceMode.FULL else 0, len(view.villain_actions), limits.max_result_records)
             _checked_add(diagnostic_total, final_records, limits.max_result_records, "oracle", "oracle diagnostics plus result records")
+        dp_summary = _response_summary(dp_first, view.villain_actions, require_action_sets=True, shape=dp_shape)
         if need_dp_full:
             dp_cap = limits.max_full_correspondence_strategies if request.correspondence_mode is PreparedCorrespondenceMode.FULL else limits.max_enumerator_pure_strategies
-            if generation > dp_cap or dp_summary.best_count > dp_cap:
+            if generation > dp_cap or dp_shape.best_count > dp_cap:
                 _fail(PreparedEvaluationStatus.CAP_EXCEEDED, "correspondence", "internal DP correspondence cap exceeded")
             try:
                 dp_full_result = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=dp_cap, method="dp", allow_negative_residual=False)
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "full-correspondence", f"second DP failed: {type(exc).__name__}")
-            dp_second_summary = _response_summary(dp_full_result, view.villain_actions, require_action_sets=True)
+            dp_second_shape = _response_shape(dp_full_result, view.villain_actions, require_action_sets=True)
+            dp_second_summary = _response_summary(dp_full_result, view.villain_actions, require_action_sets=True, shape=dp_second_shape)
             if not _summary_equal(dp_summary, dp_second_summary) or dp_summary.action_sets != dp_second_summary.action_sets or dp_summary.representative != dp_second_summary.representative:
                 _fail(PreparedEvaluationStatus.NON_REPRODUCIBLE, "full-correspondence", "repeated DP result mismatch")
             dp_full = _full_tuple(dp_full_result, view.villain_actions, dp_summary.best_count)
@@ -885,7 +995,8 @@ def evaluate_prepared_two_street(
                 enum_result = solve_exact_response(build.tree, hero_strategy, tolerance=1e-9, max_pure_strategies=limits.max_enumerator_pure_strategies, method="enumerate", allow_negative_residual=False)
             except Exception as exc:
                 _fail(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, "oracle", f"enumerator failed: {type(exc).__name__}")
-            enum_summary_raw = _response_summary(enum_result, view.villain_actions, require_action_sets=False)
+            enum_shape = _response_shape(enum_result, view.villain_actions, require_action_sets=False)
+            enum_summary_raw = _response_summary(enum_result, view.villain_actions, require_action_sets=False, shape=enum_shape)
             enum_summary = replace(enum_summary_raw, action_sets=dp_summary.action_sets)
             enum_full = _full_tuple(enum_result, view.villain_actions, enum_summary.best_count)
             if not _summary_equal(dp_summary, enum_summary) or dp_full != enum_full:
