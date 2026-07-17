@@ -1,4 +1,4 @@
-from dataclasses import fields
+from dataclasses import fields, replace
 from fractions import Fraction
 import math
 
@@ -373,6 +373,32 @@ def test_injected_verifier_failures_have_no_payload(monkeypatch, kind):
     assert result.strategy_result is None and result.error
 
 
+@pytest.mark.parametrize(
+    ("lp_call", "flag_index"),
+    [(0, 1), (0, 2), (1, 1), (1, 2)],
+    ids=("sb-primal", "sb-dual", "bb-primal", "bb-dual"),
+)
+def test_public_claim_gate_rejects_false_lp_feasibility_flags(
+    monkeypatch, lp_call, flag_index
+):
+    original = strategy._verify_lp
+    calls = 0
+
+    def false_flag(*args, **kwargs):
+        nonlocal calls
+        result = list(original(*args, **kwargs))
+        if calls == lp_call:
+            result[flag_index] = False
+        calls += 1
+        return tuple(result)
+
+    monkeypatch.setattr(strategy, "_verify_lp", false_flag)
+    result = generate_rational_lift_strategy(request(epsilon=Fraction(100)))
+    assert result.status is AiofStrategyStatus.VERIFICATION_FAILED
+    assert result.strategy_result is None
+    assert result.error is not None and result.error.message
+
+
 def test_negative_gain_and_inverted_enclosure_are_not_clamped():
     game_value = synthetic_game(((1,),))
     with pytest.raises(strategy._StrategyFailure) as error:
@@ -414,6 +440,21 @@ def test_public_opt_in_oracle_and_injected_mismatch_no_payload(monkeypatch):
     failed = generate_rational_lift_strategy(request(oracle=True))
     assert failed.status is AiofStrategyStatus.ORACLE_MISMATCH
     assert failed.strategy_result is None
+
+
+def test_public_oracle_detects_primary_common_mode_tie_misclassification(monkeypatch):
+    original = strategy._audit_profile
+
+    def misclassified(*args, **kwargs):
+        gains, sb_rows, bb_rows = original(*args, **kwargs)
+        corrupted = (replace(sb_rows[0], exact_best_actions=("fold",)),) + sb_rows[1:]
+        return gains, corrupted, bb_rows
+
+    monkeypatch.setattr(strategy, "_audit_profile", misclassified)
+    result = generate_rational_lift_strategy(request(oracle=True))
+    assert result.status is AiofStrategyStatus.ORACLE_MISMATCH
+    assert result.strategy_result is None
+    assert result.error is not None and result.error.message
 
 
 def test_oracle_caps_before_plan_matrix_or_support_materialization():

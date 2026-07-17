@@ -1474,6 +1474,12 @@ def _verified_witness(
         raise _StrategyFailure(AiofStrategyStatus.INVALID_STRATEGY, "profile ratios do not match selected variables", "strategy_validation")
     lower, sb_primal, sb_dual = _verify_lp(sb_lp, sb_solution, limits)
     bb_max, bb_primal, bb_dual = _verify_lp(bb_lp, bb_solution, limits)
+    if not (sb_primal and sb_dual and bb_primal and bb_dual):
+        raise _StrategyFailure(
+            AiofStrategyStatus.VERIFICATION_FAILED,
+            "LP primal or dual feasibility flag is false",
+            "verification",
+        )
     upper = -bb_max
     if lower != upper:
         raise _StrategyFailure(AiofStrategyStatus.VERIFICATION_FAILED, "lower and upper LP objectives differ", "verification")
@@ -1661,17 +1667,86 @@ def _reference_oracle(
         sb_br - selected_value == witness.gains.g_sb
         and selected_value - bb_br == witness.gains.g_bb
     )
-    # Recompute classifications from game coefficients, not simplex state.
-    audit, sb_rows, bb_rows = _audit_profile(game, x, y, display_tolerance, limits)
+    # Independently reconstruct the selected-profile classification from the
+    # immutable rational game.  Do not share the primary audit path here: the
+    # oracle must detect a common-mode classification defect in that path.
+    oracle_sb_values: list[tuple[Fraction, Fraction]] = []
+    oracle_sb_best: list[tuple[str, ...]] = []
+    for i in range(h_count):
+        shove = _check_fraction(
+            sum(
+                (
+                    (game.probabilities[i][j] or Fraction(0))
+                    * ((1 - y[j]) * game.g + y[j] * (game.showdown[i][j] or Fraction(0)))
+                    for j in range(v_count)
+                ),
+                Fraction(0),
+            )
+            / game.p_h[i],
+            limits,
+            "oracle",
+        )
+        fold = game.f
+        maximum = max(shove, fold)
+        oracle_sb_values.append((shove, fold))
+        oracle_sb_best.append(
+            tuple(action for action, value in zip(SB_ACTIONS, (shove, fold)) if value == maximum)
+        )
+
+    oracle_bb_reaches: list[Fraction] = []
+    oracle_bb_values: list[tuple[Fraction | None, Fraction | None]] = []
+    oracle_bb_best: list[tuple[str, ...]] = []
+    for j in range(v_count):
+        reach = _check_fraction(
+            sum(
+                ((game.probabilities[i][j] or Fraction(0)) * x[i] for i in range(h_count)),
+                Fraction(0),
+            ),
+            limits,
+            "oracle",
+        )
+        oracle_bb_reaches.append(reach)
+        if reach == 0:
+            oracle_bb_values.append((None, None))
+            oracle_bb_best.append(BB_ACTIONS)
+            continue
+        call = _check_fraction(
+            sum(
+                (
+                    (game.probabilities[i][j] or Fraction(0))
+                    * x[i]
+                    * -(game.showdown[i][j] or Fraction(0))
+                    for i in range(h_count)
+                ),
+                Fraction(0),
+            )
+            / reach,
+            limits,
+            "oracle",
+        )
+        fold = -game.g
+        maximum = max(call, fold)
+        oracle_bb_values.append((call, fold))
+        oracle_bb_best.append(
+            tuple(action for action, value in zip(BB_ACTIONS, (call, fold)) if value == maximum)
+        )
+
     tie_matches = (
-        tuple(row.exact_best_actions for row in sb_rows) == tuple(row.exact_best_actions for row in witness.sb_rows)
-        and tuple(row.exact_best_actions for row in bb_rows) == tuple(row.exact_best_actions for row in witness.bb_rows)
+        tuple(oracle_sb_best) == tuple(row.exact_best_actions for row in witness.sb_rows)
+        and tuple(oracle_bb_best) == tuple(row.exact_best_actions for row in witness.bb_rows)
+        and tuple(oracle_sb_values)
+        == tuple(tuple(action.value for action in row.action_values) for row in witness.sb_rows)
+        and tuple(oracle_bb_values)
+        == tuple(tuple(action.value for action in row.action_values) for row in witness.bb_rows)
     )
-    off_path_matches = tuple(row.information_reach_probability == 0 for row in bb_rows) == tuple(
-        row.information_reach_probability == 0 for row in witness.bb_rows
+    off_path_matches = (
+        tuple(reach == 0 for reach in oracle_bb_reaches)
+        == tuple(row.information_reach_probability == 0 for row in witness.bb_rows)
+        and tuple(oracle_bb_reaches)
+        == tuple(row.information_reach_probability for row in witness.bb_rows)
     )
     value_matches = lower_value == witness.lower_objective == witness.upper_objective
-    selected_value_matches = selected_value == witness.gains.profile_value == audit.profile_value
+    selected_value_matches = selected_value == witness.gains.profile_value
     if not (value_matches and selected_value_matches and gains_match and tie_matches and off_path_matches):
         raise _StrategyFailure(AiofStrategyStatus.ORACLE_MISMATCH, "oracle comparison mismatch", "oracle")
     comparison_identity = _identity(
