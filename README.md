@@ -120,6 +120,26 @@ See [docs/prepared_two_street_file_workflow.md](docs/prepared_two_street_file_wo
 for the exact format and guardrails. This is an abstract fixed-Hero response
 workflow, not an equilibrium solver, real-card model, or strategy advice.
 
+### Real-card AIoF public workflow
+
+M13's existing submodule APIs also provide a bounded real-card path. The worked
+example uses the exact combos `AsAh` versus `KsKh`, leaves one known five-card
+board live, and marks the other 43 cards dead so exact equity, fee-zero heads-up
+ChipEV, and the rational strategy wrapper each require one board evaluation.
+
+```powershell
+python examples/aiof_real_card_workflow.py
+```
+
+See [docs/aiof_real_card_workflow.md](docs/aiof_real_card_workflow.md) for the
+range/card-removal semantics, caps, identity, no-partial failure contract, and
+interpretation boundaries. The ChipEV correspondence is a fixed-opponent
+response. The fully qualified strategy claim is restricted to
+`aiof-rational-lift-game-v1`; it is not a range chart, an external-game Nash
+certificate, an optimal-Hero or profitability claim, or real-money strategy
+advice. Exact exhaustive and deterministic Monte Carlo requests are explicit,
+non-interchangeable algorithms with no silent fallback.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is

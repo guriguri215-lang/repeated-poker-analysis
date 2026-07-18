@@ -33,6 +33,7 @@ COMMANDS = [
         "examples/stt_pushfold_2x2.json",
         "--no-markdown",
     ],
+    [sys.executable, "examples/aiof_real_card_workflow.py"],
 ]
 
 
