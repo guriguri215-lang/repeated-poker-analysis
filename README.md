@@ -197,6 +197,28 @@ identity, Monte Carlo, reference-oracle and phase-1 diagnostics, heuristic BR,
 supplied-profile analysis, top-level exports, pipeline/GUI integration, and any
 range-chart, external-game, profitability, or real-money claim.
 
+#### Supplied-profile exact analysis file workflow
+
+Saved class/combo fixtures that need caller-supplied shove and call probabilities
+can use a separate strict two-phase adapter. Start with `inspect` to obtain the
+canonical post-removal compatible support and an identity-bound complete profile
+template:
+
+```powershell
+python scripts/run_aiof_supplied_profile_file.py examples/aiof_supplied_profile_file_v1.json
+```
+
+After copying the returned identity/template into a `run` document and filling
+every probability, the same command returns exact fee-zero ChipEV plus both
+fixed-opponent best-response correspondences. See
+[docs/aiof_supplied_profile_file_workflow.md](docs/aiof_supplied_profile_file_workflow.md)
+for the `aiof-supplied-profile-file-v1` schema, identity and caller-lowerable
+caps, strict no-partial failure contract, and deterministic full projection.
+The workflow never normalizes, clamps, truncates, or silently fills a profile.
+It is supplied-profile commitment analysis, not endogenous solving, a range
+chart, a joint/external-game equilibrium or optimality claim, profitability or
+real-money advice, a real-world dataset, or pipeline/GUI integration.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
