@@ -1,0 +1,100 @@
+{
+  "format_version": "aiof-rational-lift-file-v1",
+  "request_id": "tiny-aa-vs-kk-known-board",
+  "sb_range": [
+    {
+      "label": "AsAh",
+      "weight": 1,
+      "weight_basis": "exact_combo_mass"
+    }
+  ],
+  "bb_range": [
+    {
+      "label": "KsKh",
+      "weight": 1,
+      "weight_basis": "exact_combo_mass"
+    }
+  ],
+  "dead_cards": [
+    "2d",
+    "2h",
+    "2s",
+    "3c",
+    "3h",
+    "3s",
+    "4c",
+    "4d",
+    "4s",
+    "5c",
+    "5d",
+    "5h",
+    "6c",
+    "6d",
+    "6h",
+    "6s",
+    "7d",
+    "7h",
+    "7s",
+    "8c",
+    "8d",
+    "8h",
+    "8s",
+    "9c",
+    "9d",
+    "9h",
+    "9s",
+    "Tc",
+    "Td",
+    "Th",
+    "Ts",
+    "Jc",
+    "Jd",
+    "Jh",
+    "Js",
+    "Qc",
+    "Qd",
+    "Qh",
+    "Qs",
+    "Kc",
+    "Kd",
+    "Ac",
+    "Ad"
+  ],
+  "game": {
+    "starting_stack_sb": 10,
+    "starting_stack_bb": 10,
+    "small_blind": 0.5,
+    "big_blind": 1,
+    "ante": 0,
+    "fee": 0,
+    "third_party_dead_money": 0,
+    "side_pot": false
+  },
+  "strategy": {
+    "algorithm": "aiof-compact-zero-sum-rational-lp-v1",
+    "equity_algorithm": "exact_exhaustive-v1",
+    "claim_epsilon": "0",
+    "display_tie_tolerance": "0",
+    "requested_trace_points": 0,
+    "run_reference_oracle": false,
+    "run_phase1_float_diagnostic": false,
+    "seed": null,
+    "samples": null
+  },
+  "limits": {
+    "max_solver_combos_per_side": 1,
+    "max_payoff_cells": 1,
+    "max_exact_board_evaluations": 1,
+    "max_lp_variables_per_problem": 2,
+    "max_lp_constraints_per_problem": 2,
+    "max_tableau_cells": 100,
+    "max_simplex_pivots": 100,
+    "max_exact_rational_bits": 1024,
+    "max_trace_points": 0,
+    "max_oracle_combos_per_side": 1,
+    "max_oracle_pure_plans_per_side": 2,
+    "max_oracle_matrix_cells": 1,
+    "max_oracle_support_systems": 1,
+    "max_heuristic_iterations": 1
+  }
+}

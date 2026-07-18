@@ -180,6 +180,23 @@ certificate, an optimal-Hero or profitability claim, or real-money strategy
 advice. Exact exhaustive and deterministic Monte Carlo requests are explicit,
 non-interchangeable algorithms with no silent fallback.
 
+#### Exact rational-lift versioned file workflow
+
+For saved fixtures and machine-readable automation, the primary M13 exact
+rational-lift path also has a strict run-only JSON adapter:
+
+```powershell
+python scripts/run_aiof_rational_lift_file.py examples/aiof_rational_lift_file_v1.json
+```
+
+See [docs/aiof_rational_lift_file_workflow.md](docs/aiof_rational_lift_file_workflow.md)
+for the `aiof-rational-lift-file-v1` schema, caller-lowerable caps, deterministic
+success projection, nested strategy status, and no-partial failure contract.
+The adapter uses the existing public exact solver and excludes runtime/run
+identity, Monte Carlo, reference-oracle and phase-1 diagnostics, heuristic BR,
+supplied-profile analysis, top-level exports, pipeline/GUI integration, and any
+range-chart, external-game, profitability, or real-money claim.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
