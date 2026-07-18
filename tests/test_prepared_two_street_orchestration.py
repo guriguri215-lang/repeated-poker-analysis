@@ -7,7 +7,7 @@ import hashlib
 import inspect
 import json
 import math
-from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
+from dataclasses import MISSING, FrozenInstanceError, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,13 +50,16 @@ from repeated_poker.prepared_two_street_evaluation import (
     PreparedActionProbability,
     PreparedCorrespondenceMode,
     PreparedCorrespondenceStatus,
+    PreparedEvaluation,
     PreparedEvaluationError,
+    PreparedEvaluationIdentity,
     PreparedEvaluationLimits,
     PreparedEvaluationRequest,
     PreparedEvaluationResult,
     PreparedEvaluationStatus,
     PreparedPlayerProfile,
     PreparedProfileEntry,
+    PreparedProfileNormalization,
     evaluate_prepared_two_street,
 )
 from repeated_poker.prepared_two_street_orchestration import *
@@ -408,14 +411,102 @@ def _independent_value(value):
 
 
 def _independent_sha(value) -> str:
-    raw = json.dumps(
+    return hashlib.sha256(_independent_bytes(value)).hexdigest()
+
+
+def _independent_bytes(value) -> bytes:
+    return json.dumps(
         _independent_value(value),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+
+
+class _IterationTrap:
+    def __iter__(self):
+        raise AssertionError("nested iterable was traversed")
+
+    def __len__(self):
+        raise AssertionError("nested iterable was counted")
+
+    def __getitem__(self, key):
+        raise AssertionError("nested iterable was indexed")
+
+    def __copy__(self):
+        raise AssertionError("nested iterable was copied")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("nested iterable was materialized")
+
+
+def _reachable_objects(root):
+    """Walk only public dataclass/container edges in a returned result graph."""
+    pending = [root]
+    seen = set()
+    while pending:
+        value = pending.pop()
+        marker = id(value)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        yield value
+        if is_dataclass(value) and not isinstance(value, type):
+            pending.extend(getattr(value, item.name) for item in fields(value))
+        elif isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, (tuple, list, set, frozenset)):
+            pending.extend(value)
+
+
+def _install_m16_constructor_counters(monkeypatch):
+    counts = {
+        "trace": 0,
+        "identity": 0,
+        "run": 0,
+        "success": 0,
+        "error": 0,
+        "failure": 0,
+    }
+    originals = {
+        name: getattr(orchestration_module, name)
+        for name in (
+            "PreparedOrchestrationTraceRecord",
+            "PreparedTwoStreetOrchestrationIdentity",
+            "PreparedTwoStreetOrchestrationRun",
+            "PreparedOrchestrationError",
+            "PreparedTwoStreetOrchestrationResult",
+        )
+    }
+
+    def wrap(name, key):
+        def constructor(*args, **kwargs):
+            counts[key] += 1
+            return originals[name](*args, **kwargs)
+        monkeypatch.setattr(orchestration_module, name, constructor)
+
+    wrap("PreparedOrchestrationTraceRecord", "trace")
+    wrap("PreparedTwoStreetOrchestrationIdentity", "identity")
+    wrap("PreparedTwoStreetOrchestrationRun", "run")
+    wrap("PreparedOrchestrationError", "error")
+
+    def result_constructor(*args, **kwargs):
+        status = args[0] if args else kwargs["status"]
+        counts[
+            "success"
+            if status is PreparedOrchestrationStatus.SUCCESS
+            else "failure"
+        ] += 1
+        return originals["PreparedTwoStreetOrchestrationResult"](*args, **kwargs)
+
+    monkeypatch.setattr(
+        orchestration_module,
+        "PreparedTwoStreetOrchestrationResult",
+        result_constructor,
+    )
+    return counts
 
 
 def test_exact_public_api_constants_all_enum_fields_defaults_and_signature():
@@ -443,31 +534,75 @@ def test_exact_public_api_constants_all_enum_fields_defaults_and_signature():
         ).split()
     ]
     expected_fields = {
-        PreparedOrchestrationLimits: ["max_trace_records", "max_result_records"],
-        PreparedTwoStreetOrchestrationRequest: [
-            "spec", "raw_input_bytes", "content_identity", "hero_profile",
-            "villain_profile", "builder_limits", "evaluation_limits",
-            "evaluation_request", "orchestration_limits",
-            "expected_output_semantic_sha256",
+        PreparedOrchestrationLimits: [
+            ("max_trace_records", "int", 16),
+            ("max_result_records", "int", 64),
         ],
-        PreparedOrchestrationTraceRecord: ["phase", "subject", "outcome"],
-        PreparedTwoStreetOrchestrationRun: ["build", "evaluation", "trace"],
+        PreparedTwoStreetOrchestrationRequest: [
+            ("spec", "PreparedTwoStreetSpec", MISSING),
+            ("raw_input_bytes", "bytes", MISSING),
+            ("content_identity", "PreparedContentIdentity", MISSING),
+            ("hero_profile", "PreparedPlayerProfile", MISSING),
+            ("villain_profile", "PreparedPlayerProfile | None", None),
+            ("builder_limits", "PreparedTwoStreetLimits", PreparedTwoStreetLimits()),
+            ("evaluation_limits", "PreparedEvaluationLimits", PreparedEvaluationLimits()),
+            ("evaluation_request", "PreparedEvaluationRequest", PreparedEvaluationRequest()),
+            ("orchestration_limits", "PreparedOrchestrationLimits", PreparedOrchestrationLimits()),
+            ("expected_output_semantic_sha256", "str | None", None),
+        ],
+        PreparedOrchestrationTraceRecord: [
+            ("phase", "str", MISSING),
+            ("subject", "str", MISSING),
+            ("outcome", "str", MISSING),
+        ],
+        PreparedTwoStreetOrchestrationRun: [
+            ("build", "PreparedTwoStreetBuild", MISSING),
+            ("evaluation", "PreparedEvaluation", MISSING),
+            (
+                "trace",
+                "tuple[PreparedOrchestrationTraceRecord, ...]",
+                MISSING,
+            ),
+        ],
         PreparedTwoStreetOrchestrationIdentity: [
-            "orchestration_id", "output_semantic_id", "m14_identity",
-            "m15_identity", "effective_builder_limits",
-            "effective_evaluation_limits", "effective_orchestration_limits",
-            "correspondence_mode", "oracle_check", "run_identity",
-            "output_semantic_sha256",
+            ("orchestration_id", "str", MISSING),
+            ("output_semantic_id", "str", MISSING),
+            ("m14_identity", "PreparedTwoStreetIdentity", MISSING),
+            ("m15_identity", "PreparedEvaluationIdentity", MISSING),
+            ("effective_builder_limits", "PreparedTwoStreetLimits", MISSING),
+            ("effective_evaluation_limits", "PreparedEvaluationLimits", MISSING),
+            ("effective_orchestration_limits", "PreparedOrchestrationLimits", MISSING),
+            ("correspondence_mode", "PreparedCorrespondenceMode", MISSING),
+            ("oracle_check", "bool", MISSING),
+            ("run_identity", "str", MISSING),
+            ("output_semantic_sha256", "str", MISSING),
         ],
         PreparedOrchestrationError: [
-            "phase", "message", "build_identity", "build_counts"
+            ("phase", "str", MISSING),
+            ("message", "str", MISSING),
+            ("build_identity", "PreparedTwoStreetIdentity | None", MISSING),
+            ("build_counts", "PreparedBuildCounts | None", MISSING),
         ],
         PreparedTwoStreetOrchestrationResult: [
-            "status", "builder_status", "evaluation_status", "run", "identity", "error"
+            ("status", "PreparedOrchestrationStatus", MISSING),
+            ("builder_status", "PreparedTwoStreetStatus | None", MISSING),
+            ("evaluation_status", "PreparedEvaluationStatus | None", MISSING),
+            ("run", "PreparedTwoStreetOrchestrationRun | None", MISSING),
+            ("identity", "PreparedTwoStreetOrchestrationIdentity | None", MISSING),
+            ("error", "PreparedOrchestrationError | None", MISSING),
         ],
     }
-    for cls, names in expected_fields.items():
-        assert [item.name for item in fields(cls)] == names
+    for cls, expected in expected_fields.items():
+        actual = fields(cls)
+        assert [(item.name, item.type) for item in actual] == [
+            (name, annotation) for name, annotation, _ in expected
+        ]
+        for item, (_, _, default) in zip(actual, expected):
+            if default is MISSING:
+                assert item.default is MISSING
+            else:
+                assert item.default == default
+            assert item.default_factory is MISSING
         assert cls.__dataclass_params__.frozen
     assert PreparedOrchestrationLimits() == PreparedOrchestrationLimits(16, 64)
     with pytest.raises(FrozenInstanceError):
@@ -514,12 +649,32 @@ def test_module_and_public_function_claim_boundaries():
 
 def test_success_calls_builder_then_evaluator_once_in_exact_order(monkeypatch):
     events = []
+    accepted = {}
     real_builder = orchestration_module.build_prepared_two_street_game
     real_evaluator = orchestration_module.evaluate_prepared_two_street
-    monkeypatch.setattr(orchestration_module, "build_prepared_two_street_game", lambda *a: (events.append("builder"), real_builder(*a))[1])
-    monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", lambda *a: (events.append("evaluation"), real_evaluator(*a))[1])
-    _assert_success(run_prepared_two_street_orchestration(_request()))
+
+    def builder(*args):
+        events.append("builder")
+        result = real_builder(*args)
+        accepted["build"] = result.build
+        return result
+
+    def evaluator(*args):
+        events.append("evaluation")
+        assert args[0] is accepted["build"]
+        result = real_evaluator(*args)
+        accepted["evaluation"] = result.evaluation
+        accepted["m15_identity"] = result.identity
+        return result
+
+    monkeypatch.setattr(orchestration_module, "build_prepared_two_street_game", builder)
+    monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", evaluator)
+    result = run_prepared_two_street_orchestration(_request())
+    _assert_success(result)
     assert events == ["builder", "evaluation"]
+    assert result.run.build is accepted["build"]
+    assert result.run.evaluation is accepted["evaluation"]
+    assert result.identity.m15_identity is accepted["m15_identity"]
 
 
 def test_request_fields_are_forwarded_by_identity_without_reassembly_or_clamp(monkeypatch):
@@ -535,12 +690,27 @@ def test_request_fields_are_forwarded_by_identity_without_reassembly_or_clamp(mo
         return real_evaluator(*args)
     monkeypatch.setattr(orchestration_module, "build_prepared_two_street_game", builder)
     monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", evaluator)
-    _assert_success(run_prepared_two_street_orchestration(request))
+    result = run_prepared_two_street_orchestration(request)
+    _assert_success(result)
+    assert len(seen["builder"]) == 4
+    assert len(seen["evaluation"]) == 5
     assert all(left is right for left, right in zip(seen["builder"], (request.spec, request.raw_input_bytes, request.content_identity, request.builder_limits)))
+    assert seen["evaluation"][0] is result.run.build
     assert all(left is right for left, right in zip(seen["evaluation"][1:], (request.hero_profile, request.villain_profile, request.evaluation_limits, request.evaluation_request)))
 
 
-def test_success_returns_exact_trace_identity_references_and_no_error():
+def test_success_returns_exact_trace_identity_references_and_no_error(monkeypatch):
+    accepted = {}
+    real_evaluator = orchestration_module.evaluate_prepared_two_street
+
+    def evaluator(*args):
+        result = real_evaluator(*args)
+        accepted["build"] = args[0]
+        accepted["evaluation"] = result.evaluation
+        accepted["identity"] = result.identity
+        return result
+
+    monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", evaluator)
     result = run_prepared_two_street_orchestration(_request())
     _assert_success(result)
     assert [(row.phase, row.subject, row.outcome) for row in result.run.trace] == [
@@ -549,24 +719,76 @@ def test_success_returns_exact_trace_identity_references_and_no_error():
         ("evaluation", "completed", "PASS"),
         ("orchestration", "identity", "PASS"),
     ]
-    assert result.identity.m14_identity is result.run.build.identity
-    assert result.identity.m15_identity.output_semantic_sha256 == result.run.evaluation.hero_profile_normalization.raw_profile_sha256 or result.identity.m15_identity is not None
+    assert result.run.build is accepted["build"]
+    assert result.run.evaluation is accepted["evaluation"]
+    assert result.identity.m14_identity is accepted["build"].identity
+    assert result.identity.m15_identity is accepted["identity"]
 
 
-def test_success_reuses_nested_objects_without_counting_copying_or_materializing(monkeypatch):
+@pytest.mark.parametrize("nested_count", [0, 37], ids=["empty", "many"])
+def test_success_reuses_nested_objects_without_counting_copying_or_materializing(
+    monkeypatch, nested_count
+):
     request = _request()
-    captured = {}
-    real_eval = orchestration_module.evaluate_prepared_two_street
+    baseline_build_result = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    baseline_evaluation_result = evaluate_prepared_two_street(
+        baseline_build_result.build,
+        request.hero_profile,
+        request.villain_profile,
+        request.evaluation_limits,
+        request.evaluation_request,
+    )
+    tree_trap = _IterationTrap()
+    evaluation_trap = _IterationTrap()
+    record_trap = _IterationTrap()
+    trapped_build = replace(
+        baseline_build_result.build,
+        tree=GameTree(tree_trap),
+        chance_normalization=tuple(object() for _ in range(nested_count)),
+        information_sets=(
+            baseline_build_result.build.information_sets * nested_count
+        ),
+    )
+    trapped_hero_normalization = replace(
+        baseline_evaluation_result.evaluation.hero_profile_normalization,
+        records=record_trap,
+    )
+    trapped_evaluation = replace(
+        baseline_evaluation_result.evaluation,
+        hero_profile_normalization=trapped_hero_normalization,
+        validation_trace=evaluation_trap,
+    )
+    trapped_evaluation_result = replace(
+        baseline_evaluation_result,
+        evaluation=trapped_evaluation,
+    )
+
+    def builder(*args):
+        return replace(baseline_build_result, build=trapped_build)
+
     def evaluator(build, *args):
-        result = real_eval(build, *args)
-        captured["build"] = build
-        captured["evaluation"] = result.evaluation
-        return result
+        assert build is trapped_build
+        return trapped_evaluation_result
+
+    monkeypatch.setattr(orchestration_module, "build_prepared_two_street_game", builder)
     monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", evaluator)
+    request = replace(
+        request,
+        orchestration_limits=PreparedOrchestrationLimits(4, 9),
+    )
     result = run_prepared_two_street_orchestration(request)
     _assert_success(result)
-    assert result.run.build is captured["build"]
-    assert result.run.evaluation is captured["evaluation"]
+    assert result.run.build is trapped_build
+    assert result.run.build.tree.root is tree_trap
+    assert len(result.run.build.chance_normalization) == nested_count
+    assert result.run.evaluation is trapped_evaluation
+    assert result.run.evaluation.validation_trace is evaluation_trap
+    assert result.run.evaluation.hero_profile_normalization.records is record_trap
     assert len(result.run.trace) == 4
 
 
@@ -611,28 +833,171 @@ def test_every_m15_non_success_status_maps_exactly_and_keeps_only_build_provenan
     assert result.error.build_identity is not None and result.error.build_counts is not None
 
 
-def test_every_outer_non_success_obeys_unified_no_partial_invariant(monkeypatch):
-    cases = [
-        PreparedTwoStreetOrchestrationRequest,
-        replace(_request(), orchestration_limits=PreparedOrchestrationLimits(3, 64)),
-        replace(_request(), expected_output_semantic_sha256="0" * 64),
-    ]
-    results = [run_prepared_two_street_orchestration(item) for item in cases]
-    assert {item.status for item in results} == {
-        PreparedOrchestrationStatus.INVALID_INPUT,
-        PreparedOrchestrationStatus.CAP_EXCEEDED,
-        PreparedOrchestrationStatus.NON_REPRODUCIBLE,
-    }
-    for result in results:
-        _assert_failure(result, result.status)
+@pytest.mark.parametrize(
+    "case_name,expected",
+    [
+        ("invalid-input", PreparedOrchestrationStatus.INVALID_INPUT),
+        ("build-failure", PreparedOrchestrationStatus.BUILD_FAILURE),
+        ("build-identity-mismatch", PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH),
+        ("evaluation-input", PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE),
+        ("evaluation-core", PreparedOrchestrationStatus.EVALUATION_CORE_FAILURE),
+        ("cap", PreparedOrchestrationStatus.CAP_EXCEEDED),
+        ("numeric", PreparedOrchestrationStatus.NUMERIC_FAILURE),
+        ("non-reproducible", PreparedOrchestrationStatus.NON_REPRODUCIBLE),
+        ("unsupported", PreparedOrchestrationStatus.UNSUPPORTED_DOWNSTREAM),
+        ("internal", PreparedOrchestrationStatus.INTERNAL_FAILURE),
+    ],
+)
+def test_every_outer_non_success_obeys_unified_no_partial_invariant(
+    monkeypatch, case_name, expected
+):
+    request = _request()
+    if case_name == "invalid-input":
+        request = PreparedTwoStreetOrchestrationRequest
+    elif case_name == "cap":
+        request = replace(
+            request,
+            orchestration_limits=PreparedOrchestrationLimits(3, 64),
+        )
+    elif case_name == "non-reproducible":
+        request = replace(request, expected_output_semantic_sha256="0" * 64)
+    elif case_name == "internal":
+        monkeypatch.setattr(
+            orchestration_module,
+            "build_prepared_two_street_game",
+            lambda *args: object(),
+        )
+    elif case_name in {"build-failure", "numeric", "unsupported"}:
+        nested = {
+            "build-failure": PreparedTwoStreetStatus.INVALID_INPUT,
+            "numeric": PreparedTwoStreetStatus.NUMERIC_FAILURE,
+            "unsupported": PreparedTwoStreetStatus.UNSUPPORTED_DOWNSTREAM,
+        }[case_name]
+        monkeypatch.setattr(
+            orchestration_module,
+            "build_prepared_two_street_game",
+            lambda *args: PreparedTwoStreetBuildResult(
+                nested,
+                None,
+                PreparedBuildError("failure", "builder"),
+            ),
+        )
+    else:
+        nested = {
+            "build-identity-mismatch": PreparedEvaluationStatus.BUILD_MISMATCH,
+            "evaluation-input": PreparedEvaluationStatus.INCOMPLETE_PROFILE,
+            "evaluation-core": PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE,
+        }[case_name]
+        monkeypatch.setattr(
+            orchestration_module,
+            "evaluate_prepared_two_street",
+            lambda *args: PreparedEvaluationResult(
+                nested,
+                None,
+                None,
+                PreparedEvaluationError("failure", "evaluation"),
+            ),
+        )
+    result = run_prepared_two_street_orchestration(request)
+    _assert_failure(result, expected)
+    assert result.status is expected
+    assert not any(
+        type(value) in {
+            PreparedTwoStreetOrchestrationRun,
+            PreparedTwoStreetOrchestrationIdentity,
+            PreparedOrchestrationTraceRecord,
+            PreparedEvaluation,
+        }
+        for value in _reachable_objects(result)
+    )
 
 
 def test_build_success_evaluation_failure_keeps_only_identity_and_counts(monkeypatch):
-    monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", lambda *a: PreparedEvaluationResult(PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE, None, None, PreparedEvaluationError("failure", "evaluation")))
-    result = run_prepared_two_street_orchestration(_request())
+    request = _request(villain=True)
+    build_result = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    evaluation_result = evaluate_prepared_two_street(
+        build_result.build,
+        request.hero_profile,
+        request.villain_profile,
+        request.evaluation_limits,
+        request.evaluation_request,
+    )
+    forbidden_objects = (
+        id(build_result.build.tree),
+        id(build_result.build.chance_normalization),
+        id(build_result.build.information_sets),
+        id(evaluation_result.evaluation),
+        id(evaluation_result.evaluation.hero_profile_normalization),
+        id(evaluation_result.evaluation.hero_profile_normalization.records),
+        id(evaluation_result.evaluation.villain_profile_normalization),
+        id(evaluation_result.evaluation.villain_profile_normalization.records),
+        id(evaluation_result.evaluation.fixed_profile_value),
+        id(evaluation_result.evaluation.exact_response),
+        id(evaluation_result.evaluation.exact_response.representative_pure_response),
+        id(evaluation_result.evaluation.exact_response.best_response_action_sets),
+        id(evaluation_result.evaluation.exact_response.best_response_action_variation),
+        id(evaluation_result.evaluation.exact_response.full_correspondence),
+        id(evaluation_result.evaluation.validation_trace),
+    )
+    forbidden = {
+        marker
+        for marker, value in zip(
+            forbidden_objects,
+            (
+                build_result.build.tree,
+                build_result.build.chance_normalization,
+                build_result.build.information_sets,
+                evaluation_result.evaluation,
+                evaluation_result.evaluation.hero_profile_normalization,
+                evaluation_result.evaluation.hero_profile_normalization.records,
+                evaluation_result.evaluation.villain_profile_normalization,
+                evaluation_result.evaluation.villain_profile_normalization.records,
+                evaluation_result.evaluation.fixed_profile_value,
+                evaluation_result.evaluation.exact_response,
+                evaluation_result.evaluation.exact_response.representative_pure_response,
+                evaluation_result.evaluation.exact_response.best_response_action_sets,
+                evaluation_result.evaluation.exact_response.best_response_action_variation,
+                evaluation_result.evaluation.exact_response.full_correspondence,
+                evaluation_result.evaluation.validation_trace,
+            ),
+        )
+        if value is not None
+    }
+    monkeypatch.setattr(
+        orchestration_module,
+        "build_prepared_two_street_game",
+        lambda *args: build_result,
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "evaluate_prepared_two_street",
+        lambda *args: PreparedEvaluationResult(
+            PreparedEvaluationStatus.EXACT_RESPONSE_FAILURE,
+            None,
+            None,
+            PreparedEvaluationError("failure", "evaluation"),
+        ),
+    )
+    result = run_prepared_two_street_orchestration(request)
     _assert_failure(result, PreparedOrchestrationStatus.EVALUATION_CORE_FAILURE)
     assert set(vars(result.error)) == {"phase", "message", "build_identity", "build_counts"}
-    assert not any(isinstance(value, GameTree) for value in vars(result.error).values())
+    assert result.error.build_identity is build_result.build.identity
+    assert result.error.build_counts is build_result.build.counts
+    graph = tuple(_reachable_objects(result))
+    assert not forbidden.intersection(map(id, graph))
+    assert not any(
+        type(value) in {
+            GameTree,
+            PreparedEvaluation,
+            PreparedOrchestrationTraceRecord,
+        }
+        for value in graph
+    )
 
 
 def test_malformed_builder_and_evaluator_results_fail_closed_as_internal_failure(monkeypatch):
@@ -743,17 +1108,134 @@ def test_representative_counts_action_sets_variation_off_path_and_full_modes():
     assert len(full.run.evaluation.exact_response.full_correspondence) == 2
 
 
-@pytest.mark.parametrize("profile,eval_request,status", [
-    (PreparedPlayerProfile(()), PreparedEvaluationRequest(), PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE),
-    (None, PreparedEvaluationRequest(method="unknown"), PreparedOrchestrationStatus.UNSUPPORTED_DOWNSTREAM),
-    (None, PreparedEvaluationRequest(downstream_request="pipeline"), PreparedOrchestrationStatus.UNSUPPORTED_DOWNSTREAM),
-])
-def test_profile_and_request_fault_matrix_maps_through_m15(profile, eval_request, status):
-    base = _request(evaluation_request=eval_request)
-    if profile is not None:
-        base = replace(base, hero_profile=profile)
-    result = run_prepared_two_street_orchestration(base)
-    _assert_failure(result, status)
+@pytest.mark.parametrize(
+    "fault,outer,nested",
+    [
+        (
+            "missing-info-set",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.INCOMPLETE_PROFILE,
+        ),
+        (
+            "extra-info-set",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.ILLEGAL_PROFILE_REFERENCE,
+        ),
+        (
+            "duplicate-info-set",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.INVALID_INPUT,
+        ),
+        (
+            "missing-action",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.INCOMPLETE_PROFILE,
+        ),
+        (
+            "unknown-action",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.ILLEGAL_PROFILE_REFERENCE,
+        ),
+        (
+            "duplicate-action",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.INVALID_INPUT,
+        ),
+        (
+            "invalid-probability",
+            PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
+            PreparedEvaluationStatus.INVALID_PROFILE_PROBABILITY,
+        ),
+        (
+            "unsupported-method",
+            PreparedOrchestrationStatus.UNSUPPORTED_DOWNSTREAM,
+            PreparedEvaluationStatus.UNSUPPORTED_DOWNSTREAM,
+        ),
+        (
+            "unsupported-downstream",
+            PreparedOrchestrationStatus.UNSUPPORTED_DOWNSTREAM,
+            PreparedEvaluationStatus.UNSUPPORTED_DOWNSTREAM,
+        ),
+    ],
+)
+def test_profile_and_request_fault_matrix_maps_through_m15(
+    fault, outer, nested
+):
+    request = _request()
+    profile = request.hero_profile
+    entries = profile.entries
+    target_index = next(
+        index
+        for index, entry in enumerate(entries)
+        if len(entry.action_probabilities) > 1
+    )
+    target = entries[target_index]
+    actions = target.action_probabilities
+
+    if fault == "missing-info-set":
+        profile = PreparedPlayerProfile(entries[:-1])
+    elif fault == "extra-info-set":
+        profile = PreparedPlayerProfile(
+            entries + (PreparedProfileEntry("unknown-info-set", ()),)
+        )
+    elif fault == "duplicate-info-set":
+        profile = PreparedPlayerProfile(entries + (entries[0],))
+    elif fault == "missing-action":
+        profile = PreparedPlayerProfile(
+            entries[:target_index]
+            + (replace(target, action_probabilities=actions[:-1]),)
+            + entries[target_index + 1 :]
+        )
+    elif fault == "unknown-action":
+        profile = PreparedPlayerProfile(
+            entries[:target_index]
+            + (
+                replace(
+                    target,
+                    action_probabilities=actions
+                    + (PreparedActionProbability("unknown-action", 0.0),),
+                ),
+            )
+            + entries[target_index + 1 :]
+        )
+    elif fault == "duplicate-action":
+        profile = PreparedPlayerProfile(
+            entries[:target_index]
+            + (replace(target, action_probabilities=actions + (actions[0],)),)
+            + entries[target_index + 1 :]
+        )
+    elif fault == "invalid-probability":
+        profile = PreparedPlayerProfile(
+            entries[:target_index]
+            + (
+                replace(
+                    target,
+                    action_probabilities=(
+                        replace(actions[0], probability=-1.0),
+                    )
+                    + actions[1:],
+                ),
+            )
+            + entries[target_index + 1 :]
+        )
+    elif fault == "unsupported-method":
+        request = replace(
+            request,
+            evaluation_request=PreparedEvaluationRequest(method="unknown"),
+        )
+    elif fault == "unsupported-downstream":
+        request = replace(
+            request,
+            evaluation_request=PreparedEvaluationRequest(
+                downstream_request="pipeline"
+            ),
+        )
+    if fault not in {"unsupported-method", "unsupported-downstream"}:
+        request = replace(request, hero_profile=profile)
+    result = run_prepared_two_street_orchestration(request)
+    _assert_failure(result, outer)
+    assert result.builder_status is PreparedTwoStreetStatus.SUCCESS
+    assert result.evaluation_status is nested
 
 
 @pytest.mark.parametrize("field_name", [
@@ -926,11 +1408,11 @@ def test_m15_and_m16_expected_witnesses_are_independent():
 
 
 def test_m16_expected_output_hash_accepts_exact_and_rejects_one_hex_fault():
-    initial = run_prepared_two_street_orchestration(_request())
-    _assert_success(initial)
-    digest = initial.identity.output_semantic_sha256
-    accepted = run_prepared_two_street_orchestration(_request(expected=digest))
-    rejected = run_prepared_two_street_orchestration(_request(expected=("0" if digest[0] != "0" else "1") + digest[1:]))
+    digest = "f2fa83821ffcc67f35f616a67b03615ee809034a42e79e5c4468ef62d6ecdf15"
+    accepted = run_prepared_two_street_orchestration(_request(villain=True, expected=digest))
+    rejected = run_prepared_two_street_orchestration(
+        _request(villain=True, expected="0" + digest[1:])
+    )
     _assert_success(accepted)
     _assert_failure(rejected, PreparedOrchestrationStatus.NON_REPRODUCIBLE)
 
@@ -956,14 +1438,34 @@ def test_independent_serializer_matches_exact_run_and_output_payload_schema():
         "oracle_check": request.evaluation_request.oracle_check,
     }
     run_hash = _independent_sha(run_payload)
-    output_hash = _independent_sha({
+    pre_constructor_trace = tuple(
+        {
+            "__type__": "PreparedOrchestrationTraceRecord",
+            "fields": {
+                "phase": phase,
+                "subject": subject,
+                "outcome": outcome,
+            },
+        }
+        for phase, subject, outcome in (
+            ("orchestration", "input", "PASS"),
+            ("builder", "completed", "PASS"),
+            ("evaluation", "completed", "PASS"),
+            ("orchestration", "identity", "PASS"),
+        )
+    )
+    assert _independent_bytes(pre_constructor_trace) == _independent_bytes(
+        result.run.trace
+    )
+    output_payload = {
         "algorithm": PREPARED_TWO_STREET_ORCHESTRATION_OUTPUT_ID,
         "run_identity": run_hash,
         "build_counts": result.run.build.counts,
         "builder_status": PreparedTwoStreetStatus.SUCCESS,
         "evaluation_status": PreparedEvaluationStatus.SUCCESS,
-        "trace": result.run.trace,
-    })
+        "trace": pre_constructor_trace,
+    }
+    output_hash = _independent_sha(output_payload)
     assert run_hash == result.identity.run_identity
     assert output_hash == result.identity.output_semantic_sha256
 
@@ -981,19 +1483,38 @@ def test_pinned_python_310_313_identity_and_numeric_fixture():
     assert abs(value.hero_ev + value.villain_ev + value.house_rake) <= 1e-9
 
 
-@pytest.mark.parametrize("limits,expected", [
-    (object(), PreparedOrchestrationStatus.INVALID_INPUT),
-    (PreparedOrchestrationLimits(True, 64), PreparedOrchestrationStatus.INVALID_INPUT),
-    (PreparedOrchestrationLimits(0, 64), PreparedOrchestrationStatus.INVALID_INPUT),
-    (PreparedOrchestrationLimits(-1, 64), PreparedOrchestrationStatus.INVALID_INPUT),
-    (PreparedOrchestrationLimits(16.0, 64), PreparedOrchestrationStatus.INVALID_INPUT),
-    (PreparedOrchestrationLimits(17, 64), PreparedOrchestrationStatus.INVALID_INPUT),
-])
-def test_orchestration_limit_validation_matrix_is_fail_closed_before_builder(monkeypatch, limits, expected):
+@pytest.mark.parametrize(
+    "field_name,value",
+    [
+        ("limits-object", object()),
+        ("max_trace_records", object()),
+        ("max_trace_records", True),
+        ("max_trace_records", 0),
+        ("max_trace_records", -1),
+        ("max_trace_records", 16.0),
+        ("max_trace_records", 17),
+        ("max_result_records", object()),
+        ("max_result_records", True),
+        ("max_result_records", 0),
+        ("max_result_records", -1),
+        ("max_result_records", 64.0),
+        ("max_result_records", 65),
+    ],
+)
+def test_orchestration_limit_validation_matrix_is_fail_closed_before_builder(
+    monkeypatch, field_name, value
+):
     calls = []
     monkeypatch.setattr(orchestration_module, "build_prepared_two_street_game", lambda *a: calls.append(a))
-    result = run_prepared_two_street_orchestration(replace(_request(), orchestration_limits=limits))
-    _assert_failure(result, expected)
+    limits = (
+        value
+        if field_name == "limits-object"
+        else replace(PreparedOrchestrationLimits(), **{field_name: value})
+    )
+    result = run_prepared_two_street_orchestration(
+        replace(_request(), orchestration_limits=limits)
+    )
+    _assert_failure(result, PreparedOrchestrationStatus.INVALID_INPUT)
     assert calls == []
 
 
@@ -1030,150 +1551,181 @@ def test_orchestration_result_cap_nine_accepts_eight_rejects_before_builder(monk
 
 
 def test_builder_cap_boundary_forwards_exactly_and_blocks_evaluator_on_failure(monkeypatch):
-    baseline = run_prepared_two_street_orchestration(_request())
-    exact = baseline.run.build.counts.total_nodes
-    good = replace(PreparedTwoStreetLimits(), max_total_nodes=exact)
-    bad = replace(good, max_total_nodes=exact - 1)
+    # Independent public-fixture count: matchup root + three decisions +
+    # three terminals.
+    exact_total_nodes = 7
+    good = replace(
+        PreparedTwoStreetLimits(), max_total_nodes=exact_total_nodes
+    )
+    bad = replace(good, max_total_nodes=exact_total_nodes - 1)
     _assert_success(run_prepared_two_street_orchestration(_request(builder_limits=good)))
     calls = []
+    constructors = _install_m16_constructor_counters(monkeypatch)
     real = orchestration_module.evaluate_prepared_two_street
     monkeypatch.setattr(orchestration_module, "evaluate_prepared_two_street", lambda *a: (calls.append(a), real(*a))[1])
     result = run_prepared_two_street_orchestration(_request(builder_limits=bad))
     _assert_failure(result, PreparedOrchestrationStatus.CAP_EXCEEDED)
     assert calls == []
-
-
-def test_evaluation_cap_boundary_forwards_exactly_and_blocks_success_constructors_on_failure():
-    success_cap = None
-    for cap in range(1, 100):
-        result = run_prepared_two_street_orchestration(_request(evaluation_limits=replace(PreparedEvaluationLimits(), max_result_records=cap)))
-        if result.status is PreparedOrchestrationStatus.SUCCESS:
-            success_cap = cap
-            break
-    assert success_cap is not None
-    _assert_success(run_prepared_two_street_orchestration(_request(evaluation_limits=replace(PreparedEvaluationLimits(), max_result_records=success_cap))))
-    failed = run_prepared_two_street_orchestration(_request(evaluation_limits=replace(PreparedEvaluationLimits(), max_result_records=success_cap - 1)))
-    _assert_failure(failed, PreparedOrchestrationStatus.CAP_EXCEEDED)
-
-
-def test_constructor_call_count_matrix(monkeypatch):
-    counts = {
-        "trace": 0, "identity": 0, "run": 0, "success": 0,
-        "error": 0, "failure": 0,
+    assert constructors == {
+        "trace": 0,
+        "identity": 0,
+        "run": 0,
+        "success": 0,
+        "error": 1,
+        "failure": 1,
     }
-    originals = {name: getattr(orchestration_module, name) for name in (
-        "PreparedOrchestrationTraceRecord", "PreparedTwoStreetOrchestrationIdentity",
-        "PreparedTwoStreetOrchestrationRun", "PreparedOrchestrationError",
-        "PreparedTwoStreetOrchestrationResult",
-    )}
-    monkeypatch.setattr(orchestration_module, "PreparedOrchestrationTraceRecord", lambda *a: (counts.__setitem__("trace", counts["trace"] + 1), originals["PreparedOrchestrationTraceRecord"](*a))[1])
-    monkeypatch.setattr(orchestration_module, "PreparedTwoStreetOrchestrationIdentity", lambda *a: (counts.__setitem__("identity", counts["identity"] + 1), originals["PreparedTwoStreetOrchestrationIdentity"](*a))[1])
-    monkeypatch.setattr(orchestration_module, "PreparedTwoStreetOrchestrationRun", lambda *a: (counts.__setitem__("run", counts["run"] + 1), originals["PreparedTwoStreetOrchestrationRun"](*a))[1])
-    monkeypatch.setattr(orchestration_module, "PreparedOrchestrationError", lambda *a: (counts.__setitem__("error", counts["error"] + 1), originals["PreparedOrchestrationError"](*a))[1])
-    def result_ctor(*args):
-        key = "success" if args[0] is PreparedOrchestrationStatus.SUCCESS else "failure"
-        counts[key] += 1
-        return originals["PreparedTwoStreetOrchestrationResult"](*args)
-    monkeypatch.setattr(orchestration_module, "PreparedTwoStreetOrchestrationResult", result_ctor)
-    actual_builder = orchestration_module.build_prepared_two_street_game
-    actual_evaluator = orchestration_module.evaluate_prepared_two_street
-    expected_success = {
-        "trace": 4, "identity": 1, "run": 1, "success": 1,
-        "error": 0, "failure": 0,
-    }
-    expected_failure = {
-        "trace": 0, "identity": 0, "run": 0, "success": 0,
-        "error": 1, "failure": 1,
-    }
-    _assert_success(run_prepared_two_street_orchestration(_request()))
-    assert counts == expected_success
 
-    def reset():
-        counts.update({key: 0 for key in counts})
-        monkeypatch.setattr(
-            orchestration_module,
-            "build_prepared_two_street_game",
-            actual_builder,
-        )
-        monkeypatch.setattr(
-            orchestration_module,
-            "evaluate_prepared_two_street",
-            actual_evaluator,
-        )
 
-    reset()
-    _assert_failure(
-        run_prepared_two_street_orchestration(PreparedTwoStreetOrchestrationRequest),
-        PreparedOrchestrationStatus.INVALID_INPUT,
+def test_evaluation_cap_boundary_forwards_exactly_and_blocks_success_constructors_on_failure(
+    monkeypatch,
+):
+    # Independent count for the absent-Villain public fixture:
+    # 3 result objects + profile outer 1 + Hero records 2 + trace 10 +
+    # exact-response outer 1 + representative assignment 1 +
+    # action-set outer 1 + selected action 1 = 20.
+    exact_result_records = 20
+    exact = replace(
+        PreparedEvaluationLimits(), max_result_records=exact_result_records
     )
-    assert counts == expected_failure
-    reset()
-    _assert_failure(
+    lower = replace(exact, max_result_records=exact_result_records - 1)
+    _assert_success(
         run_prepared_two_street_orchestration(
-            _request(orchestration_limits=PreparedOrchestrationLimits(3, 64))
-        ),
-        PreparedOrchestrationStatus.CAP_EXCEEDED,
+            _request(evaluation_limits=exact)
+        )
     )
-    assert counts == expected_failure
-    reset()
+    constructors = _install_m16_constructor_counters(monkeypatch)
+    failed = run_prepared_two_street_orchestration(
+        _request(evaluation_limits=lower)
+    )
+    _assert_failure(failed, PreparedOrchestrationStatus.CAP_EXCEEDED)
+    assert failed.evaluation_status is PreparedEvaluationStatus.CAP_EXCEEDED
+    assert constructors == {
+        "trace": 0,
+        "identity": 0,
+        "run": 0,
+        "success": 0,
+        "error": 1,
+        "failure": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "case_name,expected_status,expected_builder,expected_evaluator",
+    [
+        ("invalid-request", PreparedOrchestrationStatus.INVALID_INPUT, 0, 0),
+        ("m16-cap", PreparedOrchestrationStatus.CAP_EXCEEDED, 0, 0),
+        ("m14-non-success", PreparedOrchestrationStatus.BUILD_FAILURE, 1, 0),
+        ("builder-exception", PreparedOrchestrationStatus.INTERNAL_FAILURE, 1, 0),
+        ("builder-cap-boundary", PreparedOrchestrationStatus.CAP_EXCEEDED, 1, 0),
+        ("m15-non-success", PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE, 1, 1),
+        ("evaluator-exception", PreparedOrchestrationStatus.INTERNAL_FAILURE, 1, 1),
+        ("evaluation-cap-boundary", PreparedOrchestrationStatus.CAP_EXCEEDED, 1, 1),
+        ("identity-mismatch", PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH, 1, 1),
+        ("m16-witness", PreparedOrchestrationStatus.NON_REPRODUCIBLE, 1, 1),
+        ("success", PreparedOrchestrationStatus.SUCCESS, 1, 1),
+    ],
+)
+def test_constructor_call_count_matrix(
+    monkeypatch,
+    case_name,
+    expected_status,
+    expected_builder,
+    expected_evaluator,
+):
+    constructor_counts = _install_m16_constructor_counters(monkeypatch)
+    stage_counts = {"builder": 0, "evaluator": 0}
+    real_builder = orchestration_module.build_prepared_two_street_game
+    real_evaluator = orchestration_module.evaluate_prepared_two_street
+
+    def builder(*args):
+        stage_counts["builder"] += 1
+        if case_name == "m14-non-success":
+            return PreparedTwoStreetBuildResult(
+                PreparedTwoStreetStatus.INVALID_INPUT,
+                None,
+                PreparedBuildError("failure", "builder"),
+            )
+        if case_name == "builder-exception":
+            raise RuntimeError
+        return real_builder(*args)
+
+    def evaluator(*args):
+        stage_counts["evaluator"] += 1
+        if case_name == "m15-non-success":
+            return PreparedEvaluationResult(
+                PreparedEvaluationStatus.INVALID_INPUT,
+                None,
+                None,
+                PreparedEvaluationError("failure", "evaluation"),
+            )
+        if case_name == "evaluator-exception":
+            raise RuntimeError
+        result = real_evaluator(*args)
+        if case_name == "identity-mismatch":
+            result = replace(
+                result,
+                identity=replace(result.identity, m14_builder_id="fault"),
+            )
+        return result
+
     monkeypatch.setattr(
-        orchestration_module,
-        "build_prepared_two_street_game",
-        lambda *args: PreparedTwoStreetBuildResult(
-            PreparedTwoStreetStatus.INVALID_INPUT,
-            None,
-            PreparedBuildError("failure", "builder"),
-        ),
+        orchestration_module, "build_prepared_two_street_game", builder
     )
-    _assert_failure(
-        run_prepared_two_street_orchestration(_request()),
-        PreparedOrchestrationStatus.BUILD_FAILURE,
-    )
-    assert counts == expected_failure
-    reset()
     monkeypatch.setattr(
-        orchestration_module,
-        "build_prepared_two_street_game",
-        lambda *args: (_ for _ in ()).throw(RuntimeError()),
+        orchestration_module, "evaluate_prepared_two_street", evaluator
     )
-    _assert_failure(
-        run_prepared_two_street_orchestration(_request()),
-        PreparedOrchestrationStatus.INTERNAL_FAILURE,
+
+    request = _request()
+    if case_name == "invalid-request":
+        request = PreparedTwoStreetOrchestrationRequest
+    elif case_name == "m16-cap":
+        request = replace(
+            request,
+            orchestration_limits=PreparedOrchestrationLimits(3, 64),
+        )
+    elif case_name == "builder-cap-boundary":
+        request = replace(
+            request,
+            builder_limits=replace(
+                PreparedTwoStreetLimits(), max_total_nodes=6
+            ),
+        )
+    elif case_name == "evaluation-cap-boundary":
+        request = replace(
+            request,
+            evaluation_limits=replace(
+                PreparedEvaluationLimits(), max_result_records=19
+            ),
+        )
+    elif case_name == "m16-witness":
+        request = replace(request, expected_output_semantic_sha256="0" * 64)
+
+    result = run_prepared_two_street_orchestration(request)
+    assert result.status is expected_status
+    assert stage_counts == {
+        "builder": expected_builder,
+        "evaluator": expected_evaluator,
+    }
+    expected_constructors = (
+        {
+            "trace": 4,
+            "identity": 1,
+            "run": 1,
+            "success": 1,
+            "error": 0,
+            "failure": 0,
+        }
+        if case_name == "success"
+        else {
+            "trace": 0,
+            "identity": 0,
+            "run": 0,
+            "success": 0,
+            "error": 1,
+            "failure": 1,
+        }
     )
-    assert counts == expected_failure
-    reset()
-    monkeypatch.setattr(
-        orchestration_module,
-        "evaluate_prepared_two_street",
-        lambda *args: PreparedEvaluationResult(
-            PreparedEvaluationStatus.INVALID_INPUT,
-            None,
-            None,
-            PreparedEvaluationError("failure", "evaluation"),
-        ),
-    )
-    _assert_failure(
-        run_prepared_two_street_orchestration(_request()),
-        PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE,
-    )
-    assert counts == expected_failure
-    reset()
-    monkeypatch.setattr(
-        orchestration_module,
-        "evaluate_prepared_two_street",
-        lambda *args: (_ for _ in ()).throw(RuntimeError()),
-    )
-    _assert_failure(
-        run_prepared_two_street_orchestration(_request()),
-        PreparedOrchestrationStatus.INTERNAL_FAILURE,
-    )
-    assert counts == expected_failure
-    reset()
-    _assert_failure(
-        run_prepared_two_street_orchestration(_request(expected="0" * 64)),
-        PreparedOrchestrationStatus.NON_REPRODUCIBLE,
-    )
-    assert counts == expected_failure
+    assert constructor_counts == expected_constructors
 
 
 def test_public_mixed_profile_hand_oracle_is_independent():
