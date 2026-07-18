@@ -120,6 +120,25 @@ See [docs/prepared_two_street_file_workflow.md](docs/prepared_two_street_file_wo
 for the exact format and guardrails. This is an abstract fixed-Hero response
 workflow, not an equilibrium solver, real-card model, or strategy advice.
 
+### Bounded stage-plan diagnostic workflow
+
+M11's top-level public API can run a tiny exact-rational two-state diagnostic
+with explicit public monitoring and a tree-bound manual perfect-recall
+attestation. The worked fixture intentionally has a positive Hero deviation, so
+its analytic status is `FAIL`; that is a successful diagnostic execution, not a
+process failure.
+
+```powershell
+python examples/stage_plan_diagnostic_workflow.py
+```
+
+See [docs/stage_plan_diagnostic_workflow.md](docs/stage_plan_diagnostic_workflow.md)
+for the `{C,P}` absorbing-grim timing, complete pure stage-plan enumeration,
+allocation-before-materialization cap, identity and no-partial rules, and status
+interpretation. The bounded one-period result does not establish equilibrium,
+Nash, subgame perfection, sequential rationality, optimality, or proof, and it
+is not strategy or real-money advice.
+
 ### Real-card AIoF public workflow
 
 M13's existing submodule APIs also provide a bounded real-card path. The worked

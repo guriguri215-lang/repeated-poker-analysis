@@ -34,6 +34,7 @@ COMMANDS = [
         "--no-markdown",
     ],
     [sys.executable, "examples/aiof_real_card_workflow.py"],
+    [sys.executable, "examples/stage_plan_diagnostic_workflow.py"],
 ]
 
 
