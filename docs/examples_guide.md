@@ -24,7 +24,9 @@
 8. `examples/value_bluff_river.py` - a contrasting non-chop spot.
 9. `scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json`
    - run the experimental STT SB-vs-BB push/fold ICM scenario path.
-10. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
+10. `examples/stage_plan_diagnostic_workflow.py` - run a tiny exact-rational
+    public-monitoring diagnostic whose expected analytic status is `FAIL`.
+11. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
     exact-combo workflow after reading its dedicated guardrails.
 
 The order moves from the simplest hand-checkable tree, through candidate
@@ -90,6 +92,23 @@ the output. The example is not a range chart, does not parse solver shorthand,
 and does not establish equilibrium or optimality in an external game. It adds
 no file format or CLI operation and makes no profitability or real-money advice
 claim.
+
+## Bounded stage-plan diagnostic public workflow
+
+Run the deterministic top-level-public-API example with:
+
+```powershell
+python examples/stage_plan_diagnostic_workflow.py
+```
+
+Read [stage_plan_diagnostic_workflow.md](stage_plan_diagnostic_workflow.md)
+before interpreting its one-line strict JSON output. The fixture uses exact
+`Fraction` values, public states `{C,P}`, absorbing `P`, complete public signals,
+and a fixture-specific manual perfect-recall attestation. Its expected `FAIL`
+means the diagnostic correctly found a positive one-period pure stage-plan
+deviation; it does not mean the script failed. The result is bounded to period
+boundaries and makes no equilibrium, Nash, subgame-perfect, sequential,
+optimality, proof, profitability, or real-money-advice claim.
 
 ## Example reference
 
@@ -161,6 +180,7 @@ python examples/markdown_summary.py
 python examples/analysis_report.py
 python examples/value_bluff_river.py
 python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
+python examples/stage_plan_diagnostic_workflow.py
 python examples/aiof_real_card_workflow.py
 ```
 
