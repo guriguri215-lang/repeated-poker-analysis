@@ -139,6 +139,27 @@ interpretation. The bounded one-period result does not establish equilibrium,
 Nash, subgame perfection, sequential rationality, optimality, or proof, and it
 is not strategy or real-money advice.
 
+### Guarded three-player CFR-style diagnostic workflow
+
+The isolated `repeated_poker.three_player_cfr` submodule can run a tiny
+fixed-Hero, two-opponent example without adding a top-level package export. The
+worked path combines a deterministic two-iteration CFR-style diagnostic with
+an explicitly requested, completely enumerated capped pure-profile reference
+attachment.
+
+```powershell
+python examples/three_player_cfr_diagnostic_workflow.py
+```
+
+See [docs/three_player_cfr_diagnostic_workflow.md](docs/three_player_cfr_diagnostic_workflow.md)
+for the simultaneous 2x2 fixture, human-authored perfect-recall evidence,
+allocation-before-materialization caps, identity and no-partial rules, and
+status interpretation. `DIAGNOSTIC_COMPLETE` means execution completed, not
+that the returned profile is stable. Oracle `MATCH` is a tiny reference
+cross-check only; this workflow does not establish an exact best response,
+equilibrium, Nash, convergence, joint or coalition stability, optimality, or
+solver-grade output, and it is not strategy or real-money advice.
+
 ### Real-card AIoF public workflow
 
 M13's existing submodule APIs also provide a bounded real-card path. The worked
