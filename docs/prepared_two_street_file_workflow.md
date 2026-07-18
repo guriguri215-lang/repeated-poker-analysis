@@ -44,8 +44,12 @@ normalizes, clamps, truncates, or drops entries.
 Every object rejects unknown, missing, and duplicate keys. UTF-8, input bytes,
 JSON depth/value count, public-history length, prepared builder, profile, and
 output limits are bounded. Limits are checked before corresponding tuple or
-result materialization. A failure has `output: null`, a bounded error, and a
-non-zero CLI exit; partial templates or analysis results are not returned.
+result materialization. A filesystem read failure is a bounded `INVALID_INPUT`
+result rather than substituted input. A failure has `output: null`, a bounded
+error, and a non-zero CLI exit; partial templates or analysis results are not
+returned. Once M16 is reached, errors retain its outer `nested_status` and exact
+`builder_status` / `evaluation_status`; profile-input evaluation failures map
+to the file-workflow `PROFILE_FAILURE` status.
 
 Histories are arrays of typed `action`, `street_close`, and `chance` events.
 The adapter computes the existing M14 public-history IDs. Canonical spec JSON

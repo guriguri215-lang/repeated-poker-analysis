@@ -43,6 +43,7 @@ from .prepared_two_street import (
 )
 from .prepared_two_street_evaluation import (
     PreparedActionProbability,
+    PreparedEvaluationStatus,
     PreparedPlayerProfile,
     PreparedProfileEntry,
 )
@@ -98,6 +99,8 @@ class PreparedFileWorkflowError:
     phase: str
     message: str
     nested_status: str | None
+    builder_status: str | None = None
+    evaluation_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,11 +121,15 @@ class _WorkflowFailure(ValueError):
         phase: str,
         message: str,
         nested_status: str | None = None,
+        builder_status: str | None = None,
+        evaluation_status: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.phase = phase
         self.nested_status = nested_status
+        self.builder_status = builder_status
+        self.evaluation_status = evaluation_status
 
 
 def _failure(exc: _WorkflowFailure) -> PreparedFileWorkflowResult:
@@ -130,7 +137,13 @@ def _failure(exc: _WorkflowFailure) -> PreparedFileWorkflowResult:
     return PreparedFileWorkflowResult(
         exc.status,
         None,
-        PreparedFileWorkflowError(exc.phase[:64], message, exc.nested_status),
+        PreparedFileWorkflowError(
+            exc.phase[:64],
+            message,
+            exc.nested_status,
+            exc.builder_status,
+            exc.evaluation_status,
+        ),
     )
 
 
@@ -239,33 +252,40 @@ def _object(
     optional: set[str] = frozenset(),
     *,
     phase: str,
+    status: PreparedFileWorkflowStatus = PreparedFileWorkflowStatus.INVALID_INPUT,
 ) -> dict[str, Any]:
     if type(value) is not dict:
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT, phase, "value must be an object"
+            status, phase, "value must be an object"
         )
     keys = set(value)
     missing = required - keys
     unknown = keys - required - optional
     if missing:
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT,
+            status,
             phase,
             f"missing keys: {', '.join(sorted(missing))}",
         )
     if unknown:
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT,
+            status,
             phase,
             f"unknown keys: {', '.join(sorted(unknown))}",
         )
     return value
 
 
-def _array(value: Any, cap: int, phase: str) -> list[Any]:
+def _array(
+    value: Any,
+    cap: int,
+    phase: str,
+    *,
+    status: PreparedFileWorkflowStatus = PreparedFileWorkflowStatus.INVALID_INPUT,
+) -> list[Any]:
     if type(value) is not list:
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT, phase, "value must be an array"
+            status, phase, "value must be an array"
         )
     if len(value) > cap:
         raise _WorkflowFailure(
@@ -274,22 +294,42 @@ def _array(value: Any, cap: int, phase: str) -> list[Any]:
     return value
 
 
-def _text(value: Any, phase: str) -> str:
+def _text(
+    value: Any,
+    phase: str,
+    *,
+    status: PreparedFileWorkflowStatus = PreparedFileWorkflowStatus.INVALID_INPUT,
+) -> str:
     if type(value) is not str or not value or len(value) > 200:
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT,
+            status,
             phase,
             "value must be a non-empty string of at most 200 characters",
         )
     return value
 
 
-def _number(value: Any, phase: str) -> float:
-    if type(value) not in (int, float) or not math.isfinite(value):
+def _number(
+    value: Any,
+    phase: str,
+    *,
+    status: PreparedFileWorkflowStatus = PreparedFileWorkflowStatus.INVALID_INPUT,
+) -> float:
+    if type(value) not in (int, float):
         raise _WorkflowFailure(
-            PreparedFileWorkflowStatus.INVALID_INPUT, phase, "value must be a finite number"
+            status, phase, "value must be a finite binary64 number"
         )
-    return float(value)
+    try:
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise _WorkflowFailure(
+            status, phase, "value must be a finite binary64 number"
+        ) from exc
+    if not math.isfinite(converted):
+        raise _WorkflowFailure(
+            status, phase, "value must be a finite binary64 number"
+        )
+    return converted
 
 
 def _nullable_number(value: Any, phase: str) -> float | None:
@@ -537,10 +577,21 @@ def _base_document(
         else:
             status = PreparedFileWorkflowStatus.BUILD_FAILURE
         message = built.error.message if built.error is not None else "prepared builder failed"
-        raise _WorkflowFailure(status, "builder", message, built.status.value)
+        raise _WorkflowFailure(
+            status,
+            "builder",
+            message,
+            built.status.value,
+            builder_status=built.status.value,
+        )
+    if len(built.build.information_sets) > limits.max_output_records:
+        raise _WorkflowFailure(
+            PreparedFileWorkflowStatus.CAP_EXCEEDED,
+            "template",
+            "output record cap exceeded",
+            builder_status=built.status.value,
+        )
     profiles, template_hash = _template(built.build)
-    if len(profiles) > limits.max_output_records:
-        raise _WorkflowFailure(PreparedFileWorkflowStatus.CAP_EXCEEDED, "template", "output record cap exceeded")
     return doc, spec, canonical, identity, built.build, profiles, template_hash
 
 
@@ -582,7 +633,8 @@ def _profile(
     build: Any,
     phase: str,
 ) -> PreparedPlayerProfile:
-    items = _array(value, 1_000, phase)
+    profile_status = PreparedFileWorkflowStatus.PROFILE_FAILURE
+    items = _array(value, 1_000, phase, status=profile_status)
     expected = {
         observation.info_set_id: observation.legal_action_labels
         for observation in build.information_sets if observation.key.player is player
@@ -593,12 +645,19 @@ def _profile(
     seen = set()
     for index, source in enumerate(items):
         item_phase = f"{phase}[{index}]"
-        obj = _object(source, {"info_set_id", "actions"}, phase=item_phase)
-        info_id = _text(obj["info_set_id"], item_phase)
+        obj = _object(
+            source,
+            {"info_set_id", "actions"},
+            phase=item_phase,
+            status=profile_status,
+        )
+        info_id = _text(obj["info_set_id"], item_phase, status=profile_status)
         if info_id in seen or info_id not in expected:
             raise _WorkflowFailure(PreparedFileWorkflowStatus.PROFILE_FAILURE, item_phase, "duplicate or foreign info_set_id")
         seen.add(info_id)
-        actions = _array(obj["actions"], 8, f"{item_phase}.actions")
+        actions = _array(
+            obj["actions"], 8, f"{item_phase}.actions", status=profile_status
+        )
         labels = expected[info_id]
         if len(actions) != len(labels):
             raise _WorkflowFailure(PreparedFileWorkflowStatus.PROFILE_FAILURE, item_phase, "action profile is incomplete")
@@ -606,12 +665,24 @@ def _profile(
         seen_labels = set()
         for action_index, source_action in enumerate(actions):
             action_phase = f"{item_phase}.actions[{action_index}]"
-            action_obj = _object(source_action, {"action_label", "probability"}, phase=action_phase)
-            label = _text(action_obj["action_label"], action_phase)
+            action_obj = _object(
+                source_action,
+                {"action_label", "probability"},
+                phase=action_phase,
+                status=profile_status,
+            )
+            label = _text(
+                action_obj["action_label"], action_phase, status=profile_status
+            )
             if label in seen_labels or label not in labels:
                 raise _WorkflowFailure(PreparedFileWorkflowStatus.PROFILE_FAILURE, action_phase, "duplicate or illegal action_label")
             seen_labels.add(label)
-            probabilities.append(PreparedActionProbability(label, _number(action_obj["probability"], action_phase)))
+            probabilities.append(PreparedActionProbability(
+                label,
+                _number(
+                    action_obj["probability"], action_phase, status=profile_status
+                ),
+            ))
         if seen_labels != set(labels):
             raise _WorkflowFailure(PreparedFileWorkflowStatus.PROFILE_FAILURE, item_phase, "action profile is incomplete")
         entries.append(PreparedProfileEntry(info_id, tuple(probabilities)))
@@ -655,14 +726,33 @@ def run_prepared_two_street_file(
             hero_profile=hero, villain_profile=villain,
         ))
         if result.status is not PreparedOrchestrationStatus.SUCCESS or result.run is None or result.identity is None:
-            if result.status is PreparedOrchestrationStatus.CAP_EXCEEDED:
+            if (
+                result.status is PreparedOrchestrationStatus.EVALUATION_INPUT_FAILURE
+                and result.evaluation_status in {
+                    PreparedEvaluationStatus.INVALID_INPUT,
+                    PreparedEvaluationStatus.INCOMPLETE_PROFILE,
+                    PreparedEvaluationStatus.ILLEGAL_PROFILE_REFERENCE,
+                    PreparedEvaluationStatus.INVALID_PROFILE_PROBABILITY,
+                }
+            ):
+                status = PreparedFileWorkflowStatus.PROFILE_FAILURE
+            elif result.status is PreparedOrchestrationStatus.BUILD_FAILURE:
+                status = PreparedFileWorkflowStatus.BUILD_FAILURE
+            elif result.status is PreparedOrchestrationStatus.CAP_EXCEEDED:
                 status = PreparedFileWorkflowStatus.CAP_EXCEEDED
             elif result.status is PreparedOrchestrationStatus.NON_REPRODUCIBLE:
                 status = PreparedFileWorkflowStatus.NON_REPRODUCIBLE
             else:
                 status = PreparedFileWorkflowStatus.ORCHESTRATION_FAILURE
             message = result.error.message if result.error is not None else "prepared orchestration failed"
-            raise _WorkflowFailure(status, "orchestration", message, result.status.value)
+            raise _WorkflowFailure(
+                status,
+                "orchestration",
+                message,
+                result.status.value,
+                None if result.builder_status is None else result.builder_status.value,
+                None if result.evaluation_status is None else result.evaluation_status.value,
+            )
         evaluation = result.run.evaluation
         output = {
             "format_version": PREPARED_TWO_STREET_FILE_FORMAT,
