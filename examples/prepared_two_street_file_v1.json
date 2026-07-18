@@ -1,0 +1,120 @@
+{
+  "format_version": "prepared-two-street-file-v1",
+  "operation": "inspect",
+  "spec": {
+    "contract_version": "betting-tree-v2-prepared-two-street-1",
+    "attestation": {
+      "source": "worked abstract example",
+      "bucket_semantics": "one abstract bucket per player",
+      "conditional_probability_semantics": "prepared conditional chance mass",
+      "observation_mapping": "public events and own bucket only",
+      "perfect_recall_attested": true
+    },
+    "starting_chips": {"hero": 10.0, "villain": 10.0},
+    "initial_committed": {"hero": 1.0, "villain": 1.0},
+    "rake": {"rate": 0.1, "cap": null},
+    "streets": [
+      {"street_id": "flop", "label": "First", "first_actor": "villain", "min_open_bet": 1.0},
+      {"street_id": "turn", "label": "Second", "first_actor": "hero", "min_open_bet": 1.0}
+    ],
+    "hero_buckets": [{"bucket_id": "H0", "weight": 1.0}],
+    "villain_buckets": [{"bucket_id": "V0", "weight": 1.0}],
+    "decision_menus": [
+      {
+        "history": [], "street_id": "flop", "player": "villain",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true}
+        ],
+        "street_id": "flop", "player": "hero",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "red"}
+        ],
+        "street_id": "turn", "player": "hero",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "red"},
+          {"type": "action", "street_id": "turn", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true}
+        ],
+        "street_id": "turn", "player": "villain",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "black"}
+        ],
+        "street_id": "turn", "player": "hero",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "black"},
+          {"type": "action", "street_id": "turn", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true}
+        ],
+        "street_id": "turn", "player": "villain",
+        "actions": [{"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}]
+      }
+    ],
+    "transition_id": "deal-turn",
+    "transition_rows": [
+      {
+        "transition_id": "deal-turn",
+        "source_history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H0", "villain_bucket_id": "V0",
+        "edges": [
+          {"public_outcome_id": "red", "next_hero_bucket_id": "H0", "next_villain_bucket_id": "V0", "probability": 0.6},
+          {"public_outcome_id": "black", "next_hero_bucket_id": "H0", "next_villain_bucket_id": "V0", "probability": 0.4}
+        ]
+      }
+    ],
+    "showdown_values": [
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "red"},
+          {"type": "action", "street_id": "turn", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "turn", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "turn", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H0", "villain_bucket_id": "V0", "hero_pot_share": 0.8
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "flop", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "flop", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "flop", "reason": "check-check"},
+          {"type": "chance", "transition_id": "deal-turn", "public_outcome_id": "black"},
+          {"type": "action", "street_id": "turn", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "turn", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "turn", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H0", "villain_bucket_id": "V0", "hero_pot_share": 0.2
+      }
+    ]
+  }
+}

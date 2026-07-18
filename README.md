@@ -104,6 +104,22 @@ python examples/nuts_chop_river.py
 python examples/value_bluff_river.py
 ```
 
+### Prepared one-/two-street file workflow
+
+Small abstract prepared games can use the strict two-phase
+`prepared-two-street-file-v1` workflow. `inspect` generates the information-set
+IDs and legal-action profile template; after the Hero probabilities (and an
+optional complete Villain profile) are filled, `run` returns the bounded M16
+orchestration result.
+
+```powershell
+python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v1.json
+```
+
+See [docs/prepared_two_street_file_workflow.md](docs/prepared_two_street_file_workflow.md)
+for the exact format and guardrails. This is an abstract fixed-Hero response
+workflow, not an equilibrium solver, real-card model, or strategy advice.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
