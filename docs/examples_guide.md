@@ -24,6 +24,8 @@
 8. `examples/value_bluff_river.py` - a contrasting non-chop spot.
 9. `scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json`
    - run the experimental STT SB-vs-BB push/fold ICM scenario path.
+10. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
+    exact-combo workflow after reading its dedicated guardrails.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -68,6 +70,26 @@ real-money recommendations, or guarantees of profitable play.
 Betting-tree v1 remains one river street with one IP stab after an OOP check and
 one IP raise line versus the OOP bet. It has no re-raises, multiple sizes per
 node, nested trees, or street transitions.
+
+## Real-card AIoF public workflow
+
+Run the deterministic known-board example with:
+
+```powershell
+python examples/aiof_real_card_workflow.py
+```
+
+This is separate from the abstract river matrix workflow above. It uses the
+existing M13 submodule APIs to parse explicit exact combos, apply card removal,
+calculate one exhaustive board, evaluate a supplied fee-zero heads-up ChipEV
+profile and fixed-opponent responses, and verify an exact Fraction witness for
+`aiof-rational-lift-game-v1`.
+
+Read [aiof_real_card_workflow.md](aiof_real_card_workflow.md) before interpreting
+the output. The example is not a range chart, does not parse solver shorthand,
+and does not establish equilibrium or optimality in an external game. It adds
+no file format or CLI operation and makes no profitability or real-money advice
+claim.
 
 ## Example reference
 
@@ -139,6 +161,7 @@ python examples/markdown_summary.py
 python examples/analysis_report.py
 python examples/value_bluff_river.py
 python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
+python examples/aiof_real_card_workflow.py
 ```
 
 ## How to interpret common output fields
@@ -512,3 +535,4 @@ exports.
 
 - [MVP Walkthrough](mvp_walkthrough.md)
 - [Assumptions and Limitations](assumptions_and_limitations.md)
+- [Real-card AIoF public workflow](aiof_real_card_workflow.md)
