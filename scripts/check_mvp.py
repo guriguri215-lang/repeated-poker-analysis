@@ -36,6 +36,9 @@ COMMANDS = [
     [sys.executable, "examples/aiof_real_card_workflow.py"],
     [sys.executable, "examples/stage_plan_diagnostic_workflow.py"],
 ]
+COMMANDS.append(
+    [sys.executable, "examples/three_player_cfr_diagnostic_workflow.py"]
+)
 
 
 def _build_env() -> dict:

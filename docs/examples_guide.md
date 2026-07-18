@@ -26,7 +26,9 @@
    - run the experimental STT SB-vs-BB push/fold ICM scenario path.
 10. `examples/stage_plan_diagnostic_workflow.py` - run a tiny exact-rational
     public-monitoring diagnostic whose expected analytic status is `FAIL`.
-11. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
+11. `examples/three_player_cfr_diagnostic_workflow.py` - run a guarded
+    fixed-Hero, two-opponent finite-iteration diagnostic and capped oracle.
+12. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
     exact-combo workflow after reading its dedicated guardrails.
 
 The order moves from the simplest hand-checkable tree, through candidate
@@ -110,6 +112,24 @@ deviation; it does not mean the script failed. The result is bounded to period
 boundaries and makes no equilibrium, Nash, subgame-perfect, sequential,
 optimality, proof, profitability, or real-money-advice claim.
 
+## Guarded three-player CFR-style diagnostic workflow
+
+Run the deterministic isolated-submodule example with:
+
+```powershell
+python examples/three_player_cfr_diagnostic_workflow.py
+```
+
+Read [three_player_cfr_diagnostic_workflow.md](three_player_cfr_diagnostic_workflow.md)
+before interpreting its one-line strict JSON output. The fixture represents a
+simultaneous 2x2 interaction with fixed Hero and separate O1/O2 actors, manually
+binds perfect-recall evidence to the ordered tree identity, runs two diagnostic
+iterations, and explicitly requests a complete capped pure-profile reference
+attachment. `DIAGNOSTIC_COMPLETE` is execution completion, and oracle `MATCH`
+is a tiny evaluator/mixture/unilateral-gain cross-check. Neither is a solution,
+convergence, equilibrium, Nash, exact-best-response, joint/coalition-stability,
+optimality, profitability, or real-money-advice claim.
+
 ## Example reference
 
 ### `examples/nuts_chop_river.py`
@@ -181,6 +201,7 @@ python examples/analysis_report.py
 python examples/value_bluff_river.py
 python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
 python examples/stage_plan_diagnostic_workflow.py
+python examples/three_player_cfr_diagnostic_workflow.py
 python examples/aiof_real_card_workflow.py
 ```
 
@@ -556,3 +577,4 @@ exports.
 - [MVP Walkthrough](mvp_walkthrough.md)
 - [Assumptions and Limitations](assumptions_and_limitations.md)
 - [Real-card AIoF public workflow](aiof_real_card_workflow.md)
+- [Guarded three-player CFR-style diagnostic workflow](three_player_cfr_diagnostic_workflow.md)
