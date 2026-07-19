@@ -27,6 +27,9 @@ from repeated_poker.game import (
 from repeated_poker.prepared_two_street import (
     PREPARED_CHANCE_NORMALIZATION_ID,
     PREPARED_INFORMATION_KEY_ID,
+    PREPARED_JOINT_ROOT_BUILDER_ID,
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+    PREPARED_JOINT_ROOT_DISTRIBUTION_ID,
     PREPARED_TWO_STREET_BUILDER_ID,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedActionEvent,
@@ -39,8 +42,10 @@ from repeated_poker.prepared_two_street import (
     PreparedDataAttestation,
     PreparedDecisionMenu,
     PreparedHeadsUpChips,
+    PreparedJointRootTwoStreetSpec,
     PreparedPlayer,
     PreparedRake,
+    PreparedRootMatchup,
     PreparedRoundCloseReason,
     PreparedShowdownValue,
     PreparedStreet,
@@ -235,6 +240,89 @@ def _two_street_spec(*, probabilities=(0.6, 0.4)) -> PreparedTwoStreetSpec:
     )
 
 
+def _joint_root_spec() -> PreparedJointRootTwoStreetSpec:
+    street = "river"
+    villain_check = _action(
+        street,
+        PreparedPlayer.VILLAIN,
+        PreparedActionKind.CHECK,
+    )
+    hero_check = _action(
+        street,
+        PreparedPlayer.HERO,
+        PreparedActionKind.CHECK,
+    )
+    terminal_state = prepared_public_history_id(
+        (
+            villain_check,
+            hero_check,
+            PreparedStreetCloseEvent(
+                street,
+                PreparedRoundCloseReason.CHECK_CHECK,
+            ),
+        )
+    )
+    return PreparedJointRootTwoStreetSpec(
+        contract_version=PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+        attestation=PreparedDataAttestation(
+            source="joint-root hand oracle",
+            bucket_semantics="exact synthetic private buckets",
+            conditional_probability_semantics=(
+                "explicit positive joint root mass; no factorization"
+            ),
+            observation_mapping="public actions and own bucket only",
+            perfect_recall_attested=True,
+        ),
+        starting_chips=PreparedHeadsUpChips(10.0, 10.0),
+        initial_committed=PreparedHeadsUpChips(1.0, 1.0),
+        rake=PreparedRake(0.0, None),
+        streets=(
+            PreparedStreet(
+                street,
+                "River",
+                PreparedPlayer.VILLAIN,
+                1.0,
+            ),
+        ),
+        hero_buckets=(
+            PreparedBucket("H0", 0.6),
+            PreparedBucket("H1", 0.4),
+        ),
+        villain_buckets=(
+            PreparedBucket("V0", 0.7),
+            PreparedBucket("V1", 0.3),
+        ),
+        decision_menus=(
+            PreparedDecisionMenu(
+                prepared_public_history_id(()),
+                street,
+                PreparedPlayer.VILLAIN,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+            PreparedDecisionMenu(
+                prepared_public_history_id((villain_check,)),
+                street,
+                PreparedPlayer.HERO,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+        ),
+        transition_id=None,
+        transition_rows=(),
+        showdown_values=(
+            PreparedShowdownValue(terminal_state, "H0", "V0", 1.0),
+            PreparedShowdownValue(terminal_state, "H0", "V1", 0.5),
+            PreparedShowdownValue(terminal_state, "H1", "V0", 0.0),
+            PreparedShowdownValue(terminal_state, "H1", "V1", 0.25),
+        ),
+        root_matchups=(
+            PreparedRootMatchup("H0", "V0", 0.5),
+            PreparedRootMatchup("H0", "V1", 0.1),
+            PreparedRootMatchup("H1", "V0", 0.2),
+            PreparedRootMatchup("H1", "V1", 0.2),
+        ),
+    )
+
+
 def _initial_all_in_two_street_spec() -> PreparedTwoStreetSpec:
     s1, s2, transition = "flop", "turn", "deal-turn"
     close = PreparedStreetCloseEvent(s1, PreparedRoundCloseReason.ALL_IN_CALL)
@@ -340,13 +428,16 @@ def _strategy_for_tree(tree):
 def test_exact_module_public_api_and_algorithm_ids_are_pinned():
     expected = [
         "PREPARED_TWO_STREET_CONTRACT_VERSION", "PREPARED_TWO_STREET_BUILDER_ID",
+        "PREPARED_JOINT_ROOT_CONTRACT_VERSION", "PREPARED_JOINT_ROOT_BUILDER_ID",
+        "PREPARED_JOINT_ROOT_DISTRIBUTION_ID",
         "PREPARED_CHANCE_NORMALIZATION_ID", "PREPARED_INFORMATION_KEY_ID", "PreparedPlayer",
         "PreparedActionKind", "PreparedRoundCloseReason", "PreparedTwoStreetStatus",
         "PreparedTwoStreetLimits", "PreparedContentIdentity", "PreparedDataAttestation",
         "PreparedHeadsUpChips", "PreparedRake", "PreparedBucket", "PreparedActionOption",
         "PreparedActionEvent", "PreparedStreetCloseEvent", "PreparedChanceEvent", "PreparedStreet",
         "PreparedDecisionMenu", "PreparedChanceEdge", "PreparedTransitionRow", "PreparedShowdownValue",
-        "PreparedTwoStreetSpec", "PreparedInformationSetKey", "PreparedInformationSetObservation",
+        "PreparedTwoStreetSpec", "PreparedRootMatchup", "PreparedJointRootTwoStreetSpec",
+        "PreparedInformationSetKey", "PreparedInformationSetObservation",
         "PreparedChanceNormalizationRecord", "PreparedBuildCounts", "PreparedTwoStreetIdentity",
         "PreparedTwoStreetBuild", "PreparedBuildError", "PreparedTwoStreetBuildResult",
         "prepared_public_history_id", "prepared_semantic_sha256", "build_prepared_two_street_game",
@@ -354,10 +445,202 @@ def test_exact_module_public_api_and_algorithm_ids_are_pinned():
     assert pts.__all__ == expected
     assert PREPARED_TWO_STREET_CONTRACT_VERSION == "betting-tree-v2-prepared-two-street-1"
     assert PREPARED_TWO_STREET_BUILDER_ID == "betting-tree-v2-prepared-two-street-builder-v1"
+    assert PREPARED_JOINT_ROOT_CONTRACT_VERSION == "betting-tree-v2-prepared-two-street-joint-root-2"
+    assert PREPARED_JOINT_ROOT_BUILDER_ID == "betting-tree-v2-prepared-two-street-joint-root-builder-v2"
+    assert PREPARED_JOINT_ROOT_DISTRIBUTION_ID == "explicit-positive-joint-root-matchups-v1"
     assert PREPARED_CHANCE_NORMALIZATION_ID == "positive-fsum-normalize-v1"
     assert PREPARED_INFORMATION_KEY_ID == "canonical-private-public-recall-key-v1"
     assert "PreparedTwoStreetBuild" not in repeated_poker.__all__
     assert not hasattr(repeated_poker, "PREPARED_TWO_STREET_CONTRACT_VERSION")
+    assert not hasattr(repeated_poker, "PreparedJointRootTwoStreetSpec")
+
+
+def test_joint_root_v2_preserves_correlated_mass_and_matches_hand_oracle():
+    spec = _joint_root_spec()
+    first = _build(spec)
+    second = _build(spec)
+    assert first.status is PreparedTwoStreetStatus.SUCCESS
+    assert first.error is None and first.build is not None
+    assert second.build == first.build
+    build = first.build
+    assert build.identity.contract_version == PREPARED_JOINT_ROOT_CONTRACT_VERSION
+    assert build.identity.builder_id == PREPARED_JOINT_ROOT_BUILDER_ID
+    assert build.identity.semantic_sha256 == (
+        "70eaf7051dc8db647d65c8bb682f44aa47da45c0c439c9eca383db79147f49dc"
+    )
+    assert build.identity.ordered_tree_sha256 == (
+        "316e385f355bb04326e682b3ace14956b3b5cd290430106a0069d296a70ff3f5"
+    )
+    assert build.identity.run_identity == (
+        "642a4bacc70f48e111e578747ab6abcc7cebf7ed6b6459a97800f9b897322249"
+    )
+    assert build.counts == pts.PreparedBuildCounts(
+        4, 0, 4, 8, 4, 13, 3, 2, 2, 1, 1
+    )
+    assert tuple(probability for probability, _ in build.tree.root.children) == (
+        0.5,
+        0.1,
+        0.2,
+        0.2,
+    )
+    assert {
+        item.key.contract_version for item in build.information_sets
+    } == {PREPARED_JOINT_ROOT_CONTRACT_VERSION}
+
+    hero, villain = _strategy_for_tree(build.tree)
+    fixed = evaluate_fixed_profile(build.tree, hero, villain)
+    # Helper-free oracle: pot=2, no rake, Hero EV=2*share-1.
+    expected = 0.5 * 1.0 + 0.1 * 0.0 + 0.2 * -1.0 + 0.2 * -0.5
+    assert fixed.hero_ev == pytest.approx(expected)
+    assert fixed.villain_ev == pytest.approx(-expected)
+    assert fixed.house_rake == 0.0
+    # Factorizing the same marginals would incorrectly produce 0.08.
+    factorized = (
+        0.6 * 0.7 * 1.0
+        + 0.6 * 0.3 * 0.0
+        + 0.4 * 0.7 * -1.0
+        + 0.4 * 0.3 * -0.5
+    )
+    assert factorized == pytest.approx(0.08)
+    assert fixed.hero_ev == pytest.approx(0.2)
+    assert fixed.hero_ev != pytest.approx(factorized)
+
+
+def test_joint_root_semantic_identity_binds_distribution_algorithm_and_rows():
+    spec = _joint_root_spec()
+    semantic = prepared_semantic_sha256(spec)
+    expected = hashlib.sha256(
+        pts._canonical_bytes(
+            {
+                "algorithm": pts._CONTENT_IDENTITY_ID,
+                "spec": spec,
+                "root_distribution_id": PREPARED_JOINT_ROOT_DISTRIBUTION_ID,
+            }
+        )
+    ).hexdigest()
+    assert semantic == expected == prepared_semantic_sha256(spec)
+    changed = replace(
+        spec,
+        root_matchups=(
+            PreparedRootMatchup("H0", "V0", 0.4),
+            PreparedRootMatchup("H0", "V1", 0.2),
+            PreparedRootMatchup("H1", "V0", 0.3),
+            PreparedRootMatchup("H1", "V1", 0.1),
+        ),
+        hero_buckets=(PreparedBucket("H0", 0.6), PreparedBucket("H1", 0.4)),
+        villain_buckets=(PreparedBucket("V0", 0.7), PreparedBucket("V1", 0.3)),
+    )
+    assert prepared_semantic_sha256(changed) != semantic
+
+
+@pytest.mark.parametrize(
+    "mutator,status",
+    [
+        (
+            lambda s: replace(s, root_matchups=()),
+            PreparedTwoStreetStatus.EMPTY_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=s.root_matchups + (s.root_matchups[0],),
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(
+                    replace(s.root_matchups[0], hero_bucket_id="UNKNOWN"),
+                )
+                + s.root_matchups[1:],
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(replace(s.root_matchups[0], probability=0.0),)
+                + s.root_matchups[1:],
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(replace(s.root_matchups[0], probability=True),)
+                + s.root_matchups[1:],
+            ),
+            PreparedTwoStreetStatus.INVALID_INPUT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(replace(s.root_matchups[0], probability=math.nan),)
+                + s.root_matchups[1:],
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(
+                    PreparedRootMatchup("H0", "V0", 0.4),
+                    PreparedRootMatchup("H0", "V1", 0.2),
+                    PreparedRootMatchup("H1", "V0", 0.2),
+                    PreparedRootMatchup("H1", "V1", 0.2),
+                ),
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+        (
+            lambda s: replace(
+                s,
+                root_matchups=(
+                    PreparedRootMatchup("H0", "V0", 0.8),
+                    PreparedRootMatchup("H0", "V1", 0.2),
+                ),
+            ),
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+        ),
+    ],
+)
+def test_joint_root_invalid_support_fails_closed(mutator, status):
+    _assert_failure(_build(mutator(_joint_root_spec())), status)
+
+
+def test_joint_root_spec_type_and_contract_version_must_match():
+    _assert_failure(
+        _build(
+            replace(
+                _joint_root_spec(),
+                contract_version=PREPARED_TWO_STREET_CONTRACT_VERSION,
+            )
+        ),
+        PreparedTwoStreetStatus.INVALID_INPUT,
+    )
+    _assert_failure(
+        _build(
+            replace(
+                _one_street_spec(),
+                contract_version=PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+            )
+        ),
+        PreparedTwoStreetStatus.INVALID_INPUT,
+    )
+
+
+def test_joint_root_cap_fails_before_bucket_index_or_tree_allocation(monkeypatch):
+    monkeypatch.setattr(
+        pts,
+        "_validate_buckets",
+        lambda *args: pytest.fail("bucket index allocated before flat cap"),
+    )
+    limits = replace(PreparedTwoStreetLimits(), max_root_matchups=3)
+    _assert_failure(
+        _build(_joint_root_spec(), limits=limits),
+        PreparedTwoStreetStatus.CAP_EXCEEDED,
+    )
 
 
 def test_one_street_specialization_hand_counts_labels_and_keys():
