@@ -1,0 +1,122 @@
+{
+  "format_version": "stage-plan-diagnostic-file-v1",
+  "operation": "inspect",
+  "request_id": "m24-tiny-positive-deviation",
+  "fixture_version": "stage-plan-public-example-v1",
+  "tree": {
+    "root": {
+      "type": "hero",
+      "node_id": "h",
+      "info_set": "H1",
+      "actions": [
+        {
+          "action": "stay",
+          "child": {
+            "type": "terminal",
+            "node_id": "stay_terminal",
+            "hero_payoff": "0",
+            "villain_payoff": "0",
+            "house_residual": "0"
+          }
+        },
+        {
+          "action": "deviate",
+          "child": {
+            "type": "terminal",
+            "node_id": "deviate_terminal",
+            "hero_payoff": "1",
+            "villain_payoff": "-1",
+            "house_residual": "0"
+          }
+        }
+      ]
+    }
+  },
+  "monitoring": {
+    "public_action_node_ids": ["h"],
+    "terminal_observables": [
+      {"node_id": "stay_terminal", "observable": "terminal"},
+      {"node_id": "deviate_terminal", "observable": "terminal"}
+    ],
+    "signal_alphabet": [
+      {
+        "action_trace": [{"actor": "Hero", "action": "stay"}],
+        "terminal_observable": "terminal"
+      },
+      {
+        "action_trace": [{"actor": "Hero", "action": "deviate"}],
+        "terminal_observable": "terminal"
+      }
+    ],
+    "transitions": [
+      {"state": "C", "signal_index": 0, "next_state": "C"},
+      {"state": "C", "signal_index": 1, "next_state": "C"},
+      {"state": "P", "signal_index": 0, "next_state": "P"},
+      {"state": "P", "signal_index": 1, "next_state": "P"}
+    ]
+  },
+  "profiles": {
+    "C": {
+      "Hero": [
+        {
+          "info_set": "H1",
+          "actions": [
+            {"action": "stay", "probability": "1"},
+            {"action": "deviate", "probability": "0"}
+          ]
+        }
+      ],
+      "Villain": []
+    },
+    "P": {
+      "Hero": [
+        {
+          "info_set": "H1",
+          "actions": [
+            {"action": "stay", "probability": "1"},
+            {"action": "deviate", "probability": "0"}
+          ]
+        }
+      ],
+      "Villain": []
+    }
+  },
+  "numeric": {
+    "delta": "1/2",
+    "stage_payoff_bound": "1",
+    "input_tolerance": "0",
+    "epsilon_claim": "0",
+    "numeric_error_bound": {
+      "probability_representation": "0",
+      "probability_normalization": "0",
+      "stage_expectation": "0",
+      "continuation_expectation": "0",
+      "subtraction": "0",
+      "maximum": "0",
+      "bellman_residual": "0",
+      "residual_evaluation": "0",
+      "enclosure_established": true
+    }
+  },
+  "core_limits": {"max_plans_per_player": 2},
+  "workflow_limits": {
+    "max_input_bytes": 1000000,
+    "max_json_depth": 64,
+    "max_total_json_values": 100000,
+    "max_tree_depth": 64,
+    "max_tree_nodes": 500,
+    "max_tree_branches": 2000,
+    "max_public_action_nodes": 500,
+    "max_terminal_observables": 500,
+    "max_signals": 2000,
+    "max_signal_actions": 64,
+    "max_transitions": 4000,
+    "max_profile_rows": 500,
+    "max_profile_actions": 2000,
+    "max_attestation_records": 2000,
+    "max_attestation_text_length": 500,
+    "max_plan_rows": 20000,
+    "max_output_records": 100000,
+    "max_output_bytes": 4000000
+  }
+}
