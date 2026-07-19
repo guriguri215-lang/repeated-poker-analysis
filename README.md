@@ -160,6 +160,29 @@ cross-check only; this workflow does not establish an exact best response,
 equilibrium, Nash, convergence, joint or coalition stability, optimality, or
 solver-grade output, and it is not strategy or real-money advice.
 
+#### Three-player CFR-style diagnostic file workflow
+
+Saved tiny fixtures can use the strict two-phase
+`three-player-cfr-file-v1` adapter. `inspect` validates the recursive tree,
+complete fixed-Hero policy, config and limits, then returns an identity-bound
+O1/O2 action template and an unconfirmed human-attestation template without
+running CFR or the oracle:
+
+```powershell
+python scripts/run_three_player_cfr_file.py examples/three_player_cfr_file_v1.json
+```
+
+After a human explicitly fills both confirmations and all evidence fields,
+`run` revalidates the tree/policy/config/limits inspection identity and invokes
+the existing public diagnostic once. See
+[docs/three_player_cfr_file_workflow.md](docs/three_player_cfr_file_workflow.md)
+for the exact recursive schema, caller-lowerable caps, deterministic full
+projection, and strict no-partial failures. The workflow never auto-attests,
+clamps, truncates, samples, or silently fills data. It is not an exact best
+response, equilibrium/Nash or convergence result, solver-grade output,
+strategy recommendation, profitability claim, or real-money advice, and it
+does not add pipeline, manifest, report, GUI, or top-level-package integration.
+
 ### Real-card AIoF public workflow
 
 M13's existing submodule APIs also provide a bounded real-card path. The worked
