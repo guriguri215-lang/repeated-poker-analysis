@@ -737,7 +737,7 @@ def test_run_output_preflight_counts_every_fixed_rational_token(monkeypatch):
     assert len(rational_strings) == 27 + 5 * deviation_rows == 57
 
     document = example_document()
-    document["workflow_limits"]["max_output_bytes"] = 285_000
+    document["workflow_limits"]["max_output_bytes"] = 585_000
     run = filled_run_document(document)
     original = module.diagnose_stage_plan_deviations
     calls = 0
