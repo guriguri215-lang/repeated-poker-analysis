@@ -1,10 +1,12 @@
 """Bounded prepared abstract one- or two-street heads-up betting games.
 
 This module builds a finite :class:`~repeated_poker.game.GameTree` from flat,
-already-prepared abstract tables.  It supports fixed-profile evaluation and an
-exact response to a fixed Hero through the existing core.  It does not parse
-scenario JSON, evaluate real cards, certify an external solver, or compute an
-equilibrium.
+already-prepared abstract tables.  The original contract uses factorized Hero
+and Villain root weights; the joint-root v2 contract accepts an explicit sparse
+joint distribution without normalizing or filling impossible pairs.  It
+supports fixed-profile evaluation and an exact response to a fixed Hero through
+compatible downstream adapters.  It does not parse scenario JSON, evaluate real
+cards, certify an external solver, or compute an equilibrium.
 
 The builder is deliberately fail closed.  It validates identities, accounting,
 observation/recall conditions, exact table coverage, and projected allocation
@@ -36,6 +38,13 @@ from .payoffs import HERO, VILLAIN, make_equity_showdown_terminal, make_fold_ter
 
 PREPARED_TWO_STREET_CONTRACT_VERSION = "betting-tree-v2-prepared-two-street-1"
 PREPARED_TWO_STREET_BUILDER_ID = "betting-tree-v2-prepared-two-street-builder-v1"
+PREPARED_JOINT_ROOT_CONTRACT_VERSION = (
+    "betting-tree-v2-prepared-two-street-joint-root-2"
+)
+PREPARED_JOINT_ROOT_BUILDER_ID = (
+    "betting-tree-v2-prepared-two-street-joint-root-builder-v2"
+)
+PREPARED_JOINT_ROOT_DISTRIBUTION_ID = "explicit-positive-joint-root-matchups-v1"
 PREPARED_CHANCE_NORMALIZATION_ID = "positive-fsum-normalize-v1"
 PREPARED_INFORMATION_KEY_ID = "canonical-private-public-recall-key-v1"
 
@@ -48,6 +57,9 @@ _PROBABILITY_TOLERANCE = 1e-9
 __all__ = [
     "PREPARED_TWO_STREET_CONTRACT_VERSION",
     "PREPARED_TWO_STREET_BUILDER_ID",
+    "PREPARED_JOINT_ROOT_CONTRACT_VERSION",
+    "PREPARED_JOINT_ROOT_BUILDER_ID",
+    "PREPARED_JOINT_ROOT_DISTRIBUTION_ID",
     "PREPARED_CHANCE_NORMALIZATION_ID",
     "PREPARED_INFORMATION_KEY_ID",
     "PreparedPlayer",
@@ -70,6 +82,8 @@ __all__ = [
     "PreparedTransitionRow",
     "PreparedShowdownValue",
     "PreparedTwoStreetSpec",
+    "PreparedRootMatchup",
+    "PreparedJointRootTwoStreetSpec",
     "PreparedInformationSetKey",
     "PreparedInformationSetObservation",
     "PreparedChanceNormalizationRecord",
@@ -266,6 +280,28 @@ class PreparedTwoStreetSpec:
 
 
 @dataclass(frozen=True)
+class PreparedRootMatchup:
+    """One positive Hero/Villain root-bucket joint probability."""
+
+    hero_bucket_id: str
+    villain_bucket_id: str
+    probability: float
+
+
+@dataclass(frozen=True)
+class PreparedJointRootTwoStreetSpec(PreparedTwoStreetSpec):
+    """Prepared v2 spec with an explicit, non-factorized root distribution.
+
+    ``root_matchups`` may omit impossible bucket pairs.  Its positive
+    probabilities must sum to one, cover every declared bucket, and reproduce
+    the declared per-player bucket weights as marginals.  The builder never
+    normalizes, fills, truncates, or factorizes this distribution.
+    """
+
+    root_matchups: tuple[PreparedRootMatchup, ...]
+
+
+@dataclass(frozen=True)
 class PreparedInformationSetKey:
     contract_version: str
     player: PreparedPlayer
@@ -423,8 +459,11 @@ def prepared_semantic_sha256(spec: PreparedTwoStreetSpec) -> str:
 
     if not isinstance(spec, PreparedTwoStreetSpec):
         raise ValueError("spec must be PreparedTwoStreetSpec")
+    payload: dict[str, Any] = {"algorithm": _CONTENT_IDENTITY_ID, "spec": spec}
+    if type(spec) is PreparedJointRootTwoStreetSpec:
+        payload["root_distribution_id"] = PREPARED_JOINT_ROOT_DISTRIBUTION_ID
     return hashlib.sha256(
-        _canonical_bytes({"algorithm": _CONTENT_IDENTITY_ID, "spec": spec})
+        _canonical_bytes(payload)
     ).hexdigest()
 
 
@@ -494,14 +533,23 @@ def _tuple(value: Any, item_type: type, name: str) -> tuple:
 
 
 def _validate_outer(spec: Any, raw_input_bytes: Any, identity: Any, limits: Any) -> tuple[PreparedTwoStreetSpec, PreparedTwoStreetLimits]:
-    if not isinstance(spec, PreparedTwoStreetSpec):
-        _fail(PreparedTwoStreetStatus.INVALID_INPUT, "input", "spec must be PreparedTwoStreetSpec")
+    if type(spec) not in (PreparedTwoStreetSpec, PreparedJointRootTwoStreetSpec):
+        _fail(
+            PreparedTwoStreetStatus.INVALID_INPUT,
+            "input",
+            "spec must be PreparedTwoStreetSpec or PreparedJointRootTwoStreetSpec",
+        )
     if type(raw_input_bytes) is not bytes:
         _fail(PreparedTwoStreetStatus.INVALID_INPUT, "identity", "raw_input_bytes must be bytes")
     if not isinstance(identity, PreparedContentIdentity):
         _fail(PreparedTwoStreetStatus.INVALID_INPUT, "identity", "content_identity must be PreparedContentIdentity")
     limits = _validate_limits(limits)
-    if spec.contract_version != PREPARED_TWO_STREET_CONTRACT_VERSION:
+    expected_contract = (
+        PREPARED_JOINT_ROOT_CONTRACT_VERSION
+        if type(spec) is PreparedJointRootTwoStreetSpec
+        else PREPARED_TWO_STREET_CONTRACT_VERSION
+    )
+    if spec.contract_version != expected_contract:
         _fail(PreparedTwoStreetStatus.INVALID_INPUT, "contract", "unsupported prepared contract version")
     if not _valid_sha256(identity.raw_sha256) or not _valid_sha256(identity.semantic_sha256):
         _fail(PreparedTwoStreetStatus.INVALID_INPUT, "identity", "content hashes must be lowercase SHA-256 hex")
@@ -559,13 +607,25 @@ def _validate_outer(spec: Any, raw_input_bytes: Any, identity: Any, limits: Any)
             _fail(PreparedTwoStreetStatus.INVALID_INPUT, "input", "duplicate street_id")
         street_ids.add(street.street_id)
 
+    if type(spec) is PreparedJointRootTwoStreetSpec:
+        _tuple(spec.root_matchups, PreparedRootMatchup, "root_matchups")
+        if not spec.root_matchups:
+            _fail(
+                PreparedTwoStreetStatus.EMPTY_CHANCE_SUPPORT,
+                "joint-root",
+                "joint root matchup support must not be empty",
+            )
+        root_matchups = len(spec.root_matchups)
+    else:
+        root_matchups = len(spec.hero_buckets) * len(spec.villain_buckets)
+    if root_matchups > limits.max_root_matchups:
+        _fail(PreparedTwoStreetStatus.CAP_EXCEEDED, "flat-count", "root matchup cap exceeded")
     hero_ids = _validate_buckets(spec.hero_buckets, "hero_buckets")
     villain_ids = _validate_buckets(spec.villain_buckets, "villain_buckets")
     if hero_ids & villain_ids:
         _fail(PreparedTwoStreetStatus.INVALID_INPUT, "input", "Hero and Villain bucket ids must be disjoint")
-    root_matchups = len(spec.hero_buckets) * len(spec.villain_buckets)
-    if root_matchups > limits.max_root_matchups:
-        _fail(PreparedTwoStreetStatus.CAP_EXCEEDED, "flat-count", "root matchup cap exceeded")
+    if type(spec) is PreparedJointRootTwoStreetSpec:
+        _validate_joint_root(spec, hero_ids, villain_ids)
 
     if len(spec.streets) == 1:
         if spec.transition_id is not None or spec.transition_rows:
@@ -601,6 +661,96 @@ def _validate_buckets(buckets: tuple[PreparedBucket, ...], name: str) -> set[str
     if abs(math.fsum(weights) - 1.0) > _PROBABILITY_TOLERANCE:
         _fail(PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, "chance", f"{name} weights do not sum to one")
     return ids
+
+
+def _validate_joint_root(
+    spec: PreparedJointRootTwoStreetSpec,
+    hero_ids: set[str],
+    villain_ids: set[str],
+) -> None:
+    seen_pairs: set[tuple[str, str]] = set()
+    seen_hero: set[str] = set()
+    seen_villain: set[str] = set()
+    hero_terms: dict[str, list[float]] = {bucket_id: [] for bucket_id in hero_ids}
+    villain_terms: dict[str, list[float]] = {
+        bucket_id: [] for bucket_id in villain_ids
+    }
+    probabilities: list[float] = []
+    for index, matchup in enumerate(spec.root_matchups):
+        hero_id = _require_string(
+            matchup.hero_bucket_id,
+            f"root_matchups[{index}].hero_bucket_id",
+        )
+        villain_id = _require_string(
+            matchup.villain_bucket_id,
+            f"root_matchups[{index}].villain_bucket_id",
+        )
+        if hero_id not in hero_ids or villain_id not in villain_ids:
+            _fail(
+                PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+                "joint-root",
+                "joint root matchup references an unknown bucket",
+            )
+        pair = (hero_id, villain_id)
+        if pair in seen_pairs:
+            _fail(
+                PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+                "joint-root",
+                "duplicate joint root matchup",
+            )
+        seen_pairs.add(pair)
+        seen_hero.add(hero_id)
+        seen_villain.add(villain_id)
+        probability = _chance_probability(
+            matchup.probability,
+            f"root_matchups[{index}].probability",
+        )
+        probabilities.append(probability)
+        hero_terms[hero_id].append(probability)
+        villain_terms[villain_id].append(probability)
+
+    if seen_hero != hero_ids or seen_villain != villain_ids:
+        _fail(
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+            "joint-root",
+            "joint root support must give every declared bucket positive reach",
+        )
+    total = _finite_derived(math.fsum(probabilities), "joint root probability sum")
+    if abs(total - 1.0) > _PROBABILITY_TOLERANCE:
+        _fail(
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+            "joint-root",
+            "joint root probabilities do not sum to one",
+        )
+
+    declared_hero = {bucket.bucket_id: bucket.weight for bucket in spec.hero_buckets}
+    declared_villain = {
+        bucket.bucket_id: bucket.weight for bucket in spec.villain_buckets
+    }
+    for bucket_id in hero_ids:
+        marginal = _finite_derived(
+            math.fsum(hero_terms[bucket_id]),
+            "joint root Hero marginal",
+            positive_reach=True,
+        )
+        if abs(marginal - declared_hero[bucket_id]) > _PROBABILITY_TOLERANCE:
+            _fail(
+                PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+                "joint-root",
+                "joint root Hero marginal disagrees with bucket weight",
+            )
+    for bucket_id in villain_ids:
+        marginal = _finite_derived(
+            math.fsum(villain_terms[bucket_id]),
+            "joint root Villain marginal",
+            positive_reach=True,
+        )
+        if abs(marginal - declared_villain[bucket_id]) > _PROBABILITY_TOLERANCE:
+            _fail(
+                PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+                "joint-root",
+                "joint root Villain marginal disagrees with bucket weight",
+            )
 
 
 def _validate_flat_entries(
@@ -1040,7 +1190,7 @@ def _register_information(
     own_bucket_history = hero_history if actor is PreparedPlayer.HERO else villain_history
     own_actions = hero_actions if actor is PreparedPlayer.HERO else villain_actions
     expected_key = PreparedInformationSetKey(
-        contract_version=PREPARED_TWO_STREET_CONTRACT_VERSION,
+        contract_version=preflight.spec.contract_version,
         player=actor,
         street_id=street.street_id,
         own_current_bucket_id=own_bucket,
@@ -1263,6 +1413,26 @@ def _reset_for_next_street(state: _RoundState) -> _RoundState:
     )
 
 
+def _root_matchup_distribution(
+    spec: PreparedTwoStreetSpec,
+) -> tuple[PreparedRootMatchup, ...]:
+    if type(spec) is PreparedJointRootTwoStreetSpec:
+        return spec.root_matchups
+    return tuple(
+        PreparedRootMatchup(
+            hero_bucket_id=hero.bucket_id,
+            villain_bucket_id=villain.bucket_id,
+            probability=_finite_derived(
+                hero.weight * villain.weight,
+                "factorized root matchup probability",
+                positive_reach=True,
+            ),
+        )
+        for hero in spec.hero_buckets
+        for villain in spec.villain_buckets
+    )
+
+
 def _preflight_game(spec: PreparedTwoStreetSpec, limits: PreparedTwoStreetLimits) -> tuple[_Preflight, PreparedBuildCounts]:
     menus = _bounded_index(spec.decision_menus, lambda menu: _menu_key(menu.public_history_id, menu.street_id, menu.player), status=PreparedTwoStreetStatus.INVALID_INPUT, name="decision menu")
     rows = _bounded_index(spec.transition_rows, _transition_key, status=PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, name="transition row")
@@ -1282,34 +1452,43 @@ def _preflight_game(spec: PreparedTwoStreetSpec, limits: PreparedTwoStreetLimits
         info_key_semantics={},
         info_digest_keys={},
     )
-    root_matchups = len(spec.hero_buckets) * len(spec.villain_buckets)
+    root_distribution = _root_matchup_distribution(spec)
+    root_matchups = len(root_distribution)
     if root_matchups > limits.max_root_matchups:
         _fail(PreparedTwoStreetStatus.CAP_EXCEEDED, "flat-count", "root matchup cap exceeded")
     preflight.chance_edges = root_matchups
     preflight._caps(0)
     weights: list[float] = []
-    for hero in spec.hero_buckets:
-        for villain in spec.villain_buckets:
-            probability = _finite_derived(hero.weight * villain.weight, "root matchup probability", positive_reach=True)
-            weights.append(probability)
-            _walk_round(
-                preflight,
-                materialize=False,
-                street_index=0,
-                actor=spec.streets[0].first_actor,
-                state=_initial_state(spec),
-                hero_bucket=hero.bucket_id,
-                villain_bucket=villain.bucket_id,
-                hero_history=(hero.bucket_id,),
-                villain_history=(villain.bucket_id,),
-                hero_actions=(),
-                villain_actions=(),
-                events=(),
-                depth=1,
-                path_info=frozenset(),
-            )
+    for matchup in root_distribution:
+        probability = _finite_derived(
+            matchup.probability,
+            "root matchup probability",
+            positive_reach=True,
+        )
+        weights.append(probability)
+        _walk_round(
+            preflight,
+            materialize=False,
+            street_index=0,
+            actor=spec.streets[0].first_actor,
+            state=_initial_state(spec),
+            hero_bucket=matchup.hero_bucket_id,
+            villain_bucket=matchup.villain_bucket_id,
+            hero_history=(matchup.hero_bucket_id,),
+            villain_history=(matchup.villain_bucket_id,),
+            hero_actions=(),
+            villain_actions=(),
+            events=(),
+            depth=1,
+            path_info=frozenset(),
+        )
     if abs(math.fsum(weights) - 1.0) > _PROBABILITY_TOLERANCE:
-        _fail(PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT, "chance", "factorized root probabilities do not sum to one")
+        label = "joint" if type(spec) is PreparedJointRootTwoStreetSpec else "factorized"
+        _fail(
+            PreparedTwoStreetStatus.INVALID_CHANCE_SUPPORT,
+            "chance",
+            f"{label} root probabilities do not sum to one",
+        )
     if preflight.used_menus != set(menus):
         _fail(PreparedTwoStreetStatus.INVALID_ACTION_GRAMMAR, "coverage", "missing reachable decision menu or extra unreachable menu")
     if preflight.used_rows != set(rows):
@@ -1661,26 +1840,29 @@ def _node_id(kind: str, events: tuple[_PublicEvent, ...], hero_history: tuple[st
 def _materialize(preflight: _Preflight) -> GameTree:
     spec = preflight.spec
     children: list[tuple[float, Any]] = []
-    for hero in spec.hero_buckets:
-        for villain in spec.villain_buckets:
-            probability = _finite_derived(hero.weight * villain.weight, "root matchup probability", positive_reach=True)
-            child = _walk_round(
-                preflight,
-                materialize=True,
-                street_index=0,
-                actor=spec.streets[0].first_actor,
-                state=_initial_state(spec),
-                hero_bucket=hero.bucket_id,
-                villain_bucket=villain.bucket_id,
-                hero_history=(hero.bucket_id,),
-                villain_history=(villain.bucket_id,),
-                hero_actions=(),
-                villain_actions=(),
-                events=(),
-                depth=1,
-                path_info=frozenset(),
-            )
-            children.append((probability, child))
+    for matchup in _root_matchup_distribution(spec):
+        probability = _finite_derived(
+            matchup.probability,
+            "root matchup probability",
+            positive_reach=True,
+        )
+        child = _walk_round(
+            preflight,
+            materialize=True,
+            street_index=0,
+            actor=spec.streets[0].first_actor,
+            state=_initial_state(spec),
+            hero_bucket=matchup.hero_bucket_id,
+            villain_bucket=matchup.villain_bucket_id,
+            hero_history=(matchup.hero_bucket_id,),
+            villain_history=(matchup.villain_bucket_id,),
+            hero_actions=(),
+            villain_actions=(),
+            events=(),
+            depth=1,
+            path_info=frozenset(),
+        )
+        children.append((probability, child))
     return GameTree(root=ChanceNode(node_id="node:prepared-two-street-root", children=tuple(children)))
 
 
@@ -1748,9 +1930,14 @@ def _success_result(
     if len(collect_hero_info_sets(tree)) != counts.hero_information_sets or len(collect_villain_info_sets(tree)) != counts.villain_information_sets:
         _fail(PreparedTwoStreetStatus.NON_REPRODUCIBLE, "materialization", "materialized information-set counts differ from preflight")
     ordered_hash = _ordered_tree_sha256(tree)
+    joint_root = type(spec) is PreparedJointRootTwoStreetSpec
     identity_base = {
-        "contract_version": PREPARED_TWO_STREET_CONTRACT_VERSION,
-        "builder_id": PREPARED_TWO_STREET_BUILDER_ID,
+        "contract_version": spec.contract_version,
+        "builder_id": (
+            PREPARED_JOINT_ROOT_BUILDER_ID
+            if joint_root
+            else PREPARED_TWO_STREET_BUILDER_ID
+        ),
         "action_label_id": _ACTION_LABEL_ID,
         "normalization_id": PREPARED_CHANCE_NORMALIZATION_ID,
         "information_key_id": PREPARED_INFORMATION_KEY_ID,
@@ -1781,10 +1968,13 @@ def build_prepared_two_street_game(
     """Build a bounded prepared abstract game, or return one fail-closed error.
 
     A success contains only a validated generic tree plus identities, counts,
-    normalization evidence, and canonical information observations.  It does
-    not contain a strategy, response, candidate, equilibrium, or real-card
-    certification.  Every failure has ``build=None`` and a non-empty bounded
-    error; no partial tree or payoff is returned.
+    normalization evidence, and canonical information observations.  A
+    :class:`PreparedJointRootTwoStreetSpec` preserves caller-supplied correlated
+    root reach after validating its exact support and marginals; it is not
+    silently factorized.  The result does not contain a strategy, response,
+    candidate, equilibrium, or real-card certification.  Every failure has
+    ``build=None`` and a non-empty bounded error; no partial tree or payoff is
+    returned.
     """
 
     try:
