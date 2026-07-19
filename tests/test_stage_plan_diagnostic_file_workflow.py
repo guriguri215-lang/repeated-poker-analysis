@@ -98,6 +98,108 @@ def filled_run_document(
     return source
 
 
+def expanded_rational_boundary_document() -> dict[str, object]:
+    primes = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37)
+    denominators = []
+    for prime in primes:
+        denominator = prime
+        while len(str(denominator)) < 95:
+            denominator *= prime
+        denominators.append(denominator)
+
+    def terminal(node_id: str, payoff: int = 1) -> dict[str, object]:
+        return {
+            "type": "terminal",
+            "node_id": node_id,
+            "hero_payoff": str(payoff),
+            "villain_payoff": str(-payoff),
+            "house_residual": "0",
+        }
+
+    hero_node_ids = ["hero-wide"]
+    root = {
+        "type": "hero",
+        "node_id": hero_node_ids[0],
+        "info_set": "H-wide",
+        "actions": [
+            {"action": f"action-{index}", "child": terminal(f"hero-side-{index}")}
+            for index in range(256)
+        ],
+    }
+    for index in reversed(range(len(denominators))):
+        denominator = denominators[index]
+        root = {
+            "type": "chance",
+            "node_id": f"chance-{index}",
+            "children": [
+                {
+                    "probability": f"{denominator - 1}/{denominator}",
+                    "child": root,
+                },
+                {
+                    "probability": f"1/{denominator}",
+                    "child": terminal(f"chance-side-{index}", 0),
+                },
+            ],
+        }
+
+    signals = []
+    observables = []
+
+    def collect_signals(node: dict[str, object], trace: list[dict[str, str]]) -> None:
+        if node["type"] == "terminal":
+            observable = str(node["node_id"])
+            observables.append({"node_id": observable, "observable": observable})
+            signals.append(
+                {"action_trace": copy.deepcopy(trace), "terminal_observable": observable}
+            )
+            return
+        if node["type"] == "chance":
+            for child in node["children"]:
+                collect_signals(child["child"], trace)
+            return
+        for action in node["actions"]:
+            collect_signals(
+                action["child"],
+                trace + [{"actor": "Hero", "action": action["action"]}],
+            )
+
+    collect_signals(root, [])
+    profile_rows = [
+        {
+            "info_set": "H-wide",
+            "actions": [
+                {
+                    "action": f"action-{index}",
+                    "probability": "1" if index == 0 else "0",
+                }
+                for index in range(256)
+            ],
+        }
+    ]
+    document = example_document()
+    document["request_id"] = "expanded-rational-boundary"
+    document["fixture_version"] = "expanded-rational-boundary-v1"
+    document["tree"] = {"root": root}
+    document["monitoring"] = {
+        "public_action_node_ids": sorted(hero_node_ids),
+        "terminal_observables": observables,
+        "signal_alphabet": signals,
+        "transitions": [
+            {"state": state, "signal_index": index, "next_state": state}
+            for state in (COOPERATE, PUNISH)
+            for index in range(len(signals))
+        ],
+    }
+    document["profiles"] = {
+        state: {"Hero": copy.deepcopy(profile_rows), "Villain": []}
+        for state in (COOPERATE, PUNISH)
+    }
+    document["core_limits"]["max_plans_per_player"] = 256
+    document["workflow_limits"]["max_output_bytes"] = 2_000_000
+    return document
+
+
 def run_document(
     document: dict[str, object],
     limits: module.StagePlanDiagnosticFileLimits = module.StagePlanDiagnosticFileLimits(),
@@ -581,6 +683,31 @@ def test_core_plan_cap_and_run_output_cap_fire_before_core(monkeypatch):
     result = run_document(run)
     assert result.status is module.StagePlanDiagnosticFileStatus.CAP_EXCEEDED
     assert called is False
+    assert_no_partial(result)
+
+
+def test_expanded_exact_rational_output_cap_fires_before_core(monkeypatch):
+    document = expanded_rational_boundary_document()
+    inspected = inspect_document(document)
+    assert inspected.status is module.StagePlanDiagnosticFileStatus.SUCCESS
+    assert inspected.output is not None
+    assert inspected.output["counts"]["plans"] == {"Hero": 256, "Villain": 1}
+    assert inspected.output["counts"]["predicted_deviation_rows"] == 514
+    run = filled_run_document(document)
+    original = module.diagnose_stage_plan_deviations
+    calls = 0
+
+    def counted(**kwargs):
+        nonlocal calls
+        calls += 1
+        return original(**kwargs)
+
+    monkeypatch.setattr(module, "diagnose_stage_plan_deviations", counted)
+    result = run_document(run)
+    assert result.status is module.StagePlanDiagnosticFileStatus.CAP_EXCEEDED
+    assert result.error.phase == "output"
+    assert result.output is None
+    assert calls == 0
     assert_no_partial(result)
 
 

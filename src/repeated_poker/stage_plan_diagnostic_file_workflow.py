@@ -1269,6 +1269,197 @@ def _recall_template(spec: _ParsedSpec) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class _RationalSizeBound:
+    numerator_bits: int
+    denominator_bits: int
+
+
+def _fraction_size_bound(value: Fraction) -> _RationalSizeBound:
+    return _RationalSizeBound(
+        max(1, abs(value.numerator).bit_length()),
+        max(1, value.denominator.bit_length()),
+    )
+
+
+def _maximum_size_bound(
+    values: tuple[_RationalSizeBound, ...],
+) -> _RationalSizeBound:
+    return _RationalSizeBound(
+        max(value.numerator_bits for value in values),
+        max(value.denominator_bits for value in values),
+    )
+
+
+def _sum_size_bound(
+    left: _RationalSizeBound,
+    right: _RationalSizeBound,
+) -> _RationalSizeBound:
+    return _RationalSizeBound(
+        max(
+            left.numerator_bits + right.denominator_bits,
+            right.numerator_bits + left.denominator_bits,
+        )
+        + 1,
+        left.denominator_bits + right.denominator_bits,
+    )
+
+
+def _product_size_bound(
+    left: _RationalSizeBound,
+    right: _RationalSizeBound,
+) -> _RationalSizeBound:
+    return _RationalSizeBound(
+        left.numerator_bits + right.numerator_bits,
+        left.denominator_bits + right.denominator_bits,
+    )
+
+
+def _quotient_size_bound(
+    numerator: _RationalSizeBound,
+    denominator: _RationalSizeBound,
+) -> _RationalSizeBound:
+    return _RationalSizeBound(
+        numerator.numerator_bits + denominator.denominator_bits,
+        numerator.denominator_bits + denominator.numerator_bits,
+    )
+
+
+def _repeated_product_size_bound(
+    value: _RationalSizeBound,
+    count: int,
+) -> _RationalSizeBound:
+    result = _fraction_size_bound(Fraction(1))
+    for _ in range(count):
+        result = _product_size_bound(result, value)
+    return result
+
+
+def _repeated_sum_size_bound(
+    value: _RationalSizeBound,
+    count: int,
+) -> _RationalSizeBound:
+    result = value
+    for _ in range(1, count):
+        result = _sum_size_bound(result, value)
+    return result
+
+
+def _run_fraction_text_bound(spec: _ParsedSpec) -> int:
+    """Bound every rational token emitted by one complete M11 projection."""
+
+    one = _fraction_size_bound(Fraction(1))
+    probabilities = [one]
+    payoffs = [one]
+    for node in iter_nodes(spec.tree):
+        if isinstance(node, ChanceNode):
+            probabilities.extend(
+                _fraction_size_bound(probability)
+                for probability, _ in node.children
+            )
+        elif isinstance(node, TerminalNode):
+            payoffs.extend(
+                _fraction_size_bound(value)
+                for value in (node.hero_ev, node.villain_ev, node.house_rake)
+            )
+    for state in PUBLIC_STATES:
+        for player in PLAYERS:
+            for distribution in spec.profile[state][player].values():
+                probabilities.extend(
+                    _fraction_size_bound(probability)
+                    for probability in distribution.values()
+                )
+
+    probability = _maximum_size_bound(tuple(probabilities))
+    payoff = _maximum_size_bound(tuple(payoffs))
+    path_weight = _repeated_product_size_bound(
+        probability,
+        max(1, spec.metadata.counts["nodes"] - 1),
+    )
+    terminal_term = _product_size_bound(path_weight, payoff)
+    stage_row = _repeated_sum_size_bound(
+        terminal_term,
+        spec.metadata.counts["terminals"],
+    )
+
+    delta = _fraction_size_bound(spec.numeric.delta)
+    one_minus_delta = _sum_size_bound(one, delta)
+    punishment_value = _quotient_size_bound(stage_row, one_minus_delta)
+    cooperate_denominator = _sum_size_bound(
+        one,
+        _product_size_bound(delta, stage_row),
+    )
+    cooperate_numerator = _sum_size_bound(
+        stage_row,
+        _product_size_bound(
+            _product_size_bound(delta, stage_row),
+            punishment_value,
+        ),
+    )
+    cooperate_value = _quotient_size_bound(
+        cooperate_numerator,
+        cooperate_denominator,
+    )
+    prescribed_value = _maximum_size_bound(
+        (punishment_value, cooperate_value)
+    )
+
+    error_components = tuple(
+        _fraction_size_bound(getattr(spec.numeric.error_bound, name))
+        for name in _ERROR_BOUND_KEYS - {"enclosure_established"}
+    )
+    error_component = _maximum_size_bound(error_components)
+    residual_error = _sum_size_bound(error_component, error_component)
+    value_error = _quotient_size_bound(residual_error, one_minus_delta)
+    direct_error = _repeated_sum_size_bound(error_component, len(error_components))
+    gain_error = _sum_size_bound(
+        direct_error,
+        _product_size_bound(_sum_size_bound(one, delta), value_error),
+    )
+
+    continuation = _sum_size_bound(
+        _product_size_bound(stage_row, prescribed_value),
+        _product_size_bound(stage_row, prescribed_value),
+    )
+    deviation_value = _sum_size_bound(
+        stage_row,
+        _product_size_bound(delta, continuation),
+    )
+    gain = _sum_size_bound(deviation_value, prescribed_value)
+    enclosed_gain = _sum_size_bound(gain, gain_error)
+    scale = _quotient_size_bound(
+        _fraction_size_bound(spec.numeric.stage_payoff_bound),
+        one_minus_delta,
+    )
+    numeric_inputs = (
+        _fraction_size_bound(spec.numeric.delta),
+        _fraction_size_bound(spec.numeric.stage_payoff_bound),
+        _fraction_size_bound(spec.numeric.input_tolerance),
+        _fraction_size_bound(spec.numeric.epsilon_claim),
+        *error_components,
+    )
+    maximum = _maximum_size_bound(
+        (
+            *numeric_inputs,
+            prescribed_value,
+            deviation_value,
+            gain,
+            enclosed_gain,
+            scale,
+        )
+    )
+
+    def decimal_digits(bits: int) -> int:
+        # log10(2) < 0.30103, so this integer expression rounds upward.
+        return max(1, (bits * 30_103 + 99_999) // 100_000)
+
+    return (
+        decimal_digits(maximum.numerator_bits)
+        + decimal_digits(maximum.denominator_bits)
+        + 2  # optional sign and fraction separator
+    )
+
+
 def _output_preflight(spec: _ParsedSpec, operation: str) -> None:
     plans = spec.counts["plans"]
     deviation_rows = spec.counts["predicted_deviation_rows"]
@@ -1302,6 +1493,8 @@ def _output_preflight(spec: _ParsedSpec, operation: str) -> None:
     )
     if operation == "run":
         projected_bytes += deviation_rows * (1_536 + 256 * max(1, info_count))
+        rational_tokens = 25 + 5 * deviation_rows
+        projected_bytes += rational_tokens * _run_fraction_text_bound(spec)
     if projected_bytes > spec.workflow_limits.max_output_bytes:
         raise _WorkflowFailure(
             StagePlanDiagnosticFileStatus.CAP_EXCEEDED,
