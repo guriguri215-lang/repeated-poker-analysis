@@ -1,0 +1,109 @@
+{
+  "format_version": "three-player-cfr-file-v1",
+  "operation": "inspect",
+  "request_id": "m23-tiny-simultaneous-2x2",
+  "tree": {
+    "description": "m20-three-player-public-example-v1",
+    "root": {
+      "type": "opponent_1",
+      "node_id": "o1_root",
+      "info_set": "O1_root",
+      "actions": [
+        {
+          "action": "A",
+          "child": {
+            "type": "opponent_2",
+            "node_id": "o2_after_A",
+            "info_set": "O2_root",
+            "actions": [
+              {
+                "action": "L",
+                "child": {
+                  "type": "terminal",
+                  "node_id": "t_A_L",
+                  "utility": {"H": -2, "O1": 1, "O2": 1, "R": 0}
+                }
+              },
+              {
+                "action": "R",
+                "child": {
+                  "type": "terminal",
+                  "node_id": "t_A_R",
+                  "utility": {"H": 0, "O1": 0, "O2": 0, "R": 0}
+                }
+              }
+            ]
+          }
+        },
+        {
+          "action": "B",
+          "child": {
+            "type": "opponent_2",
+            "node_id": "o2_after_B",
+            "info_set": "O2_root",
+            "actions": [
+              {
+                "action": "L",
+                "child": {
+                  "type": "terminal",
+                  "node_id": "t_B_L",
+                  "utility": {"H": 0, "O1": 0, "O2": 0, "R": 0}
+                }
+              },
+              {
+                "action": "R",
+                "child": {
+                  "type": "terminal",
+                  "node_id": "t_B_R",
+                  "utility": {"H": -4, "O1": 2, "O2": 2, "R": 0}
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "fixed_hero_policy": {"info_sets": []},
+  "config": {
+    "iterations": 2,
+    "input_tolerance": 1e-9,
+    "epsilon_deviation": 1e-9,
+    "oracle_compare_tolerance": 1e-9,
+    "reproducibility_tolerance": 1e-12,
+    "compute_deviation_gains": true,
+    "request_oracle": true,
+    "include_oracle_rows": false,
+    "trace_checkpoint_interval": null,
+    "seed": null
+  },
+  "core_limits": {
+    "max_nodes": 200,
+    "max_terminal_nodes": 128,
+    "max_opponent_info_sets_total": 24,
+    "max_info_sets_per_opponent": 12,
+    "max_fixed_hero_info_sets": 12,
+    "max_actions_per_info_set": 4,
+    "max_chance_outcomes_per_node": 16,
+    "max_iterations": 5000,
+    "max_oracle_pure_profiles": 4096,
+    "max_oracle_pure_plans_per_player": 4096,
+    "max_oracle_joint_profiles": 4096,
+    "max_oracle_profile_evaluations": 100000,
+    "max_oracle_output_rows": 4096,
+    "max_trace_points": 100
+  },
+  "workflow_limits": {
+    "max_input_bytes": 1000000,
+    "max_json_depth": 64,
+    "max_total_json_values": 100000,
+    "max_tree_depth": 64,
+    "max_tree_nodes": 500,
+    "max_tree_branches": 2000,
+    "max_policy_info_sets": 16,
+    "max_policy_actions": 64,
+    "max_attestation_text_length": 200,
+    "max_output_records": 100000,
+    "max_output_bytes": 4000000
+  }
+}
