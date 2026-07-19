@@ -711,6 +711,52 @@ def test_expanded_exact_rational_output_cap_fires_before_core(monkeypatch):
     assert_no_partial(result)
 
 
+def test_run_output_preflight_counts_every_fixed_rational_token(monkeypatch):
+    complete = run_document(filled_run_document())
+    assert complete.status is module.StagePlanDiagnosticFileStatus.SUCCESS
+    assert complete.output is not None
+
+    rational_strings = []
+    stack = [complete.output]
+    while stack:
+        value = stack.pop()
+        if type(value) is dict:
+            stack.extend(value.values())
+        elif type(value) is list:
+            stack.extend(value)
+        elif type(value) is str:
+            try:
+                fraction = Fraction(value)
+            except (ValueError, ZeroDivisionError):
+                continue
+            if str(fraction) == value:
+                rational_strings.append(value)
+
+    deviation_rows = complete.output["counts"]["deviation_rows"]
+    assert deviation_rows == 6
+    assert len(rational_strings) == 27 + 5 * deviation_rows == 57
+
+    document = example_document()
+    document["workflow_limits"]["max_output_bytes"] = 285_000
+    run = filled_run_document(document)
+    original = module.diagnose_stage_plan_deviations
+    calls = 0
+
+    def counted(**kwargs):
+        nonlocal calls
+        calls += 1
+        return original(**kwargs)
+
+    monkeypatch.setattr(module, "_run_fraction_text_bound", lambda _spec: 10_000)
+    monkeypatch.setattr(module, "diagnose_stage_plan_deviations", counted)
+    result = run_document(run)
+    assert result.status is module.StagePlanDiagnosticFileStatus.CAP_EXCEEDED
+    assert result.error is not None and result.error.phase == "output"
+    assert result.output is None
+    assert calls == 0
+    assert_no_partial(result)
+
+
 def test_core_noncomplete_and_exception_are_no_partial(monkeypatch):
     public = load_public_example().run_diagnostic()
     monkeypatch.setattr(

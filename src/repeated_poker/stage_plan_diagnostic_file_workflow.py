@@ -1493,7 +1493,7 @@ def _output_preflight(spec: _ParsedSpec, operation: str) -> None:
     )
     if operation == "run":
         projected_bytes += deviation_rows * (1_536 + 256 * max(1, info_count))
-        rational_tokens = 25 + 5 * deviation_rows
+        rational_tokens = 27 + 5 * deviation_rows
         projected_bytes += rational_tokens * _run_fraction_text_bound(spec)
     if projected_bytes > spec.workflow_limits.max_output_bytes:
         raise _WorkflowFailure(
