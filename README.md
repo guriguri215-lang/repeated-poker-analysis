@@ -139,6 +139,29 @@ interpretation. The bounded one-period result does not establish equilibrium,
 Nash, subgame perfection, sequential rationality, optimality, or proof, and it
 is not strategy or real-money advice.
 
+#### Bounded stage-plan diagnostic file workflow
+
+Saved exact-rational fixtures can use the strict two-phase
+`stage-plan-diagnostic-file-v1` adapter. `inspect` validates the tree, public
+monitoring, complete C/P profiles, canonical exact rational numeric envelope,
+and caps, then returns identity-bound 11/15-field human-evidence templates
+without running the analytic diagnostic:
+
+```powershell
+python scripts/run_stage_plan_diagnostic_file.py examples/stage_plan_diagnostic_file_v1.json
+```
+
+After a human fills every model assertion and fixture-specific perfect-recall
+record, `run` revalidates identity, stale/false/invalidated evidence, and all
+caps before invoking the existing public M11 diagnostic exactly once. See
+[docs/stage_plan_diagnostic_file_workflow.md](docs/stage_plan_diagnostic_file_workflow.md)
+for the exact schema, canonical exact rational strings, complete deterministic
+row projection, and strict no-partial failure contract. The workflow never
+auto-attests, normalizes, clamps, truncates, samples, skips, or silently fills
+data. It is not an equilibrium/Nash, certificate, proof, optimality, strategy,
+profitability, or real-money claim, and it adds no pipeline, manifest, report,
+GUI, or top-level-package integration.
+
 ### Guarded three-player CFR-style diagnostic workflow
 
 The isolated `repeated_poker.three_player_cfr` submodule can run a tiny
