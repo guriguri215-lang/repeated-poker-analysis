@@ -1,16 +1,33 @@
-# Prepared two-street file workflow v1
+# Prepared two-street file workflow v1/v2
 
-`prepared-two-street-file-v1` is a strict, bounded two-phase JSON adapter over
-the existing M14 builder and M16 orchestration contracts. It removes the need
-to assemble Python dataclasses or calculate public-history and information-set
-hashes by hand.
+The prepared two-street file workflow is a strict, bounded two-phase JSON
+adapter over the existing M14 builder and M16 orchestration contracts. It
+removes the need to assemble Python dataclasses or calculate public-history and
+information-set hashes by hand.
+
+The file version chooses exactly one prepared root-distribution contract:
+
+- `prepared-two-street-file-v1` requires
+  `betting-tree-v2-prepared-two-street-1`; M14 factorizes the declared Hero and
+  Villain bucket weights. Its legacy IDs and example remain unchanged.
+- `prepared-two-street-file-v2` requires
+  `betting-tree-v2-prepared-two-street-joint-root-2` plus `root_matchups`.
+  Each row has exactly `hero_bucket_id`, `villain_bucket_id`, and a strictly
+  positive finite `probability`.
+
+The v2 rows are an ordered identity-bearing joint distribution. They must be
+non-empty, unique by bucket pair, sum to one, reference declared buckets, and
+match both declared bucket-weight marginals. The workflow never sorts,
+normalizes, fills, factorizes, truncates, or drops them. Mixing either file
+version with the other prepared contract fails closed.
 
 ## Inspect
 
-Start from `examples/prepared_two_street_file_v1.json` and run:
+Start from either versioned example and run:
 
 ```powershell
 python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v1.json
+python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v2.json
 ```
 
 The successful JSON output contains `identity` and `profile_template`. Each
@@ -42,19 +59,23 @@ normalizes, clamps, truncates, or drops entries.
 ## Strict input boundary
 
 Every object rejects unknown, missing, and duplicate keys. UTF-8, input bytes,
-JSON depth/value count, public-history length, prepared builder, profile, and
-output limits are bounded. Limits are checked before corresponding tuple or
-result materialization. A filesystem read failure is a bounded `INVALID_INPUT`
-result rather than substituted input. A failure has `output: null`, a bounded
-error, and a non-zero CLI exit; partial templates or analysis results are not
-returned. Once M16 is reached, errors retain its outer `nested_status` and exact
-`builder_status` / `evaluation_status`; profile-input evaluation failures map
-to the file-workflow `PROFILE_FAILURE` status.
+JSON depth/value count, public-history length, v2 root rows, prepared builder,
+profile, and output limits are bounded. The 10,000-row root cap is checked
+before root-row dataclasses or a tuple are materialized. Other limits are also
+checked before their corresponding tuple or result materialization. A
+filesystem read failure is a bounded `INVALID_INPUT` result rather than
+substituted input. A failure has `output: null`, a bounded error, and a non-zero
+CLI exit; partial templates or analysis results are not returned. Once M16 is
+reached, errors retain its outer `nested_status` and exact `builder_status` /
+`evaluation_status`; profile-input evaluation failures map to the file-workflow
+`PROFILE_FAILURE` status.
 
 Histories are arrays of typed `action`, `street_close`, and `chance` events.
 The adapter computes the existing M14 public-history IDs. Canonical spec JSON
 bytes and the existing M14 semantic hash bind the generated template to the
-run input. Whitespace and object-key order do not change that identity.
+run input. Whitespace and object-key order do not change that identity. In v2,
+changing only `root_matchups` row order changes both raw and semantic identity
+while preserving the caller's order through M14 and M16.
 
 This format covers abstract heads-up one- or two-street prepared games only.
 It does not add real cards, ranges, equity generation, card removal, solver

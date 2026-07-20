@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import FrozenInstanceError, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -15,6 +16,7 @@ import pytest
 import repeated_poker.prepared_two_street_file_workflow as workflow_module
 from scripts.run_prepared_two_street_file import main as workflow_cli_main
 from repeated_poker.prepared_two_street import (
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedActionEvent,
     PreparedActionKind,
@@ -24,8 +26,10 @@ from repeated_poker.prepared_two_street import (
     PreparedDataAttestation,
     PreparedDecisionMenu,
     PreparedHeadsUpChips,
+    PreparedJointRootTwoStreetSpec,
     PreparedPlayer,
     PreparedRake,
+    PreparedRootMatchup,
     PreparedRoundCloseReason,
     PreparedShowdownValue,
     PreparedStreet,
@@ -51,10 +55,15 @@ from repeated_poker.prepared_two_street_orchestration import (
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "examples" / "prepared_two_street_file_v1.json"
+EXAMPLE_V2 = ROOT / "examples" / "prepared_two_street_file_v2.json"
 
 
 def _document() -> dict:
     return json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+
+def _document_v2() -> dict:
+    return json.loads(EXAMPLE_V2.read_text(encoding="utf-8"))
 
 
 def _raw(document: dict) -> bytes:
@@ -80,11 +89,13 @@ def _inspection(document: dict | None = None):
     return inspect_prepared_two_street_file(_raw(document or _document()))
 
 
-def _run_document(*, include_villain: bool = False) -> dict:
-    document = _document()
-    inspected = _inspection(document)
+def _inspection_v2(document: dict | None = None):
+    return inspect_prepared_two_street_file(_raw(document or _document_v2()))
+
+
+def _complete_run_document(document: dict, *, include_villain: bool = True) -> dict:
+    inspected = inspect_prepared_two_street_file(_raw(document))
     assert inspected.status is PreparedFileWorkflowStatus.SUCCESS
-    template = inspected.output["profile_template"]
 
     def profile(player: str) -> list[dict]:
         return [
@@ -95,15 +106,24 @@ def _run_document(*, include_villain: bool = False) -> dict:
                     for action in row["actions"]
                 ],
             }
-            for row in template
+            for row in inspected.output["profile_template"]
             if row["player"] == player
         ]
 
-    document["operation"] = "run"
-    document["template_identity"] = inspected.output["identity"]
-    document["hero_profile"] = profile("hero")
-    document["villain_profile"] = profile("villain") if include_villain else None
-    return document
+    completed = deepcopy(document)
+    completed["operation"] = "run"
+    completed["template_identity"] = inspected.output["identity"]
+    completed["hero_profile"] = profile("hero")
+    completed["villain_profile"] = profile("villain") if include_villain else None
+    return completed
+
+
+def _run_document(*, include_villain: bool = False) -> dict:
+    return _complete_run_document(_document(), include_villain=include_villain)
+
+
+def _run_document_v2(*, include_villain: bool = True) -> dict:
+    return _complete_run_document(_document_v2(), include_villain=include_villain)
 
 
 def _oracle_spec_payload() -> dict:
@@ -225,9 +245,94 @@ def _oracle_manual_spec() -> PreparedTwoStreetSpec:
     )
 
 
+def _joint_manual_spec() -> PreparedJointRootTwoStreetSpec:
+    street = "river"
+    villain_check = PreparedActionEvent(
+        street, PreparedPlayer.VILLAIN, PreparedActionKind.CHECK,
+        None, None, False, True,
+    )
+    hero_check = PreparedActionEvent(
+        street, PreparedPlayer.HERO, PreparedActionKind.CHECK,
+        None, None, False, True,
+    )
+    showdown_history = prepared_public_history_id((
+        villain_check,
+        hero_check,
+        PreparedStreetCloseEvent(street, PreparedRoundCloseReason.CHECK_CHECK),
+    ))
+    check = PreparedActionOption(PreparedActionKind.CHECK, None, None, False)
+    return PreparedJointRootTwoStreetSpec(
+        contract_version=PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+        attestation=PreparedDataAttestation(
+            "joint-root hand oracle",
+            "exact synthetic private buckets",
+            "explicit positive joint root mass; no factorization",
+            "public actions and own bucket only",
+            True,
+        ),
+        starting_chips=PreparedHeadsUpChips(10.0, 10.0),
+        initial_committed=PreparedHeadsUpChips(1.0, 1.0),
+        rake=PreparedRake(0.0, None),
+        streets=(PreparedStreet(
+            street, "River", PreparedPlayer.VILLAIN, 1.0,
+        ),),
+        hero_buckets=(PreparedBucket("H0", 0.6), PreparedBucket("H1", 0.4)),
+        villain_buckets=(PreparedBucket("V0", 0.7), PreparedBucket("V1", 0.3)),
+        decision_menus=(
+            PreparedDecisionMenu(
+                prepared_public_history_id(()), street,
+                PreparedPlayer.VILLAIN, (check,),
+            ),
+            PreparedDecisionMenu(
+                prepared_public_history_id((villain_check,)), street,
+                PreparedPlayer.HERO, (check,),
+            ),
+        ),
+        transition_id=None,
+        transition_rows=(),
+        showdown_values=tuple(
+            PreparedShowdownValue(showdown_history, hero, villain, share)
+            for hero, villain, share in (
+                ("H0", "V0", 1.0),
+                ("H0", "V1", 0.5),
+                ("H1", "V0", 0.0),
+                ("H1", "V1", 0.25),
+            )
+        ),
+        root_matchups=tuple(
+            PreparedRootMatchup(hero, villain, probability)
+            for hero, villain, probability in (
+                ("H0", "V0", 0.5),
+                ("H0", "V1", 0.1),
+                ("H1", "V0", 0.2),
+                ("H1", "V1", 0.2),
+            )
+        ),
+    )
+
+
 def test_public_contract_is_frozen_and_immutable():
     assert PREPARED_TWO_STREET_FILE_FORMAT == "prepared-two-street-file-v1"
-    assert PREPARED_TWO_STREET_TEMPLATE_ID.endswith("sha256-v1")
+    assert PREPARED_TWO_STREET_TEMPLATE_ID == "prepared-two-street-profile-template-sha256-v1"
+    assert PREPARED_TWO_STREET_FILE_OUTPUT_ID == "prepared-two-street-file-output-v1"
+    assert PREPARED_TWO_STREET_FILE_FORMAT_V2 == "prepared-two-street-file-v2"
+    assert PREPARED_TWO_STREET_TEMPLATE_ID_V2 == "prepared-two-street-profile-template-sha256-v2"
+    assert PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2 == "prepared-two-street-file-output-v2"
+    assert workflow_module.__all__ == [
+        "PREPARED_TWO_STREET_FILE_FORMAT",
+        "PREPARED_TWO_STREET_TEMPLATE_ID",
+        "PREPARED_TWO_STREET_FILE_OUTPUT_ID",
+        "PREPARED_TWO_STREET_FILE_FORMAT_V2",
+        "PREPARED_TWO_STREET_TEMPLATE_ID_V2",
+        "PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2",
+        "PreparedFileWorkflowStatus",
+        "PreparedFileWorkflowLimits",
+        "PreparedFileWorkflowError",
+        "PreparedFileWorkflowResult",
+        "inspect_prepared_two_street_file",
+        "run_prepared_two_street_file",
+        "prepared_file_workflow_json",
+    ]
     result = _inspection()
     with pytest.raises(FrozenInstanceError):
         result.status = PreparedFileWorkflowStatus.INVALID_INPUT
@@ -256,6 +361,67 @@ def test_inspect_identity_ignores_whitespace_and_object_key_order():
     assert reordered.status is PreparedFileWorkflowStatus.SUCCESS
     assert reordered.output["identity"] == compact.output["identity"]
     assert reordered.output["profile_template"] == compact.output["profile_template"]
+
+
+def test_inspect_v2_preserves_explicit_joint_root_contract():
+    result = _inspection_v2()
+    assert result.status is PreparedFileWorkflowStatus.SUCCESS
+    assert result.error is None
+    assert result.output["format_version"] == PREPARED_TWO_STREET_FILE_FORMAT_V2
+    assert result.output["output_id"] == PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2
+    assert result.output["identity"]["template_id"] == PREPARED_TWO_STREET_TEMPLATE_ID_V2
+    assert result.output["builder_status"] == "SUCCESS"
+    assert result.output["counts"]["root_matchups"] == 4
+    assert result.output["counts"]["hero_information_sets"] == 2
+    assert result.output["counts"]["villain_information_sets"] == 2
+    assert len(result.output["profile_template"]) == 4
+
+
+def test_v1_and_v2_examples_have_frozen_identity_and_output_pins():
+    v1 = _inspection()
+    assert v1.status is PreparedFileWorkflowStatus.SUCCESS
+    assert hashlib.sha256(EXAMPLE.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == (
+        "301b742b3e8e1a804aa35cd4814cd378b5c204b90dc615aa04feef53d9e6db44"
+    )
+    assert v1.output["identity"] == {
+        "raw_sha256": "47b7ff02c8340cc8cfc03c0fe6d214f7b6c45af8bd6732c9f1e10b4deff5a5bd",
+        "semantic_sha256": "68e08e948b7bf5d3bd8c3a5dd25c44e2383de791100693fca3eadc9c2a8957fc",
+        "template_id": "prepared-two-street-profile-template-sha256-v1",
+        "template_sha256": "c076ffd57ed80c9e739cf7202929517bca4f810c5ad8904c509975805e17eca5",
+    }
+    assert hashlib.sha256(
+        prepared_file_workflow_json(v1).encode("utf-8")
+    ).hexdigest() == "f60c7c40fe7efc9745387061a065260d861deb27e88ded6efbee77cecd9f2fd2"
+
+    v2 = _inspection_v2()
+    assert v2.status is PreparedFileWorkflowStatus.SUCCESS
+    assert hashlib.sha256(EXAMPLE_V2.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == (
+        "72b0e7dad3e64a3abe9864a6e357105107dacd64fde95102574228ec8571d13a"
+    )
+    assert v2.output["identity"] == {
+        "raw_sha256": "26ad813083c8b71fb153858965bce76f9fe44502f8a5c7ff0675807c4e6605bc",
+        "semantic_sha256": "70eaf7051dc8db647d65c8bb682f44aa47da45c0c439c9eca383db79147f49dc",
+        "template_id": "prepared-two-street-profile-template-sha256-v2",
+        "template_sha256": "bc8390b95a6e5cdb7f1dd9ff8e932ba01e994f3d43259585d964daf2e97a6f94",
+    }
+    assert hashlib.sha256(
+        prepared_file_workflow_json(v2).encode("utf-8")
+    ).hexdigest() == "188756ca37f9f94717587649b58d7b382497e935aff59ce34be11259109de5bd"
+
+    run = run_prepared_two_street_file(_raw(_run_document_v2()))
+    assert run.status is PreparedFileWorkflowStatus.SUCCESS
+    assert run.output["orchestration_identity"]["m14_identity"]["run_identity"] == (
+        "5acfca6afc367c911d2ed327a5192fbae28ee4b4e68264e0f9d60aa6dd6e368e"
+    )
+    assert run.output["orchestration_identity"]["m15_identity"]["output_semantic_sha256"] == (
+        "c3c1902ad4606012ac92a438ef357f2bd91878dd65c88ed9d98bd08b435cd158"
+    )
+    assert run.output["orchestration_identity"]["output_semantic_sha256"] == (
+        "6dab21624aa649f66dc81304a16f1e26a757ad7021c45da7a7ad2338a854ab37"
+    )
+    assert hashlib.sha256(
+        prepared_file_workflow_json(run).encode("utf-8")
+    ).hexdigest() == "bcd2efece241a29d386a24e9eb50fbefe298ce1f0521137294fff0fa15b60176"
 
 
 @pytest.mark.parametrize("include_villain", [False, True])
@@ -387,6 +553,201 @@ def test_run_matches_independently_assembled_direct_m16_request():
     assert workflow.output["fixed_profile_value"] == _independent_json_value(direct.run.evaluation.fixed_profile_value)
     assert workflow.output["orchestration_identity"] == _independent_json_value(direct.identity)
     assert workflow.output["identity"] == expected_identity
+
+
+def test_run_v2_matches_independent_public_m16_request_and_joint_oracle():
+    spec_payload = _document_v2()["spec"]
+    canonical = json.dumps(
+        spec_payload, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    ).encode("utf-8")
+    spec = _joint_manual_spec()
+    identity = PreparedContentIdentity(
+        hashlib.sha256(canonical).hexdigest(), prepared_semantic_sha256(spec)
+    )
+    built = build_prepared_two_street_game(spec, canonical, identity)
+    assert built.status is PreparedTwoStreetStatus.SUCCESS
+    assert tuple(
+        (row.hero_bucket_id, row.villain_bucket_id, row.probability)
+        for row in spec.root_matchups
+    ) == (
+        ("H0", "V0", 0.5),
+        ("H0", "V1", 0.1),
+        ("H1", "V0", 0.2),
+        ("H1", "V1", 0.2),
+    )
+
+    profiles = {}
+    for player in (PreparedPlayer.HERO, PreparedPlayer.VILLAIN):
+        profiles[player] = PreparedPlayerProfile(tuple(
+            PreparedProfileEntry(
+                observation.info_set_id,
+                tuple(
+                    PreparedActionProbability(label, 1.0)
+                    for label in observation.legal_action_labels
+                ),
+            )
+            for observation in built.build.information_sets
+            if observation.key.player is player
+        ))
+    direct = run_prepared_two_street_orchestration(
+        PreparedTwoStreetOrchestrationRequest(
+            spec=spec,
+            raw_input_bytes=canonical,
+            content_identity=identity,
+            hero_profile=profiles[PreparedPlayer.HERO],
+            villain_profile=profiles[PreparedPlayer.VILLAIN],
+        )
+    )
+    assert direct.status is PreparedOrchestrationStatus.SUCCESS
+
+    workflow = run_prepared_two_street_file(_raw(_run_document_v2()))
+    assert workflow.status is PreparedFileWorkflowStatus.SUCCESS
+    assert workflow.error is None
+    assert workflow.output["format_version"] == PREPARED_TWO_STREET_FILE_FORMAT_V2
+    assert workflow.output["output_id"] == PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2
+    assert workflow.output["fixed_profile_value"]["hero_ev"] == pytest.approx(0.2)
+    assert workflow.output["fixed_profile_value"]["hero_ev"] != pytest.approx(0.08)
+    assert workflow.output["exact_response"]["hero_ev_worst"] == pytest.approx(0.2)
+    assert workflow.output["exact_response"]["hero_ev_best"] == pytest.approx(0.2)
+    assert workflow.output["fixed_profile_value"] == _independent_json_value(
+        direct.run.evaluation.fixed_profile_value
+    )
+    assert workflow.output["exact_response"] == _independent_json_value(
+        direct.run.evaluation.exact_response
+    )
+    assert workflow.output["orchestration_identity"] == _independent_json_value(
+        direct.identity
+    )
+
+
+def test_file_format_and_prepared_contract_pairing_fails_closed():
+    cases = []
+
+    v1_with_joint = _document()
+    v1_with_joint["spec"]["contract_version"] = PREPARED_JOINT_ROOT_CONTRACT_VERSION
+    v1_with_joint["spec"]["root_matchups"] = deepcopy(
+        _document_v2()["spec"]["root_matchups"]
+    )
+    cases.append(v1_with_joint)
+
+    v2_without_joint = _document_v2()
+    v2_without_joint["spec"]["contract_version"] = PREPARED_TWO_STREET_CONTRACT_VERSION
+    del v2_without_joint["spec"]["root_matchups"]
+    cases.append(v2_without_joint)
+
+    v2_hybrid = _document_v2()
+    v2_hybrid["spec"]["contract_version"] = PREPARED_TWO_STREET_CONTRACT_VERSION
+    cases.append(v2_hybrid)
+
+    unknown = _document_v2()
+    unknown["format_version"] = "prepared-two-street-file-v999"
+    cases.append(unknown)
+
+    for document in cases:
+        result = inspect_prepared_two_street_file(_raw(document))
+        assert result.status is PreparedFileWorkflowStatus.INVALID_INPUT
+        assert result.output is None
+        assert result.error is not None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "duplicate",
+        "unknown_bucket",
+        "zero",
+        "negative",
+        "boolean",
+        "marginal_mismatch",
+    ],
+)
+def test_v2_invalid_root_rows_are_controlled_without_partial_output(mutation):
+    document = _document_v2()
+    rows = document["spec"]["root_matchups"]
+    if mutation == "empty":
+        rows.clear()
+    elif mutation == "duplicate":
+        rows.append(deepcopy(rows[0]))
+    elif mutation == "unknown_bucket":
+        rows[0]["hero_bucket_id"] = "UNKNOWN"
+    elif mutation == "zero":
+        rows[0]["probability"] = 0.0
+    elif mutation == "negative":
+        rows[0]["probability"] = -0.1
+    elif mutation == "boolean":
+        rows[0]["probability"] = True
+    elif mutation == "marginal_mismatch":
+        rows[0]["probability"] = 0.49
+        rows[1]["probability"] = 0.11
+
+    result = _inspection_v2(document)
+    assert result.status in {
+        PreparedFileWorkflowStatus.INVALID_INPUT,
+        PreparedFileWorkflowStatus.BUILD_FAILURE,
+    }
+    assert result.output is None
+    assert result.error is not None
+
+
+@pytest.mark.parametrize("key_action", ["missing", "unknown"])
+def test_v2_root_row_shape_is_exact(key_action):
+    document = _document_v2()
+    if key_action == "missing":
+        del document["spec"]["root_matchups"][0]["probability"]
+    else:
+        document["spec"]["root_matchups"][0]["extra"] = 1
+    result = _inspection_v2(document)
+    assert result.status is PreparedFileWorkflowStatus.INVALID_INPUT
+    assert result.output is None
+    assert result.error.phase == "spec.root_matchups[0]"
+
+
+def test_v2_root_row_cap_precedes_row_materialization(monkeypatch):
+    document = _document_v2()
+    document["spec"]["root_matchups"] = [
+        {"hero_bucket_id": "H0", "villain_bucket_id": "V0", "probability": 0.5}
+    ] * 10_001
+    called = False
+
+    def forbidden(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError
+
+    monkeypatch.setattr(workflow_module, "PreparedRootMatchup", forbidden)
+    result = _inspection_v2(document)
+    assert result.status is PreparedFileWorkflowStatus.CAP_EXCEEDED
+    assert result.output is None
+    assert result.error.phase == "spec.root_matchups"
+    assert not called
+
+
+def test_v2_root_row_order_changes_identity_but_not_evaluation():
+    first = _document_v2()
+    reordered = _document_v2()
+    reordered["spec"]["root_matchups"][0], reordered["spec"]["root_matchups"][1] = (
+        reordered["spec"]["root_matchups"][1],
+        reordered["spec"]["root_matchups"][0],
+    )
+    first_inspection = _inspection_v2(first)
+    reordered_inspection = _inspection_v2(reordered)
+    assert first_inspection.status is PreparedFileWorkflowStatus.SUCCESS
+    assert reordered_inspection.status is PreparedFileWorkflowStatus.SUCCESS
+    assert first_inspection.output["identity"]["raw_sha256"] != reordered_inspection.output["identity"]["raw_sha256"]
+    assert first_inspection.output["identity"]["semantic_sha256"] != reordered_inspection.output["identity"]["semantic_sha256"]
+
+    first_run = run_prepared_two_street_file(
+        _raw(_complete_run_document(first))
+    )
+    reordered_run = run_prepared_two_street_file(
+        _raw(_complete_run_document(reordered))
+    )
+    assert first_run.status is PreparedFileWorkflowStatus.SUCCESS
+    assert reordered_run.status is PreparedFileWorkflowStatus.SUCCESS
+    assert first_run.output["fixed_profile_value"] == reordered_run.output["fixed_profile_value"]
+    assert first_run.output["exact_response"] == reordered_run.output["exact_response"]
 
 
 def test_run_rejects_template_identity_mismatch_without_partial_output():
@@ -594,6 +955,32 @@ def test_cli_inspect_success_and_controlled_failure(tmp_path):
     assert failure.stderr == ""
 
 
+def test_cli_inspect_and_run_v2_use_the_existing_surface(tmp_path):
+    script = ROOT / "scripts" / "run_prepared_two_street_file.py"
+    inspection = subprocess.run(
+        [sys.executable, str(script), "inspect", str(EXAMPLE_V2)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert inspection.returncode == 0
+    inspected_payload = json.loads(inspection.stdout)
+    assert inspected_payload["status"] == "SUCCESS"
+    assert inspected_payload["output"]["format_version"] == PREPARED_TWO_STREET_FILE_FORMAT_V2
+
+    completed = tmp_path / "prepared-v2-run.json"
+    completed.write_text(
+        json.dumps(_run_document_v2(), ensure_ascii=False), encoding="utf-8"
+    )
+    run = subprocess.run(
+        [sys.executable, str(script), "run", str(completed)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert run.returncode == 0
+    run_payload = json.loads(run.stdout)
+    assert run_payload["status"] == "SUCCESS"
+    assert run_payload["output"]["fixed_profile_value"]["hero_ev"] == pytest.approx(0.2)
+    assert run.stderr == ""
+
+
 @pytest.mark.parametrize("path_kind", ["missing", "directory"])
 def test_cli_read_failure_is_bounded_json_without_silent_fallback(tmp_path, path_kind):
     script = ROOT / "scripts" / "run_prepared_two_street_file.py"
@@ -631,5 +1018,22 @@ def test_cli_permission_failure_is_bounded_json(monkeypatch, capsys, tmp_path):
 
 
 def test_m16_core_modules_and_top_level_exports_are_unchanged():
-    assert "prepared_two_street_file_workflow" not in (ROOT / "src" / "repeated_poker" / "__init__.py").read_text(encoding="utf-8")
+    init_source = (ROOT / "src" / "repeated_poker" / "__init__.py").read_text(encoding="utf-8")
+    assert "prepared_two_street_file_workflow" not in init_source
+    assert "PREPARED_TWO_STREET_FILE_FORMAT_V2" not in init_source
     assert "filesystem" in (ROOT / "src" / "repeated_poker" / "prepared_two_street_orchestration.py").read_text(encoding="utf-8")
+
+
+def test_readme_and_workflow_doc_publish_v2_example_and_guardrails():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "prepared_two_street_file_workflow.md").read_text(encoding="utf-8")
+    assert "examples/prepared_two_street_file_v2.json" in readme
+    assert "prepared-two-street-file-v2" in readme
+    for phrase in (
+        "prepared-two-street-file-v2",
+        "root_matchups",
+        "never sorts",
+        "10,000-row root cap",
+        "fails closed",
+    ):
+        assert phrase in guide

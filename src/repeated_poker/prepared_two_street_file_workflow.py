@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any, Callable
 
 from .prepared_two_street import (
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedActionEvent,
     PreparedActionKind,
@@ -28,8 +29,10 @@ from .prepared_two_street import (
     PreparedDataAttestation,
     PreparedDecisionMenu,
     PreparedHeadsUpChips,
+    PreparedJointRootTwoStreetSpec,
     PreparedPlayer,
     PreparedRake,
+    PreparedRootMatchup,
     PreparedRoundCloseReason,
     PreparedShowdownValue,
     PreparedStreet,
@@ -57,11 +60,17 @@ from .prepared_two_street_orchestration import (
 PREPARED_TWO_STREET_FILE_FORMAT = "prepared-two-street-file-v1"
 PREPARED_TWO_STREET_TEMPLATE_ID = "prepared-two-street-profile-template-sha256-v1"
 PREPARED_TWO_STREET_FILE_OUTPUT_ID = "prepared-two-street-file-output-v1"
+PREPARED_TWO_STREET_FILE_FORMAT_V2 = "prepared-two-street-file-v2"
+PREPARED_TWO_STREET_TEMPLATE_ID_V2 = "prepared-two-street-profile-template-sha256-v2"
+PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2 = "prepared-two-street-file-output-v2"
 
 __all__ = [
     "PREPARED_TWO_STREET_FILE_FORMAT",
     "PREPARED_TWO_STREET_TEMPLATE_ID",
     "PREPARED_TWO_STREET_FILE_OUTPUT_ID",
+    "PREPARED_TWO_STREET_FILE_FORMAT_V2",
+    "PREPARED_TWO_STREET_TEMPLATE_ID_V2",
+    "PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2",
     "PreparedFileWorkflowStatus",
     "PreparedFileWorkflowLimits",
     "PreparedFileWorkflowError",
@@ -112,6 +121,30 @@ class PreparedFileWorkflowResult:
 
 _DEFAULT_LIMITS = PreparedFileWorkflowLimits()
 _LIMIT_CEILINGS = asdict(_DEFAULT_LIMITS)
+
+
+@dataclass(frozen=True)
+class _FileContract:
+    format_version: str
+    prepared_contract_version: str
+    template_id: str
+    output_id: str
+
+
+_FILE_CONTRACTS = {
+    PREPARED_TWO_STREET_FILE_FORMAT: _FileContract(
+        PREPARED_TWO_STREET_FILE_FORMAT,
+        PREPARED_TWO_STREET_CONTRACT_VERSION,
+        PREPARED_TWO_STREET_TEMPLATE_ID,
+        PREPARED_TWO_STREET_FILE_OUTPUT_ID,
+    ),
+    PREPARED_TWO_STREET_FILE_FORMAT_V2: _FileContract(
+        PREPARED_TWO_STREET_FILE_FORMAT_V2,
+        PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+        PREPARED_TWO_STREET_TEMPLATE_ID_V2,
+        PREPARED_TWO_STREET_FILE_OUTPUT_ID_V2,
+    ),
+}
 
 
 class _WorkflowFailure(ValueError):
@@ -400,18 +433,27 @@ def _history(value: Any, limits: PreparedFileWorkflowLimits, phase: str) -> str:
 
 
 def _spec(
-    value: Any, limits: PreparedFileWorkflowLimits
-) -> tuple[PreparedTwoStreetSpec, bytes, PreparedContentIdentity]:
-    item = _object(value, {
+    value: Any,
+    limits: PreparedFileWorkflowLimits,
+    file_contract: _FileContract,
+) -> tuple[
+    PreparedTwoStreetSpec | PreparedJointRootTwoStreetSpec,
+    bytes,
+    PreparedContentIdentity,
+]:
+    required = {
         "contract_version", "attestation", "starting_chips", "initial_committed",
         "rake", "streets", "hero_buckets", "villain_buckets", "decision_menus",
         "transition_id", "transition_rows", "showdown_values"
-    }, phase="spec")
-    if item["contract_version"] != PREPARED_TWO_STREET_CONTRACT_VERSION:
+    }
+    if file_contract.format_version == PREPARED_TWO_STREET_FILE_FORMAT_V2:
+        required.add("root_matchups")
+    item = _object(value, required, phase="spec")
+    if item["contract_version"] != file_contract.prepared_contract_version:
         raise _WorkflowFailure(
             PreparedFileWorkflowStatus.INVALID_INPUT,
             "spec",
-            "unsupported prepared contract_version",
+            "prepared contract_version does not match format_version",
         )
     att = _object(item["attestation"], {
         "source", "bucket_semantics", "conditional_probability_semantics",
@@ -427,6 +469,11 @@ def _spec(
     menus = _array(item["decision_menus"], 100_000, "spec.decision_menus")
     rows = _array(item["transition_rows"], 50_000, "spec.transition_rows")
     showdowns = _array(item["showdown_values"], 100_000, "spec.showdown_values")
+    root_matchups = (
+        _array(item["root_matchups"], 10_000, "spec.root_matchups")
+        if file_contract.format_version == PREPARED_TWO_STREET_FILE_FORMAT_V2
+        else None
+    )
 
     def bucket(source: Any, phase: str) -> PreparedBucket:
         obj = _object(source, {"bucket_id", "weight"}, phase=phase)
@@ -504,25 +551,59 @@ def _spec(
             _text(obj["hero_bucket_id"], phase), _text(obj["villain_bucket_id"], phase),
             _number(obj["hero_pot_share"], phase),
         ))
-    spec = PreparedTwoStreetSpec(
-        PREPARED_TWO_STREET_CONTRACT_VERSION,
-        PreparedDataAttestation(
+    common = {
+        "contract_version": file_contract.prepared_contract_version,
+        "attestation": PreparedDataAttestation(
             _text(att["source"], "spec.attestation"),
             _text(att["bucket_semantics"], "spec.attestation"),
             _text(att["conditional_probability_semantics"], "spec.attestation"),
             _text(att["observation_mapping"], "spec.attestation"),
             _boolean(att["perfect_recall_attested"], "spec.attestation"),
         ),
-        chips(item["starting_chips"], "spec.starting_chips"),
-        chips(item["initial_committed"], "spec.initial_committed"),
-        PreparedRake(_number(rake_obj["rate"], "spec.rake"), _nullable_number(rake_obj["cap"], "spec.rake")),
-        tuple(street_values),
-        tuple(bucket(child, f"spec.hero_buckets[{i}]") for i, child in enumerate(hero_buckets)),
-        tuple(bucket(child, f"spec.villain_buckets[{i}]") for i, child in enumerate(villain_buckets)),
-        tuple(menu_values),
-        None if item["transition_id"] is None else _text(item["transition_id"], "spec.transition_id"),
-        tuple(row_values), tuple(showdown_values),
-    )
+        "starting_chips": chips(item["starting_chips"], "spec.starting_chips"),
+        "initial_committed": chips(item["initial_committed"], "spec.initial_committed"),
+        "rake": PreparedRake(
+            _number(rake_obj["rate"], "spec.rake"),
+            _nullable_number(rake_obj["cap"], "spec.rake"),
+        ),
+        "streets": tuple(street_values),
+        "hero_buckets": tuple(
+            bucket(child, f"spec.hero_buckets[{i}]")
+            for i, child in enumerate(hero_buckets)
+        ),
+        "villain_buckets": tuple(
+            bucket(child, f"spec.villain_buckets[{i}]")
+            for i, child in enumerate(villain_buckets)
+        ),
+        "decision_menus": tuple(menu_values),
+        "transition_id": (
+            None
+            if item["transition_id"] is None
+            else _text(item["transition_id"], "spec.transition_id")
+        ),
+        "transition_rows": tuple(row_values),
+        "showdown_values": tuple(showdown_values),
+    }
+    if root_matchups is None:
+        spec = PreparedTwoStreetSpec(**common)
+    else:
+        root_values = []
+        for index, source in enumerate(root_matchups):
+            phase = f"spec.root_matchups[{index}]"
+            obj = _object(
+                source,
+                {"hero_bucket_id", "villain_bucket_id", "probability"},
+                phase=phase,
+            )
+            root_values.append(PreparedRootMatchup(
+                _text(obj["hero_bucket_id"], phase),
+                _text(obj["villain_bucket_id"], phase),
+                _number(obj["probability"], phase),
+            ))
+        spec = PreparedJointRootTwoStreetSpec(
+            **common,
+            root_matchups=tuple(root_values),
+        )
     try:
         canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
         semantic = prepared_semantic_sha256(spec)
@@ -555,19 +636,37 @@ def _template(build: Any) -> tuple[list[dict[str, Any]], str]:
     return profiles, hashlib.sha256(canonical).hexdigest()
 
 
+def _file_contract(value: Any) -> _FileContract:
+    if type(value) is not str or value not in _FILE_CONTRACTS:
+        raise _WorkflowFailure(
+            PreparedFileWorkflowStatus.INVALID_INPUT,
+            "document",
+            "unsupported format_version",
+        )
+    return _FILE_CONTRACTS[value]
+
+
 def _base_document(
     raw: bytes, operation: str, limits: PreparedFileWorkflowLimits
-) -> tuple[dict[str, Any], PreparedTwoStreetSpec, bytes, PreparedContentIdentity, Any, list[dict[str, Any]], str]:
+) -> tuple[
+    dict[str, Any],
+    _FileContract,
+    PreparedTwoStreetSpec | PreparedJointRootTwoStreetSpec,
+    bytes,
+    PreparedContentIdentity,
+    Any,
+    list[dict[str, Any]],
+    str,
+]:
     _validate_limits(limits)
     document = _parse(raw, limits)
     required = {"format_version", "operation", "spec"}
     optional = set() if operation == "inspect" else {"template_identity", "hero_profile", "villain_profile"}
     doc = _object(document, required | optional, phase="document")
-    if doc["format_version"] != PREPARED_TWO_STREET_FILE_FORMAT:
-        raise _WorkflowFailure(PreparedFileWorkflowStatus.INVALID_INPUT, "document", "unsupported format_version")
+    file_contract = _file_contract(doc["format_version"])
     if doc["operation"] != operation:
         raise _WorkflowFailure(PreparedFileWorkflowStatus.INVALID_INPUT, "document", f"operation must be {operation}")
-    spec, canonical, identity = _spec(doc["spec"], limits)
+    spec, canonical, identity = _spec(doc["spec"], limits, file_contract)
     built = build_prepared_two_street_game(spec, canonical, identity)
     if built.status is not PreparedTwoStreetStatus.SUCCESS or built.build is None:
         if built.status is PreparedTwoStreetStatus.CAP_EXCEEDED:
@@ -592,14 +691,27 @@ def _base_document(
             builder_status=built.status.value,
         )
     profiles, template_hash = _template(built.build)
-    return doc, spec, canonical, identity, built.build, profiles, template_hash
+    return (
+        doc,
+        file_contract,
+        spec,
+        canonical,
+        identity,
+        built.build,
+        profiles,
+        template_hash,
+    )
 
 
-def _identity_payload(identity: PreparedContentIdentity, template_hash: str) -> dict[str, str]:
+def _identity_payload(
+    identity: PreparedContentIdentity,
+    template_hash: str,
+    file_contract: _FileContract,
+) -> dict[str, str]:
     return {
         "raw_sha256": identity.raw_sha256,
         "semantic_sha256": identity.semantic_sha256,
-        "template_id": PREPARED_TWO_STREET_TEMPLATE_ID,
+        "template_id": file_contract.template_id,
         "template_sha256": template_hash,
     }
 
@@ -609,12 +721,14 @@ def inspect_prepared_two_street_file(
 ) -> PreparedFileWorkflowResult:
     """Validate and build a generated, unfilled profile template."""
     try:
-        _, _, _, identity, build, profiles, template_hash = _base_document(raw, "inspect", limits)
+        (
+            _, file_contract, _, _, identity, build, profiles, template_hash
+        ) = _base_document(raw, "inspect", limits)
         return PreparedFileWorkflowResult(PreparedFileWorkflowStatus.SUCCESS, {
-            "format_version": PREPARED_TWO_STREET_FILE_FORMAT,
+            "format_version": file_contract.format_version,
             "operation": "inspect",
-            "output_id": PREPARED_TWO_STREET_FILE_OUTPUT_ID,
-            "identity": _identity_payload(identity, template_hash),
+            "output_id": file_contract.output_id,
+            "identity": _identity_payload(identity, template_hash, file_contract),
             "builder_status": PreparedTwoStreetStatus.SUCCESS.value,
             "counts": asdict(build.counts),
             "profile_template": profiles,
@@ -706,11 +820,13 @@ def run_prepared_two_street_file(
 ) -> PreparedFileWorkflowResult:
     """Validate complete profiles and return a bounded M16 result summary."""
     try:
-        doc, spec, canonical, identity, build, _, template_hash = _base_document(raw, "run", limits)
+        (
+            doc, file_contract, spec, canonical, identity, build, _, template_hash
+        ) = _base_document(raw, "run", limits)
         supplied_identity = _object(doc["template_identity"], {
             "raw_sha256", "semantic_sha256", "template_id", "template_sha256"
         }, phase="template_identity")
-        expected_identity = _identity_payload(identity, template_hash)
+        expected_identity = _identity_payload(identity, template_hash, file_contract)
         if supplied_identity != expected_identity:
             raise _WorkflowFailure(
                 PreparedFileWorkflowStatus.IDENTITY_MISMATCH,
@@ -755,9 +871,9 @@ def run_prepared_two_street_file(
             )
         evaluation = result.run.evaluation
         output = {
-            "format_version": PREPARED_TWO_STREET_FILE_FORMAT,
+            "format_version": file_contract.format_version,
             "operation": "run",
-            "output_id": PREPARED_TWO_STREET_FILE_OUTPUT_ID,
+            "output_id": file_contract.output_id,
             "identity": expected_identity,
             "orchestration_status": result.status.value,
             "builder_status": result.builder_status.value if result.builder_status else None,
