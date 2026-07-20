@@ -38,6 +38,8 @@ from .game import (
 from .prepared_two_street import (
     PREPARED_CHANCE_NORMALIZATION_ID,
     PREPARED_INFORMATION_KEY_ID,
+    PREPARED_JOINT_ROOT_BUILDER_ID,
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
     PREPARED_TWO_STREET_BUILDER_ID,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedBuildCounts,
@@ -63,6 +65,18 @@ PREPARED_EVALUATION_TOLERANCE = 1e-9
 
 _M14_ACTION_LABEL_ID = "betting-tree-v2-action-label-v1"
 _M14_ORDERED_TREE_ID = "betting-tree-v2-ordered-tree-sha256-v1"
+_M14_CONTRACT_BUILDER_PAIRS = frozenset(
+    {
+        (
+            PREPARED_TWO_STREET_CONTRACT_VERSION,
+            PREPARED_TWO_STREET_BUILDER_ID,
+        ),
+        (
+            PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+            PREPARED_JOINT_ROOT_BUILDER_ID,
+        ),
+    }
+)
 _SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
 _INFO_RE = re.compile(r"info:sha256:[0-9a-f]{64}\Z")
 _OBS_RE = re.compile(r"obs:sha256:[0-9a-f]{64}\Z")
@@ -458,9 +472,18 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
     if len(build.information_sets) != counts.hero_information_sets + counts.villain_information_sets or len(build.chance_normalization) != counts.transition_rows:
         _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "build-counts", "artifact lengths disagree with counts")
     identity = build.identity
+    if (
+        type(identity.contract_version) is not str
+        or type(identity.builder_id) is not str
+        or (identity.contract_version, identity.builder_id)
+        not in _M14_CONTRACT_BUILDER_PAIRS
+    ):
+        _fail(
+            PreparedEvaluationStatus.IDENTITY_MISMATCH,
+            "build-identity",
+            "M14 contract and builder identity pair mismatch",
+        )
     expected_ids = (
-        (identity.contract_version, PREPARED_TWO_STREET_CONTRACT_VERSION),
-        (identity.builder_id, PREPARED_TWO_STREET_BUILDER_ID),
         (identity.action_label_id, _M14_ACTION_LABEL_ID),
         (identity.normalization_id, PREPARED_CHANCE_NORMALIZATION_ID),
         (identity.information_key_id, PREPARED_INFORMATION_KEY_ID),
@@ -591,6 +614,8 @@ def _verify_build(build: PreparedTwoStreetBuild) -> _BuildView:
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "information-artifacts", "invalid public observation identity")
         if "info:sha256:" + _sha(item.key) != item.info_set_id:
             _fail(PreparedEvaluationStatus.IDENTITY_MISMATCH, "information-artifacts", "information key digest mismatch")
+        if item.key.contract_version != identity.contract_version:
+            _fail(PreparedEvaluationStatus.IDENTITY_MISMATCH, "information-artifacts", "information key contract identity mismatch")
         if item.key.player not in (PreparedPlayer.HERO, PreparedPlayer.VILLAIN) or not isinstance(item.legal_action_labels, tuple) or not item.legal_action_labels or any(not isinstance(a, str) or not _ACTION_RE.fullmatch(a) for a in item.legal_action_labels):
             _fail(PreparedEvaluationStatus.BUILD_MISMATCH, "information-artifacts", "invalid player or legal action labels")
         target = hero_artifacts if item.key.player is PreparedPlayer.HERO else villain_artifacts

@@ -18,6 +18,9 @@ import repeated_poker
 import repeated_poker.prepared_two_street_orchestration as orchestration_module
 from repeated_poker.game import GameTree
 from repeated_poker.prepared_two_street import (
+    PREPARED_JOINT_ROOT_BUILDER_ID,
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+    PREPARED_TWO_STREET_BUILDER_ID,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedActionEvent,
     PreparedActionKind,
@@ -30,8 +33,10 @@ from repeated_poker.prepared_two_street import (
     PreparedDataAttestation,
     PreparedDecisionMenu,
     PreparedHeadsUpChips,
+    PreparedJointRootTwoStreetSpec,
     PreparedPlayer,
     PreparedRake,
+    PreparedRootMatchup,
     PreparedRoundCloseReason,
     PreparedShowdownValue,
     PreparedStreet,
@@ -161,6 +166,79 @@ def _one_street_spec(
         (
             PreparedShowdownValue(check_state, "H0", "V0", check_share),
             PreparedShowdownValue(call_state, "H0", "V0", 0.7),
+        ),
+    )
+
+
+def _joint_root_spec() -> PreparedJointRootTwoStreetSpec:
+    street = "river"
+    villain_check = _event(
+        street, PreparedPlayer.VILLAIN, PreparedActionKind.CHECK
+    )
+    hero_check = _event(
+        street, PreparedPlayer.HERO, PreparedActionKind.CHECK
+    )
+    terminal_state = prepared_public_history_id(
+        (
+            villain_check,
+            hero_check,
+            PreparedStreetCloseEvent(
+                street, PreparedRoundCloseReason.CHECK_CHECK
+            ),
+        )
+    )
+    return PreparedJointRootTwoStreetSpec(
+        contract_version=PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+        attestation=PreparedDataAttestation(
+            "joint-root hand oracle",
+            "exact synthetic private buckets",
+            "explicit positive joint root mass; no factorization",
+            "public actions and own bucket only",
+            True,
+        ),
+        starting_chips=PreparedHeadsUpChips(10.0, 10.0),
+        initial_committed=PreparedHeadsUpChips(1.0, 1.0),
+        rake=PreparedRake(0.0, None),
+        streets=(
+            PreparedStreet(
+                street, "River", PreparedPlayer.VILLAIN, 1.0
+            ),
+        ),
+        hero_buckets=(
+            PreparedBucket("H0", 0.6),
+            PreparedBucket("H1", 0.4),
+        ),
+        villain_buckets=(
+            PreparedBucket("V0", 0.7),
+            PreparedBucket("V1", 0.3),
+        ),
+        decision_menus=(
+            PreparedDecisionMenu(
+                prepared_public_history_id(()),
+                street,
+                PreparedPlayer.VILLAIN,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+            PreparedDecisionMenu(
+                prepared_public_history_id((villain_check,)),
+                street,
+                PreparedPlayer.HERO,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+        ),
+        transition_id=None,
+        transition_rows=(),
+        showdown_values=(
+            PreparedShowdownValue(terminal_state, "H0", "V0", 1.0),
+            PreparedShowdownValue(terminal_state, "H0", "V1", 0.5),
+            PreparedShowdownValue(terminal_state, "H1", "V0", 0.0),
+            PreparedShowdownValue(terminal_state, "H1", "V1", 0.25),
+        ),
+        root_matchups=(
+            PreparedRootMatchup("H0", "V0", 0.5),
+            PreparedRootMatchup("H0", "V1", 0.1),
+            PreparedRootMatchup("H1", "V0", 0.2),
+            PreparedRootMatchup("H1", "V1", 0.2),
         ),
     )
 
@@ -341,7 +419,7 @@ def _artifact(build, player: PreparedPlayer, actions: tuple[str, ...]):
 
 
 def _request(
-    spec: PreparedTwoStreetSpec | None = None,
+    spec: PreparedTwoStreetSpec | PreparedJointRootTwoStreetSpec | None = None,
     *,
     villain: bool = False,
     hero_overrides=None,
@@ -539,7 +617,11 @@ def test_exact_public_api_constants_all_enum_fields_defaults_and_signature():
             ("max_result_records", "int", 64),
         ],
         PreparedTwoStreetOrchestrationRequest: [
-            ("spec", "PreparedTwoStreetSpec", MISSING),
+            (
+                "spec",
+                "PreparedTwoStreetSpec | PreparedJointRootTwoStreetSpec",
+                MISSING,
+            ),
             ("raw_input_bytes", "bytes", MISSING),
             ("content_identity", "PreparedContentIdentity", MISSING),
             ("hero_profile", "PreparedPlayerProfile", MISSING),
@@ -617,6 +699,368 @@ def test_top_level_package_does_not_export_orchestration_api():
     for name in orchestration_module.__all__:
         assert name not in repeated_poker.__all__
         assert not hasattr(repeated_poker, name)
+
+
+def test_joint_root_v2_orchestration_preserves_correlated_mass_and_identity_chain():
+    request = _request(_joint_root_spec(), villain=True)
+    result = run_prepared_two_street_orchestration(request)
+    _assert_success(result)
+    fixed = result.run.evaluation.fixed_profile_value
+    assert fixed is not None
+    factorized = (
+        0.6 * 0.7 * 1.0
+        + 0.6 * 0.3 * 0.0
+        + 0.4 * 0.7 * -1.0
+        + 0.4 * 0.3 * -0.5
+    )
+    assert fixed.hero_ev == pytest.approx(0.2)
+    assert factorized == pytest.approx(0.08)
+    assert fixed.hero_ev != pytest.approx(factorized)
+    m14 = result.run.build.identity
+    m15 = result.identity.m15_identity
+    assert m14.contract_version == PREPARED_JOINT_ROOT_CONTRACT_VERSION
+    assert m14.builder_id == PREPARED_JOINT_ROOT_BUILDER_ID
+    assert m15.m14_contract_version == m14.contract_version
+    assert m15.m14_builder_id == m14.builder_id
+    assert m15.m14_raw_sha256 == m14.raw_sha256
+    assert m15.m14_prepared_semantic_sha256 == m14.semantic_sha256
+    assert m15.m14_ordered_tree_sha256 == m14.ordered_tree_sha256
+    assert m15.m14_run_identity == m14.run_identity
+    assert result.identity.m14_identity == m14
+    assert result.identity.m15_identity == m15
+
+
+def test_joint_root_v2_m15_m16_identities_match_independent_oracles_and_pins():
+    request = _request(_joint_root_spec(), villain=True)
+    result = run_prepared_two_street_orchestration(request)
+    _assert_success(result)
+    m14 = result.run.build.identity
+    m15 = result.identity.m15_identity
+    m15_without_output = {
+        item.name: getattr(m15, item.name)
+        for item in fields(m15)
+        if item.name != "output_semantic_sha256"
+    }
+    assert m15.output_semantic_sha256 == _independent_sha(
+        {
+            "algorithm": orchestration_module.PREPARED_EVALUATION_OUTPUT_ID,
+            "identity": m15_without_output,
+            "evaluation": result.run.evaluation,
+        }
+    )
+    run_payload = {
+        "algorithm": PREPARED_TWO_STREET_ORCHESTRATION_ID,
+        "output_semantic_id": PREPARED_TWO_STREET_ORCHESTRATION_OUTPUT_ID,
+        "m14_identity": m14,
+        "m15_identity": m15,
+        "effective_limits": {
+            "builder": request.builder_limits,
+            "evaluation": request.evaluation_limits,
+            "orchestration": request.orchestration_limits,
+        },
+        "correspondence_mode": request.evaluation_request.correspondence_mode,
+        "oracle_check": request.evaluation_request.oracle_check,
+    }
+    run_identity = _independent_sha(run_payload)
+    canonical_trace = tuple(
+        {
+            "__type__": "PreparedOrchestrationTraceRecord",
+            "fields": {
+                "phase": phase,
+                "subject": subject,
+                "outcome": outcome,
+            },
+        }
+        for phase, subject, outcome in (
+            ("orchestration", "input", "PASS"),
+            ("builder", "completed", "PASS"),
+            ("evaluation", "completed", "PASS"),
+            ("orchestration", "identity", "PASS"),
+        )
+    )
+    output_identity = _independent_sha(
+        {
+            "algorithm": PREPARED_TWO_STREET_ORCHESTRATION_OUTPUT_ID,
+            "run_identity": run_identity,
+            "build_counts": result.run.build.counts,
+            "builder_status": PreparedTwoStreetStatus.SUCCESS,
+            "evaluation_status": PreparedEvaluationStatus.SUCCESS,
+            "trace": canonical_trace,
+        }
+    )
+    assert run_identity == result.identity.run_identity
+    assert output_identity == result.identity.output_semantic_sha256
+    assert m14.semantic_sha256 == (
+        "70eaf7051dc8db647d65c8bb682f44aa47da45c0c439c9eca383db79147f49dc"
+    )
+    assert m14.ordered_tree_sha256 == (
+        "316e385f355bb04326e682b3ace14956b3b5cd290430106a0069d296a70ff3f5"
+    )
+    assert m14.run_identity == (
+        "b2ce10bad8a6e569bc032aa6a1dbf3384950f13b9eb9922d30e8c0df148bd3cd"
+    )
+    assert m15.output_semantic_sha256 == (
+        "30abedc20607c05b7173c9ab01d926f6d9755de277bd190de3c34f04c6d47047"
+    )
+    assert result.identity.run_identity == (
+        "74e3f88c3ebfc44f8a9986730905d157b7e944c2644944350c3375c8bcaa826d"
+    )
+    assert result.identity.output_semantic_sha256 == (
+        "152f52a229519a6ca6609ff9bbdbc991a4845b44adac99c58295f932e40bde16"
+    )
+
+
+def test_joint_root_v2_row_reverse_preserves_ev_but_changes_m14_m15_m16_identity():
+    forward_spec = _joint_root_spec()
+    reverse_spec = replace(
+        forward_spec,
+        root_matchups=tuple(reversed(forward_spec.root_matchups)),
+    )
+    forward = run_prepared_two_street_orchestration(
+        _request(forward_spec, villain=True)
+    )
+    reverse = run_prepared_two_street_orchestration(
+        _request(reverse_spec, villain=True)
+    )
+    _assert_success(forward)
+    _assert_success(reverse)
+    assert forward.run.evaluation.fixed_profile_value.hero_ev == pytest.approx(0.2)
+    assert reverse.run.evaluation.fixed_profile_value.hero_ev == pytest.approx(0.2)
+    assert (
+        forward.run.build.identity.semantic_sha256
+        != reverse.run.build.identity.semantic_sha256
+    )
+    assert (
+        forward.run.build.identity.ordered_tree_sha256
+        != reverse.run.build.identity.ordered_tree_sha256
+    )
+    assert (
+        forward.run.build.identity.run_identity
+        != reverse.run.build.identity.run_identity
+    )
+    assert (
+        forward.identity.m15_identity.output_semantic_sha256
+        != reverse.identity.m15_identity.output_semantic_sha256
+    )
+    assert forward.identity.run_identity != reverse.identity.run_identity
+    assert (
+        forward.identity.output_semantic_sha256
+        != reverse.identity.output_semantic_sha256
+    )
+
+
+@pytest.mark.parametrize(
+    "contract_version,builder_id",
+    [
+        (PREPARED_TWO_STREET_CONTRACT_VERSION, PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, PREPARED_TWO_STREET_BUILDER_ID),
+        ("unknown-prepared-contract", PREPARED_JOINT_ROOT_BUILDER_ID),
+        ("", PREPARED_JOINT_ROOT_BUILDER_ID),
+        (object(), PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, object()),
+        ([], PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, []),
+    ],
+)
+def test_joint_root_v2_identity_pair_faults_fail_closed_without_partial_payload(
+    monkeypatch, contract_version, builder_id
+):
+    request = _request(_joint_root_spec(), villain=True)
+    baseline = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    evaluation = evaluate_prepared_two_street(
+        baseline.build,
+        request.hero_profile,
+        request.villain_profile,
+        request.evaluation_limits,
+        request.evaluation_request,
+    )
+    faulty_identity = replace(
+        baseline.build.identity,
+        contract_version=contract_version,
+        builder_id=builder_id,
+    )
+    faulty_build = replace(baseline.build, identity=faulty_identity)
+    faulty_m15 = replace(
+        evaluation.identity,
+        m14_contract_version=contract_version,
+        m14_builder_id=builder_id,
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "build_prepared_two_street_game",
+        lambda *args: replace(baseline, build=faulty_build),
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "evaluate_prepared_two_street",
+        lambda *args: replace(evaluation, identity=faulty_m15),
+    )
+    result = run_prepared_two_street_orchestration(request)
+    _assert_failure(
+        result, PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH
+    )
+    assert result.builder_status is PreparedTwoStreetStatus.SUCCESS
+    assert result.evaluation_status is PreparedEvaluationStatus.SUCCESS
+
+
+def test_joint_root_v2_recomputes_m14_run_identity_after_continuity_forgery(
+    monkeypatch,
+):
+    request = _request(_joint_root_spec(), villain=True)
+    baseline = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    evaluation = evaluate_prepared_two_street(
+        baseline.build,
+        request.hero_profile,
+        request.villain_profile,
+        request.evaluation_limits,
+        request.evaluation_request,
+    )
+    forged_run_identity = "f" * 64
+    faulty_build = replace(
+        baseline.build,
+        identity=replace(
+            baseline.build.identity,
+            run_identity=forged_run_identity,
+        ),
+    )
+    faulty_evaluation = replace(
+        evaluation,
+        identity=replace(
+            evaluation.identity,
+            m14_run_identity=forged_run_identity,
+        ),
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "build_prepared_two_street_game",
+        lambda *args: replace(baseline, build=faulty_build),
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "evaluate_prepared_two_street",
+        lambda *args: faulty_evaluation,
+    )
+    result = run_prepared_two_street_orchestration(request)
+    _assert_failure(
+        result, PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH
+    )
+    assert result.builder_status is PreparedTwoStreetStatus.SUCCESS
+    assert result.evaluation_status is PreparedEvaluationStatus.SUCCESS
+
+
+def test_joint_root_v2_binds_request_content_before_accepting_identity_chain(
+    monkeypatch,
+):
+    request = _request(_joint_root_spec(), villain=True)
+    baseline = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    evaluation = evaluate_prepared_two_street(
+        baseline.build,
+        request.hero_profile,
+        request.villain_profile,
+        request.evaluation_limits,
+        request.evaluation_request,
+    )
+    faulty_request = replace(
+        request,
+        content_identity=replace(
+            request.content_identity,
+            raw_sha256="f" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "build_prepared_two_street_game",
+        lambda *args: baseline,
+    )
+    monkeypatch.setattr(
+        orchestration_module,
+        "evaluate_prepared_two_street",
+        lambda *args: evaluation,
+    )
+    result = run_prepared_two_street_orchestration(faulty_request)
+    _assert_failure(
+        result, PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH
+    )
+    assert result.builder_status is PreparedTwoStreetStatus.SUCCESS
+    assert result.evaluation_status is PreparedEvaluationStatus.SUCCESS
+
+
+def test_joint_root_v2_hash_counts_and_tree_faults_map_through_m15_no_partial(
+    monkeypatch,
+):
+    request = _request(_joint_root_spec(), villain=True)
+    baseline = build_prepared_two_street_game(
+        request.spec,
+        request.raw_input_bytes,
+        request.content_identity,
+        request.builder_limits,
+    )
+    reversed_root = replace(
+        baseline.build.tree.root,
+        children=tuple(reversed(baseline.build.tree.root.children)),
+    )
+    faults = (
+        replace(
+            baseline.build,
+            identity=replace(
+                baseline.build.identity, raw_sha256="f" * 64
+            ),
+        ),
+        replace(
+            baseline.build,
+            counts=replace(
+                baseline.build.counts,
+                root_matchups=baseline.build.counts.root_matchups + 1,
+            ),
+        ),
+        replace(baseline.build, tree=GameTree(reversed_root)),
+    )
+    for faulty_build in faults:
+        monkeypatch.setattr(
+            orchestration_module,
+            "build_prepared_two_street_game",
+            lambda *args, _build=faulty_build: replace(
+                baseline, build=_build
+            ),
+        )
+        result = run_prepared_two_street_orchestration(request)
+        _assert_failure(
+            result, PreparedOrchestrationStatus.BUILD_IDENTITY_MISMATCH
+        )
+        assert result.builder_status is PreparedTwoStreetStatus.SUCCESS
+        assert result.evaluation_status in {
+            PreparedEvaluationStatus.IDENTITY_MISMATCH,
+            PreparedEvaluationStatus.BUILD_MISMATCH,
+        }
+
+
+def test_orchestration_rejects_non_v1_v2_spec_type_before_builder(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        orchestration_module,
+        "build_prepared_two_street_game",
+        lambda *args: calls.append(args),
+    )
+    result = run_prepared_two_street_orchestration(
+        replace(_request(), spec=object())
+    )
+    _assert_failure(result, PreparedOrchestrationStatus.INVALID_INPUT)
+    assert calls == []
 
 
 def test_source_uses_only_public_m14_m15_imports_and_standard_library():
