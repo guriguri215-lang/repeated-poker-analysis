@@ -28,11 +28,14 @@ from typing import Any, Mapping
 from .prepared_two_street import (
     PREPARED_CHANCE_NORMALIZATION_ID,
     PREPARED_INFORMATION_KEY_ID,
+    PREPARED_JOINT_ROOT_BUILDER_ID,
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
     PREPARED_TWO_STREET_BUILDER_ID,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedBuildCounts,
     PreparedBuildError,
     PreparedContentIdentity,
+    PreparedJointRootTwoStreetSpec,
     PreparedTwoStreetBuild,
     PreparedTwoStreetBuildResult,
     PreparedTwoStreetIdentity,
@@ -40,6 +43,7 @@ from .prepared_two_street import (
     PreparedTwoStreetSpec,
     PreparedTwoStreetStatus,
     build_prepared_two_street_game,
+    prepared_semantic_sha256,
 )
 from .prepared_two_street_evaluation import (
     PREPARED_EVALUATION_OUTPUT_ID,
@@ -109,7 +113,7 @@ class PreparedOrchestrationLimits:
 
 @dataclass(frozen=True)
 class PreparedTwoStreetOrchestrationRequest:
-    spec: PreparedTwoStreetSpec
+    spec: PreparedTwoStreetSpec | PreparedJointRootTwoStreetSpec
     raw_input_bytes: bytes
     content_identity: PreparedContentIdentity
     hero_profile: PreparedPlayerProfile
@@ -169,6 +173,19 @@ class PreparedTwoStreetOrchestrationResult:
 
 
 _DEFAULT_LIMITS = PreparedOrchestrationLimits()
+_M14_ACTION_LABEL_ID = "betting-tree-v2-action-label-v1"
+_M14_CONTRACT_BUILDER_PAIRS = frozenset(
+    {
+        (
+            PREPARED_TWO_STREET_CONTRACT_VERSION,
+            PREPARED_TWO_STREET_BUILDER_ID,
+        ),
+        (
+            PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+            PREPARED_JOINT_ROOT_BUILDER_ID,
+        ),
+    }
+)
 _SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
 _TRACE_VALUES = (
     ("orchestration", "input", "PASS"),
@@ -264,6 +281,11 @@ def _checked_add(total: int, increment: int, cap: int) -> int:
 
 def _validate_request(request: object) -> bool:
     if type(request) is not PreparedTwoStreetOrchestrationRequest:
+        return False
+    if type(request.spec) not in (
+        PreparedTwoStreetSpec,
+        PreparedJointRootTwoStreetSpec,
+    ):
         return False
     limits = request.orchestration_limits
     if type(limits) is not PreparedOrchestrationLimits:
@@ -368,9 +390,24 @@ def _identity_chain_matches(
     m14 = build.identity
     if type(m14) is not PreparedTwoStreetIdentity or type(build.counts) is not PreparedBuildCounts:
         return False
+    expected_pair = (
+        (
+            PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+            PREPARED_JOINT_ROOT_BUILDER_ID,
+        )
+        if type(request.spec) is PreparedJointRootTwoStreetSpec
+        else (
+            PREPARED_TWO_STREET_CONTRACT_VERSION,
+            PREPARED_TWO_STREET_BUILDER_ID,
+        )
+    )
     if (
-        m14.contract_version != PREPARED_TWO_STREET_CONTRACT_VERSION
-        or m14.builder_id != PREPARED_TWO_STREET_BUILDER_ID
+        type(m14.contract_version) is not str
+        or type(m14.builder_id) is not str
+        or (m14.contract_version, m14.builder_id)
+        not in _M14_CONTRACT_BUILDER_PAIRS
+        or (m14.contract_version, m14.builder_id) != expected_pair
+        or m14.action_label_id != _M14_ACTION_LABEL_ID
         or m14.normalization_id != PREPARED_CHANCE_NORMALIZATION_ID
         or m14.information_key_id != PREPARED_INFORMATION_KEY_ID
         or not all(
@@ -384,6 +421,30 @@ def _identity_chain_matches(
         )
     ):
         return False
+    request_content = (
+        type(request.raw_input_bytes) is bytes
+        and type(request.content_identity) is PreparedContentIdentity
+        and _is_sha256(request.content_identity.raw_sha256)
+        and _is_sha256(request.content_identity.semantic_sha256)
+        and request.content_identity.raw_sha256
+        == hashlib.sha256(request.raw_input_bytes).hexdigest()
+        and request.content_identity.semantic_sha256
+        == prepared_semantic_sha256(request.spec)
+        and m14.raw_sha256 == request.content_identity.raw_sha256
+        and m14.semantic_sha256 == request.content_identity.semantic_sha256
+    )
+    m14_run_matches = m14.run_identity == _sha256(
+        {
+            "contract_version": m14.contract_version,
+            "builder_id": m14.builder_id,
+            "action_label_id": m14.action_label_id,
+            "normalization_id": m14.normalization_id,
+            "information_key_id": m14.information_key_id,
+            "raw_sha256": m14.raw_sha256,
+            "semantic_sha256": m14.semantic_sha256,
+            "ordered_tree_sha256": m14.ordered_tree_sha256,
+        }
+    )
     continuity = (
         identity.m14_contract_version == m14.contract_version
         and identity.m14_builder_id == m14.builder_id
@@ -433,7 +494,9 @@ def _identity_chain_matches(
             and identity.villain_effective_profile_sha256 == villain.effective_profile_sha256
         )
     return (
-        continuity
+        request_content
+        and m14_run_matches
+        and continuity
         and public_contract
         and hero_ok
         and villain_ok

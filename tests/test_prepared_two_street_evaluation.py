@@ -5,8 +5,10 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import json
 import math
-from dataclasses import fields, replace
+from dataclasses import fields, is_dataclass, replace
+from enum import Enum
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,9 @@ import pytest
 import repeated_poker
 import repeated_poker.prepared_two_street_evaluation as evaluation_module
 from repeated_poker.prepared_two_street import (
+    PREPARED_JOINT_ROOT_BUILDER_ID,
+    PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+    PREPARED_TWO_STREET_BUILDER_ID,
     PREPARED_TWO_STREET_CONTRACT_VERSION,
     PreparedActionEvent,
     PreparedActionKind,
@@ -25,8 +30,10 @@ from repeated_poker.prepared_two_street import (
     PreparedDataAttestation,
     PreparedDecisionMenu,
     PreparedHeadsUpChips,
+    PreparedJointRootTwoStreetSpec,
     PreparedPlayer,
     PreparedRake,
+    PreparedRootMatchup,
     PreparedRoundCloseReason,
     PreparedShowdownValue,
     PreparedStreet,
@@ -89,6 +96,79 @@ def _one_street_spec(*, check_share: float = 0.5, rake: float = 0.05) -> Prepare
         None,
         (),
         (PreparedShowdownValue(check_state, "H0", "V0", check_share), PreparedShowdownValue(call_state, "H0", "V0", 0.7)),
+    )
+
+
+def _joint_root_spec() -> PreparedJointRootTwoStreetSpec:
+    street = "river"
+    villain_check = _event(
+        street, PreparedPlayer.VILLAIN, PreparedActionKind.CHECK
+    )
+    hero_check = _event(
+        street, PreparedPlayer.HERO, PreparedActionKind.CHECK
+    )
+    terminal_state = prepared_public_history_id(
+        (
+            villain_check,
+            hero_check,
+            PreparedStreetCloseEvent(
+                street, PreparedRoundCloseReason.CHECK_CHECK
+            ),
+        )
+    )
+    return PreparedJointRootTwoStreetSpec(
+        contract_version=PREPARED_JOINT_ROOT_CONTRACT_VERSION,
+        attestation=PreparedDataAttestation(
+            "joint-root hand oracle",
+            "exact synthetic private buckets",
+            "explicit positive joint root mass; no factorization",
+            "public actions and own bucket only",
+            True,
+        ),
+        starting_chips=PreparedHeadsUpChips(10.0, 10.0),
+        initial_committed=PreparedHeadsUpChips(1.0, 1.0),
+        rake=PreparedRake(0.0, None),
+        streets=(
+            PreparedStreet(
+                street, "River", PreparedPlayer.VILLAIN, 1.0
+            ),
+        ),
+        hero_buckets=(
+            PreparedBucket("H0", 0.6),
+            PreparedBucket("H1", 0.4),
+        ),
+        villain_buckets=(
+            PreparedBucket("V0", 0.7),
+            PreparedBucket("V1", 0.3),
+        ),
+        decision_menus=(
+            PreparedDecisionMenu(
+                prepared_public_history_id(()),
+                street,
+                PreparedPlayer.VILLAIN,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+            PreparedDecisionMenu(
+                prepared_public_history_id((villain_check,)),
+                street,
+                PreparedPlayer.HERO,
+                (_passive(PreparedActionKind.CHECK),),
+            ),
+        ),
+        transition_id=None,
+        transition_rows=(),
+        showdown_values=(
+            PreparedShowdownValue(terminal_state, "H0", "V0", 1.0),
+            PreparedShowdownValue(terminal_state, "H0", "V1", 0.5),
+            PreparedShowdownValue(terminal_state, "H1", "V0", 0.0),
+            PreparedShowdownValue(terminal_state, "H1", "V1", 0.25),
+        ),
+        root_matchups=(
+            PreparedRootMatchup("H0", "V0", 0.5),
+            PreparedRootMatchup("H0", "V1", 0.1),
+            PreparedRootMatchup("H1", "V0", 0.2),
+            PreparedRootMatchup("H1", "V1", 0.2),
+        ),
     )
 
 
@@ -202,6 +282,45 @@ def _assert_failure(result, status):
     assert result.status is status
     assert result.evaluation is None and result.identity is None
     assert result.error is not None and result.error.message and len(result.error.message) <= 500 and len(result.error.phase) <= 64
+
+
+def _independent_value(value):
+    if isinstance(value, Enum):
+        return value.value
+    if type(value) is float:
+        assert math.isfinite(value)
+        return {"__floathex__": value.hex()}
+    if value is None or type(value) in (bool, str, int):
+        return value
+    if type(value) is bytes:
+        return {"__bytes_hex__": value.hex()}
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            "__type__": type(value).__name__,
+            "fields": {
+                item.name: _independent_value(getattr(value, item.name))
+                for item in fields(value)
+            },
+        }
+    if type(value) in (tuple, list):
+        return [_independent_value(item) for item in value]
+    if isinstance(value, dict):
+        assert all(type(key) is str for key in value)
+        return {
+            key: _independent_value(value[key]) for key in sorted(value)
+        }
+    raise AssertionError(type(value))
+
+
+def _independent_sha(value) -> str:
+    encoded = json.dumps(
+        _independent_value(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _returned_record_count(result):
@@ -353,6 +472,184 @@ def test_adapter_imports_no_m14_private_helper():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith("prepared_two_street"):
             assert all(not alias.name.startswith("_") for alias in node.names)
+
+
+def test_joint_root_v2_evaluates_correlated_mass_and_binds_full_m14_identity():
+    build = _build(_joint_root_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    villain = _profile(build, PreparedPlayer.VILLAIN)
+    result = evaluate_prepared_two_street(build, hero, villain)
+    _assert_success(result)
+
+    fixed = result.evaluation.fixed_profile_value
+    assert fixed is not None
+    factorized = (
+        0.6 * 0.7 * 1.0
+        + 0.6 * 0.3 * 0.0
+        + 0.4 * 0.7 * -1.0
+        + 0.4 * 0.3 * -0.5
+    )
+    assert fixed.hero_ev == pytest.approx(0.2)
+    assert result.evaluation.exact_response.hero_ev_worst == pytest.approx(0.2)
+    assert result.evaluation.exact_response.hero_ev_best == pytest.approx(0.2)
+    assert factorized == pytest.approx(0.08)
+    assert fixed.hero_ev != pytest.approx(factorized)
+
+    identity = result.identity
+    assert identity.m14_contract_version == PREPARED_JOINT_ROOT_CONTRACT_VERSION
+    assert identity.m14_builder_id == PREPARED_JOINT_ROOT_BUILDER_ID
+    assert identity.m14_raw_sha256 == build.identity.raw_sha256
+    assert identity.m14_prepared_semantic_sha256 == build.identity.semantic_sha256
+    assert identity.m14_ordered_tree_sha256 == build.identity.ordered_tree_sha256
+    assert identity.m14_run_identity == build.identity.run_identity
+    assert {
+        item.key.contract_version for item in build.information_sets
+    } == {PREPARED_JOINT_ROOT_CONTRACT_VERSION}
+
+
+def test_joint_root_v2_m15_identity_matches_independent_canonical_oracle_and_pins():
+    build = _build(_joint_root_spec())
+    result = evaluate_prepared_two_street(
+        build,
+        _profile(build, PreparedPlayer.HERO),
+        _profile(build, PreparedPlayer.VILLAIN),
+    )
+    _assert_success(result)
+    identity_without_output = {
+        item.name: getattr(result.identity, item.name)
+        for item in fields(result.identity)
+        if item.name != "output_semantic_sha256"
+    }
+    independent = _independent_sha(
+        {
+            "algorithm": PREPARED_EVALUATION_OUTPUT_ID,
+            "identity": identity_without_output,
+            "evaluation": result.evaluation,
+        }
+    )
+    assert independent == result.identity.output_semantic_sha256
+    assert build.identity.semantic_sha256 == (
+        "70eaf7051dc8db647d65c8bb682f44aa47da45c0c439c9eca383db79147f49dc"
+    )
+    assert build.identity.ordered_tree_sha256 == (
+        "316e385f355bb04326e682b3ace14956b3b5cd290430106a0069d296a70ff3f5"
+    )
+    assert build.identity.run_identity == (
+        "13d24d8ce1d263090f8d0b8803e210c50b009207061b48dfa1b8d5db37f49c37"
+    )
+    assert result.identity.output_semantic_sha256 == (
+        "288c4ac7542d849d67fe605e2861ca3e6c753ddda8a230c961b9a82b66f71d58"
+    )
+
+
+def test_joint_root_v2_row_reverse_preserves_ev_but_changes_m14_and_m15_identity():
+    forward_spec = _joint_root_spec()
+    reverse_spec = replace(
+        forward_spec,
+        root_matchups=tuple(reversed(forward_spec.root_matchups)),
+    )
+    forward_build = _build(forward_spec)
+    reverse_build = _build(reverse_spec)
+    forward = evaluate_prepared_two_street(
+        forward_build,
+        _profile(forward_build, PreparedPlayer.HERO),
+        _profile(forward_build, PreparedPlayer.VILLAIN),
+    )
+    reverse = evaluate_prepared_two_street(
+        reverse_build,
+        _profile(reverse_build, PreparedPlayer.HERO),
+        _profile(reverse_build, PreparedPlayer.VILLAIN),
+    )
+    _assert_success(forward)
+    _assert_success(reverse)
+    assert forward.evaluation.fixed_profile_value.hero_ev == pytest.approx(0.2)
+    assert reverse.evaluation.fixed_profile_value.hero_ev == pytest.approx(0.2)
+    assert forward_build.identity.semantic_sha256 != reverse_build.identity.semantic_sha256
+    assert forward_build.identity.ordered_tree_sha256 != reverse_build.identity.ordered_tree_sha256
+    assert forward_build.identity.run_identity != reverse_build.identity.run_identity
+    assert (
+        forward.identity.output_semantic_sha256
+        != reverse.identity.output_semantic_sha256
+    )
+
+
+@pytest.mark.parametrize(
+    "contract_version,builder_id",
+    [
+        (PREPARED_TWO_STREET_CONTRACT_VERSION, PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, PREPARED_TWO_STREET_BUILDER_ID),
+        ("unknown-prepared-contract", PREPARED_JOINT_ROOT_BUILDER_ID),
+        ("", PREPARED_JOINT_ROOT_BUILDER_ID),
+        (object(), PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, object()),
+        ([], PREPARED_JOINT_ROOT_BUILDER_ID),
+        (PREPARED_JOINT_ROOT_CONTRACT_VERSION, []),
+    ],
+)
+def test_joint_root_v2_rejects_hybrid_unknown_empty_and_typed_identity_pairs(
+    contract_version, builder_id
+):
+    build = _build(_joint_root_spec())
+    faulty = replace(
+        build,
+        identity=replace(
+            build.identity,
+            contract_version=contract_version,
+            builder_id=builder_id,
+        ),
+    )
+    result = evaluate_prepared_two_street(
+        faulty, _profile(build, PreparedPlayer.HERO)
+    )
+    _assert_failure(result, PreparedEvaluationStatus.IDENTITY_MISMATCH)
+
+
+def test_joint_root_v2_hash_counts_tree_and_information_faults_fail_no_partial():
+    build = _build(_joint_root_spec())
+    hero = _profile(build, PreparedPlayer.HERO)
+    reversed_root = replace(
+        build.tree.root, children=tuple(reversed(build.tree.root.children))
+    )
+    information = build.information_sets[0]
+    wrong_key = replace(
+        information.key,
+        contract_version=PREPARED_TWO_STREET_CONTRACT_VERSION,
+    )
+    faults = (
+        (
+            replace(
+                build,
+                identity=replace(build.identity, raw_sha256="f" * 64),
+            ),
+            PreparedEvaluationStatus.IDENTITY_MISMATCH,
+        ),
+        (
+            replace(
+                build,
+                counts=replace(
+                    build.counts,
+                    root_matchups=build.counts.root_matchups + 1,
+                ),
+            ),
+            PreparedEvaluationStatus.BUILD_MISMATCH,
+        ),
+        (
+            replace(build, tree=GameTree(reversed_root)),
+            PreparedEvaluationStatus.IDENTITY_MISMATCH,
+        ),
+        (
+            replace(
+                build,
+                information_sets=(
+                    replace(information, key=wrong_key),
+                    *build.information_sets[1:],
+                ),
+            ),
+            PreparedEvaluationStatus.IDENTITY_MISMATCH,
+        ),
+    )
+    for faulty, expected in faults:
+        _assert_failure(evaluate_prepared_two_street(faulty, hero), expected)
 
 
 def test_dp_is_default_primary_and_absent_villain_is_explicit():
