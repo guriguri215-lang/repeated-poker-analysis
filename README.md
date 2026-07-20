@@ -366,6 +366,40 @@ Markdown rendering into a single call for a small abstract game. It is an
 orchestration helper, not a new solver; it does not write files and adds no
 CLI.
 
+### Automatic conditional commitment selection
+
+The pipeline can also return an opt-in bounded automatic-selection report. It
+searches every kept comparison for each opponent adaptation opportunity
+`m = 1, ..., N + 1`, reusing the exact Hero-worst response calculation and
+choosing the largest repeated total Hero-EV delta. The previous pipeline
+behavior is unchanged unless `automatic_selection` is supplied:
+
+```python
+from repeated_poker.automatic_commitment_selection import (
+    AutomaticCommitmentSelectionConfig,
+)
+
+result = run_candidate_analysis_pipeline(
+    tree,
+    baseline_hero_strategy,
+    baseline_villain_strategy,
+    horizon=100,
+    automatic_selection=AutomaticCommitmentSelectionConfig(
+        minimum_total_uplift=0.25,
+    ),
+)
+selection = result.automatic_selection_report
+```
+
+A row selects a commitment only when its best delta is strictly greater than
+`minimum_total_uplift + tolerance`; otherwise it reports
+`NO_BENEFICIAL_COMMITMENT`. Primary ties and deterministic secondary tie-break
+evidence are retained. This is only a conditional optimum over the declared
+finite kept candidate library. It is not a global optimum, equilibrium claim,
+adaptation prediction, or strategy/profitability advice. See
+[`docs/automatic_commitment_selection.md`](docs/automatic_commitment_selection.md)
+for the full contract, validation bounds, coverage metadata, and direct API.
+
 ### JSON scenario input
 
 An abstract river spot can be described in a JSON file and turned into a
