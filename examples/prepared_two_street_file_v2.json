@@ -1,0 +1,90 @@
+{
+  "format_version": "prepared-two-street-file-v2",
+  "operation": "inspect",
+  "spec": {
+    "contract_version": "betting-tree-v2-prepared-two-street-joint-root-2",
+    "attestation": {
+      "source": "joint-root hand oracle",
+      "bucket_semantics": "exact synthetic private buckets",
+      "conditional_probability_semantics": "explicit positive joint root mass; no factorization",
+      "observation_mapping": "public actions and own bucket only",
+      "perfect_recall_attested": true
+    },
+    "starting_chips": {"hero": 10.0, "villain": 10.0},
+    "initial_committed": {"hero": 1.0, "villain": 1.0},
+    "rake": {"rate": 0.0, "cap": null},
+    "streets": [
+      {"street_id": "river", "label": "River", "first_actor": "villain", "min_open_bet": 1.0}
+    ],
+    "hero_buckets": [
+      {"bucket_id": "H0", "weight": 0.6},
+      {"bucket_id": "H1", "weight": 0.4}
+    ],
+    "villain_buckets": [
+      {"bucket_id": "V0", "weight": 0.7},
+      {"bucket_id": "V1", "weight": 0.3}
+    ],
+    "root_matchups": [
+      {"hero_bucket_id": "H0", "villain_bucket_id": "V0", "probability": 0.5},
+      {"hero_bucket_id": "H0", "villain_bucket_id": "V1", "probability": 0.1},
+      {"hero_bucket_id": "H1", "villain_bucket_id": "V0", "probability": 0.2},
+      {"hero_bucket_id": "H1", "villain_bucket_id": "V1", "probability": 0.2}
+    ],
+    "decision_menus": [
+      {
+        "history": [],
+        "street_id": "river",
+        "player": "villain",
+        "actions": [
+          {"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}
+        ]
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "river", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true}
+        ],
+        "street_id": "river",
+        "player": "hero",
+        "actions": [
+          {"kind": "check", "size_id": null, "raise_to": null, "is_all_in": false}
+        ]
+      }
+    ],
+    "transition_id": null,
+    "transition_rows": [],
+    "showdown_values": [
+      {
+        "history": [
+          {"type": "action", "street_id": "river", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "river", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "river", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H0", "villain_bucket_id": "V0", "hero_pot_share": 1.0
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "river", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "river", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "river", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H0", "villain_bucket_id": "V1", "hero_pot_share": 0.5
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "river", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "river", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "river", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H1", "villain_bucket_id": "V0", "hero_pot_share": 0.0
+      },
+      {
+        "history": [
+          {"type": "action", "street_id": "river", "player": "villain", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "action", "street_id": "river", "player": "hero", "kind": "check", "size_id": null, "raise_to": null, "is_all_in": false, "reopen": true},
+          {"type": "street_close", "street_id": "river", "reason": "check-check"}
+        ],
+        "hero_bucket_id": "H1", "villain_bucket_id": "V1", "hero_pot_share": 0.25
+      }
+    ]
+  }
+}

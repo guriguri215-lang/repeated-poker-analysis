@@ -107,13 +107,16 @@ python examples/value_bluff_river.py
 ### Prepared one-/two-street file workflow
 
 Small abstract prepared games can use the strict two-phase
-`prepared-two-street-file-v1` workflow. `inspect` generates the information-set
-IDs and legal-action profile template; after the Hero probabilities (and an
-optional complete Villain profile) are filled, `run` returns the bounded M16
-orchestration result.
+prepared two-street file workflow. `prepared-two-street-file-v1` preserves the
+factorized root distribution; `prepared-two-street-file-v2` requires an
+explicit ordered joint Hero/Villain root distribution. `inspect` generates the
+information-set IDs and legal-action profile template; after the Hero
+probabilities (and an optional complete Villain profile) are filled, `run`
+returns the bounded M16 orchestration result.
 
 ```powershell
 python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v1.json
+python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v2.json
 ```
 
 See [docs/prepared_two_street_file_workflow.md](docs/prepared_two_street_file_workflow.md)
