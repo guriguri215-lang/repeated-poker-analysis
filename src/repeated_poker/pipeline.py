@@ -13,6 +13,13 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Set
 
 from .analysis_report import CandidateAnalysisReport, build_candidate_analysis_report
+from .automatic_commitment_selection import (
+    AutomaticCommitmentSearchCoverage,
+    AutomaticCommitmentSelectionConfig,
+    AutomaticCommitmentSelectionReport,
+    select_automatic_commitments,
+    validate_automatic_commitment_selection_parameters,
+)
 from .candidate_filters import CandidateFilterResult, filter_candidates
 from .candidates import (
     DEFAULT_MAX_CANDIDATES,
@@ -62,7 +69,8 @@ class CandidateAnalysisPipelineResult:
     ``generated_candidates`` is the full pre-filter list; ``filter_result.kept``
     is the subset carried into comparison; ``comparison_report`` and
     ``analysis_report`` cover the kept candidates only, in input order.
-    ``markdown_summary`` is ``None`` when Markdown rendering is disabled.
+    ``markdown_summary`` is ``None`` when Markdown rendering is disabled, and
+    ``automatic_selection_report`` is ``None`` unless the selector is opted in.
     """
 
     generated_candidates: List[HeroStrategyCandidate]
@@ -70,6 +78,7 @@ class CandidateAnalysisPipelineResult:
     comparison_report: CandidateComparisonReport
     analysis_report: CandidateAnalysisReport
     markdown_summary: Optional[str]
+    automatic_selection_report: Optional[AutomaticCommitmentSelectionReport] = None
 
 
 def run_candidate_analysis_pipeline(
@@ -81,6 +90,7 @@ def run_candidate_analysis_pipeline(
     horizon: int,
     discount: float = 1.0,
     response_mode: str = RESPONSE_MODE_WORST,
+    automatic_selection: Optional[AutomaticCommitmentSelectionConfig] = None,
     profit_tolerance: float = 0.0,
     max_selection_l1_distance: Optional[float] = None,
     detection_log_likelihood_threshold: Optional[float] = None,
@@ -108,6 +118,14 @@ def run_candidate_analysis_pipeline(
     when ``detection_log_likelihood_threshold`` is given) ->
     ``format_candidate_analysis_markdown`` (only when ``render_markdown``).
 
+    ``automatic_selection`` is opt-in.  When it is an
+    :class:`AutomaticCommitmentSelectionConfig`, every kept comparison is also
+    evaluated by the bounded conditional selector and the result is returned as
+    the independent ``automatic_selection_report`` artefact.  The selector uses
+    Villain exact-best-response Hero-worst values only, so combining it with a
+    pipeline ``response_mode`` other than ``"worst"`` is rejected.  ``None``
+    preserves the previous computation and return semantics.
+
     Most validation is delegated to the underlying stage APIs.  The pipeline
     additionally rejects an empty ``generation.shift_amounts``, a non-boolean
     ``render_markdown``, an invalid ``markdown_max_rows``, and a filter that
@@ -119,6 +137,18 @@ def run_candidate_analysis_pipeline(
 
     if not generation.shift_amounts:
         raise ValueError("generation.shift_amounts must not be empty")
+    if automatic_selection is not None:
+        if response_mode != RESPONSE_MODE_WORST:
+            raise ValueError(
+                "automatic_selection requires pipeline response_mode='worst'"
+            )
+        validate_automatic_commitment_selection_parameters(
+            horizon=horizon,
+            discount=discount,
+            tolerance=tolerance,
+            max_horizon=max_horizon,
+            configuration=automatic_selection,
+        )
     if not isinstance(render_markdown, bool):
         raise ValueError(f"render_markdown must be a bool, got {render_markdown!r}")
     validate_markdown_max_rows(markdown_max_rows)
@@ -195,6 +225,46 @@ def run_candidate_analysis_pipeline(
         max_detection_terminals=max_detection_terminals,
     )
 
+    automatic_selection_report: Optional[AutomaticCommitmentSelectionReport]
+    if automatic_selection is None:
+        automatic_selection_report = None
+    else:
+        allowed_info_sets: Optional[tuple[str, ...]]
+        if filtering is None or filtering.allowed_info_sets is None:
+            allowed_info_sets = None
+        else:
+            allowed_info_sets = tuple(sorted(filtering.allowed_info_sets))
+        search_coverage = AutomaticCommitmentSearchCoverage(
+            input_candidate_ids=tuple(
+                candidate.candidate_id for candidate in generated_candidates
+            ),
+            kept_candidate_ids=tuple(
+                comparison.candidate.candidate_id
+                for comparison in comparison_report.comparisons
+            ),
+            source="pipeline",
+            shift_amounts=tuple(generation.shift_amounts),
+            max_simultaneous_info_sets=generation.max_simultaneous_info_sets,
+            generation_max_candidates=generation.max_candidates,
+            filtering_applied=filtering is not None,
+            filter_allowed_info_sets=allowed_info_sets,
+            filter_max_l1_distance=(
+                None if filtering is None else filtering.max_l1_distance
+            ),
+            filter_min_required_observations=(
+                None if filtering is None else filtering.min_required_observations
+            ),
+        )
+        automatic_selection_report = select_automatic_commitments(
+            comparison_report,
+            horizon=horizon,
+            discount=discount,
+            tolerance=tolerance,
+            max_horizon=max_horizon,
+            configuration=automatic_selection,
+            search_coverage=search_coverage,
+        )
+
     markdown_summary: Optional[str]
     if render_markdown:
         markdown_summary = format_candidate_analysis_markdown(
@@ -209,4 +279,5 @@ def run_candidate_analysis_pipeline(
         comparison_report=comparison_report,
         analysis_report=analysis_report,
         markdown_summary=markdown_summary,
+        automatic_selection_report=automatic_selection_report,
     )
