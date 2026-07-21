@@ -293,6 +293,11 @@ def validate_automatic_commitment_selection_parameters(
 
 
 def _validate_unique_ids(ids: Sequence[str], name: str) -> Tuple[str, ...]:
+    if isinstance(ids, (str, bytes)):
+        raise ValueError(
+            f"{name} must be a sequence of non-empty string candidate ids, "
+            "not a bare str or bytes container"
+        )
     canonical: List[str] = []
     for candidate_id in ids:
         if not isinstance(candidate_id, str) or not candidate_id:
@@ -435,14 +440,32 @@ def _canonicalize_coverage(
     if coverage.filter_allowed_info_sets is None:
         allowed_info_sets = None
     else:
-        if any(
-            not isinstance(value, str)
-            for value in coverage.filter_allowed_info_sets
-        ):
+        raw_allowed_info_sets = coverage.filter_allowed_info_sets
+        if isinstance(raw_allowed_info_sets, (str, bytes)):
             raise ValueError(
-                "search_coverage.filter_allowed_info_sets must contain only strings"
+                "search_coverage.filter_allowed_info_sets must be a sequence of "
+                "non-empty strings, not a bare str or bytes container"
             )
-        allowed_info_sets = tuple(sorted(coverage.filter_allowed_info_sets))
+        canonical_allowed_info_sets: List[str] = []
+        for value in raw_allowed_info_sets:
+            if not isinstance(value, str) or not value:
+                raise ValueError(
+                    "search_coverage.filter_allowed_info_sets must contain only "
+                    f"non-empty strings, got {value!r}"
+                )
+            canonical_allowed_info_sets.append(value)
+        duplicate_info_sets = sorted(
+            value
+            for value, count in Counter(canonical_allowed_info_sets).items()
+            if count > 1
+        )
+        if duplicate_info_sets:
+            raise ValueError(
+                "duplicate info set(s) in "
+                "search_coverage.filter_allowed_info_sets: "
+                f"{duplicate_info_sets}"
+            )
+        allowed_info_sets = tuple(sorted(canonical_allowed_info_sets))
 
     if coverage.filter_max_l1_distance is not None:
         _require_finite_number(

@@ -460,6 +460,78 @@ def test_search_coverage_must_bind_exact_kept_ids():
         )
 
 
+@pytest.mark.parametrize(
+    "field,bare_container",
+    [
+        ("input_candidate_ids", "c"),
+        ("input_candidate_ids", b"c"),
+        ("kept_candidate_ids", "c"),
+        ("kept_candidate_ids", b"c"),
+    ],
+)
+def test_search_coverage_rejects_bare_candidate_id_containers(
+    field, bare_container
+):
+    coverage_values = {
+        "input_candidate_ids": ("c",),
+        "kept_candidate_ids": ("c",),
+    }
+    coverage_values[field] = bare_container
+    coverage = AutomaticCommitmentSearchCoverage(**coverage_values)
+
+    with pytest.raises(ValueError, match="bare str or bytes container"):
+        select_automatic_commitments(
+            _report([_comparison("c", pre=1.0, worst=1.0)]),
+            horizon=1,
+            search_coverage=coverage,
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_allowed_info_sets",
+    ["AB", "", b"AB", b"", ("",), ("A", "A")],
+)
+def test_search_coverage_rejects_invalid_allowed_info_sets(
+    invalid_allowed_info_sets,
+):
+    coverage = AutomaticCommitmentSearchCoverage(
+        input_candidate_ids=("c",),
+        kept_candidate_ids=("c",),
+        filtering_applied=True,
+        filter_allowed_info_sets=invalid_allowed_info_sets,
+    )
+
+    with pytest.raises(ValueError):
+        select_automatic_commitments(
+            _report([_comparison("c", pre=1.0, worst=1.0)]),
+            horizon=1,
+            search_coverage=coverage,
+        )
+
+
+@pytest.mark.parametrize("allowed_info_sets", [("B", "A"), ["B", "A"]])
+def test_search_coverage_canonicalises_valid_allowed_info_set_sequences(
+    allowed_info_sets,
+):
+    coverage = AutomaticCommitmentSearchCoverage(
+        input_candidate_ids=("c",),
+        kept_candidate_ids=("c",),
+        filtering_applied=True,
+        filter_allowed_info_sets=allowed_info_sets,
+    )
+
+    result = select_automatic_commitments(
+        _report([_comparison("c", pre=1.0, worst=1.0)]),
+        horizon=1,
+        search_coverage=coverage,
+    )
+
+    assert result.search_coverage.filter_allowed_info_sets == ("A", "B")
+    assert result.to_dict()["search_coverage"]["filter_configuration"][
+        "allowed_info_sets"
+    ] == ["A", "B"]
+
+
 def test_contract_identity_scope_and_config_are_serialised():
     result = select_automatic_commitments(
         _report([_comparison("a", pre=1.0, worst=1.0)]), horizon=1
