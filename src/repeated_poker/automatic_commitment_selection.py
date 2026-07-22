@@ -24,10 +24,13 @@ from typing import List, Optional, Sequence, Tuple
 
 from .candidates import DEFAULT_MAX_CANDIDATES
 from .comparison import CandidateComparison, CandidateComparisonReport
+from .fixed_profile import FixedProfileValue
 from .game import require_finite
 from .repeated import (
     DEFAULT_MAX_HORIZON,
     RESPONSE_MODE_WORST,
+    AdaptationDeadlineResult,
+    calculate_adaptation_deadline,
     calculate_candidate_adaptation_deadlines,
     validate_deadline_parameters,
 )
@@ -131,6 +134,37 @@ class AutomaticCommitmentSearchCoverage:
             "kept_candidate_ids": list(self.kept_candidate_ids),
             "generation_configuration": generation_configuration,
             "filter_configuration": filter_configuration,
+        }
+
+
+@dataclass(frozen=True)
+class AutomaticCommitmentValueCandidate:
+    """Domain-neutral scalar inputs for one bounded commitment candidate.
+
+    The selector needs only the fixed-opponent value, the conservative and
+    optimistic post-response Hero values, their conservative baseline
+    difference, and the candidate's declared L1 distance.  Domain adapters
+    retain their native response provenance; they must not manufacture a
+    generic tree response merely to call the selector.
+    """
+
+    candidate_id: str
+    fixed_profile_value: FixedProfileValue
+    post_response_hero_ev_worst: float
+    post_response_hero_ev_best: float
+    post_response_hero_ev_worst_diff: float
+    l1_distance: float
+
+    def to_dict(self) -> dict:
+        return {
+            "candidate_id": self.candidate_id,
+            "fixed_profile_value": self.fixed_profile_value.to_dict(),
+            "post_response_hero_ev_worst": self.post_response_hero_ev_worst,
+            "post_response_hero_ev_best": self.post_response_hero_ev_best,
+            "post_response_hero_ev_worst_diff": (
+                self.post_response_hero_ev_worst_diff
+            ),
+            "l1_distance": self.l1_distance,
         }
 
 
@@ -243,8 +277,15 @@ class AutomaticCommitmentSelectionReport:
 
 @dataclass(frozen=True)
 class _CandidateScore:
-    comparison: CandidateComparison
+    candidate: AutomaticCommitmentValueCandidate
     total_hero_ev_delta: float
+
+
+@dataclass(frozen=True)
+class _CandidateValueDeadline:
+    candidate_id: str
+    response_mode: str
+    result: AdaptationDeadlineResult
 
 
 def _require_finite_number(value: object, name: str) -> None:
@@ -312,6 +353,83 @@ def _validate_unique_ids(ids: Sequence[str], name: str) -> Tuple[str, ...]:
     if duplicates:
         raise ValueError(f"duplicate candidate_id(s) in {name}: {duplicates}")
     return tuple(sorted(canonical))
+
+
+def _validate_fixed_profile_value(value: object, name: str) -> FixedProfileValue:
+    if not isinstance(value, FixedProfileValue):
+        raise ValueError(f"{name} must be a FixedProfileValue, got {value!r}")
+    for field_name, scalar in (
+        ("hero_ev", value.hero_ev),
+        ("villain_ev", value.villain_ev),
+        ("house_rake", value.house_rake),
+    ):
+        _require_finite_number(scalar, f"{name}.{field_name}")
+    return value
+
+
+def _validate_value_candidates(
+    baseline_value: FixedProfileValue,
+    candidates: Sequence[AutomaticCommitmentValueCandidate],
+    *,
+    tolerance: float,
+    require_diff_consistency: bool,
+) -> Tuple[AutomaticCommitmentValueCandidate, ...]:
+    _validate_fixed_profile_value(baseline_value, "baseline_value")
+    if isinstance(candidates, (str, bytes)) or not isinstance(candidates, Sequence):
+        raise ValueError(
+            "candidates must be a sequence of AutomaticCommitmentValueCandidate"
+        )
+    candidate_ids = []
+    for candidate in candidates:
+        if not isinstance(candidate, AutomaticCommitmentValueCandidate):
+            raise ValueError(
+                "candidates must contain AutomaticCommitmentValueCandidate "
+                f"objects, got {candidate!r}"
+            )
+        candidate_ids.append(candidate.candidate_id)
+    _validate_unique_ids(candidate_ids, "candidates")
+
+    for candidate in candidates:
+        candidate_id = candidate.candidate_id
+        _validate_fixed_profile_value(
+            candidate.fixed_profile_value,
+            f"candidate {candidate_id!r} fixed_profile_value",
+        )
+        for name, value in (
+            ("post_response_hero_ev_worst", candidate.post_response_hero_ev_worst),
+            ("post_response_hero_ev_best", candidate.post_response_hero_ev_best),
+            (
+                "post_response_hero_ev_worst_diff",
+                candidate.post_response_hero_ev_worst_diff,
+            ),
+            ("l1_distance", candidate.l1_distance),
+        ):
+            _require_finite_number(value, f"candidate {candidate_id!r} {name}")
+        if candidate.l1_distance < 0:
+            raise ValueError(
+                f"candidate {candidate_id!r} l1_distance must be non-negative, "
+                f"got {candidate.l1_distance!r}"
+            )
+        if candidate.post_response_hero_ev_worst > candidate.post_response_hero_ev_best:
+            raise ValueError(
+                f"candidate {candidate_id!r} post-response Hero worst value "
+                "must not exceed the best value"
+            )
+        if require_diff_consistency:
+            expected_diff = (
+                candidate.post_response_hero_ev_worst - baseline_value.hero_ev
+            )
+            _require_finite_number(
+                expected_diff,
+                f"candidate {candidate_id!r} expected post-response difference",
+            )
+            if abs(candidate.post_response_hero_ev_worst_diff - expected_diff) > tolerance:
+                raise ValueError(
+                    f"candidate {candidate_id!r} post-response Hero worst "
+                    "difference is inconsistent with the baseline"
+                )
+
+    return tuple(sorted(candidates, key=lambda item: item.candidate_id))
 
 
 def _validate_comparison_report(
@@ -498,10 +616,10 @@ def _canonicalize_coverage(
     )
 
 
-def _baseline_identity(report: CandidateComparisonReport) -> str:
+def _baseline_identity_from_value(baseline_value: FixedProfileValue) -> str:
     payload = {
         "algorithm": AUTOMATIC_COMMITMENT_BASELINE_IDENTITY_ALGORITHM,
-        "baseline_value": report.baseline_value.to_dict(),
+        "baseline_value": baseline_value.to_dict(),
     }
     encoded = json.dumps(
         payload,
@@ -565,46 +683,46 @@ def _select_row(
     )
 
     best_post_response_diff = max(
-        score.comparison.post_response_hero_ev_worst_diff for score in primary_ties
+        score.candidate.post_response_hero_ev_worst_diff for score in primary_ties
     )
     post_response_ties = tuple(
         score
         for score in primary_ties
-        if score.comparison.post_response_hero_ev_worst_diff
+        if score.candidate.post_response_hero_ev_worst_diff
         >= best_post_response_diff - tolerance
     )
     best_l1_distance = min(
-        score.comparison.candidate.l1_distance for score in post_response_ties
+        score.candidate.l1_distance for score in post_response_ties
     )
     l1_ties = tuple(
         score
         for score in post_response_ties
-        if score.comparison.candidate.l1_distance <= best_l1_distance + tolerance
+        if score.candidate.l1_distance <= best_l1_distance + tolerance
     )
     display_candidate_id = min(
-        score.comparison.candidate.candidate_id for score in l1_ties
+        score.candidate.candidate_id for score in l1_ties
     )
 
     post_response_ids = {
-        score.comparison.candidate.candidate_id for score in post_response_ties
+        score.candidate.candidate_id for score in post_response_ties
     }
-    l1_ids = {score.comparison.candidate.candidate_id for score in l1_ties}
+    l1_ids = {score.candidate.candidate_id for score in l1_ties}
     evidence = tuple(
         AutomaticCommitmentTieBreakEvidence(
-            candidate_id=score.comparison.candidate.candidate_id,
+            candidate_id=score.candidate.candidate_id,
             total_hero_ev_delta=score.total_hero_ev_delta,
             post_response_hero_ev_worst_diff=(
-                score.comparison.post_response_hero_ev_worst_diff
+                score.candidate.post_response_hero_ev_worst_diff
             ),
-            l1_distance=score.comparison.candidate.l1_distance,
+            l1_distance=score.candidate.l1_distance,
             within_best_post_response_tolerance=(
-                score.comparison.candidate.candidate_id in post_response_ids
+                score.candidate.candidate_id in post_response_ids
             ),
             within_best_l1_tolerance=(
-                score.comparison.candidate.candidate_id in l1_ids
+                score.candidate.candidate_id in l1_ids
             ),
             is_primary_tie_display_candidate=(
-                score.comparison.candidate.candidate_id == display_candidate_id
+                score.candidate.candidate_id == display_candidate_id
             ),
         )
         for score in primary_ties
@@ -621,10 +739,152 @@ def _select_row(
         best_total_hero_ev_delta=best_delta,
         selected_candidate_id=display_candidate_id if beneficial else None,
         primary_tie_candidate_ids=tuple(
-            score.comparison.candidate.candidate_id for score in primary_ties
+            score.candidate.candidate_id for score in primary_ties
         ),
         primary_tie_display_candidate_id=display_candidate_id,
         tie_break_evidence=evidence,
+    )
+
+
+def _select_automatic_commitment_values_validated(
+    baseline_value: FixedProfileValue,
+    candidates: Tuple[AutomaticCommitmentValueCandidate, ...],
+    *,
+    horizon: int,
+    discount: float,
+    tolerance: float,
+    max_horizon: int,
+    configuration: AutomaticCommitmentSelectionConfig,
+    coverage: AutomaticCommitmentSearchCoverage,
+    timing_row_count: int,
+) -> AutomaticCommitmentSelectionReport:
+    deadlines = tuple(
+        _CandidateValueDeadline(
+            candidate_id=candidate.candidate_id,
+            response_mode=RESPONSE_MODE_WORST,
+            result=calculate_adaptation_deadline(
+                baseline_hero_ev=baseline_value.hero_ev,
+                pre_adaptation_hero_ev=candidate.fixed_profile_value.hero_ev,
+                post_adaptation_hero_ev=candidate.post_response_hero_ev_worst,
+                horizon=horizon,
+                discount=discount,
+                tolerance=tolerance,
+                max_horizon=max_horizon,
+            ),
+        )
+        for candidate in candidates
+    )
+    _validate_deadline_outputs(deadlines, horizon)
+    deadlines_by_id = {deadline.candidate_id: deadline for deadline in deadlines}
+    kept_candidate_ids = tuple(candidate.candidate_id for candidate in candidates)
+    if tuple(sorted(deadlines_by_id)) != kept_candidate_ids:
+        raise ValueError(
+            "automatic selection deadline candidate ids do not match the candidates"
+        )
+
+    rows: List[AutomaticCommitmentSelectionRow] = []
+    for opportunity in range(1, horizon + 2):
+        scores = tuple(
+            _CandidateScore(
+                candidate=candidate,
+                total_hero_ev_delta=deadlines_by_id[
+                    candidate.candidate_id
+                ].result.timing[opportunity - 1].delta_from_baseline,
+            )
+            for candidate in candidates
+        )
+        rows.append(
+            _select_row(
+                scores,
+                opportunity,
+                configuration.minimum_total_uplift,
+                tolerance,
+            )
+        )
+
+    return AutomaticCommitmentSelectionReport(
+        status=AUTOMATIC_COMMITMENT_SELECTION_STATUS_COMPLETE,
+        baseline_identity=_baseline_identity_from_value(baseline_value),
+        baseline_hero_ev=baseline_value.hero_ev,
+        baseline_villain_ev=baseline_value.villain_ev,
+        baseline_house_rake=baseline_value.house_rake,
+        horizon=horizon,
+        discount=discount,
+        tolerance=tolerance,
+        max_horizon=max_horizon,
+        configuration=configuration,
+        search_coverage=coverage,
+        timing_row_evaluation_count=timing_row_count,
+        rows=tuple(rows),
+    )
+
+
+def select_automatic_commitment_values(
+    baseline_value: FixedProfileValue,
+    candidates: Sequence[AutomaticCommitmentValueCandidate],
+    *,
+    horizon: int,
+    discount: float = 1.0,
+    tolerance: float = 1e-9,
+    max_horizon: int = DEFAULT_MAX_HORIZON,
+    configuration: AutomaticCommitmentSelectionConfig = (
+        AutomaticCommitmentSelectionConfig()
+    ),
+    search_coverage: Optional[AutomaticCommitmentSearchCoverage] = None,
+) -> AutomaticCommitmentSelectionReport:
+    """Select commitments from validated domain-neutral scalar values.
+
+    Domain adapters keep their native response representation and provide only
+    the finite values required by the shared M27 selection kernel.  The input
+    is bounded and fully validated before any repeated timing rows are built.
+    """
+
+    validate_automatic_commitment_selection_parameters(
+        horizon=horizon,
+        discount=discount,
+        tolerance=tolerance,
+        max_horizon=max_horizon,
+        configuration=configuration,
+    )
+    if isinstance(candidates, (str, bytes)) or not isinstance(candidates, Sequence):
+        raise ValueError(
+            "candidates must be a sequence of AutomaticCommitmentValueCandidate"
+        )
+    candidate_count = len(candidates)
+    if candidate_count > configuration.max_candidates:
+        raise ValueError(
+            f"automatic selection has {candidate_count} kept candidates, exceeding "
+            f"max_candidates={configuration.max_candidates}"
+        )
+    timing_row_count = candidate_count * (horizon + 1)
+    if timing_row_count > configuration.max_timing_rows:
+        raise ValueError(
+            "automatic selection would materialise "
+            f"{timing_row_count} candidate timing rows, exceeding "
+            f"max_timing_rows={configuration.max_timing_rows}"
+        )
+
+    validated_candidates = _validate_value_candidates(
+        baseline_value,
+        candidates,
+        tolerance=tolerance,
+        require_diff_consistency=True,
+    )
+    kept_candidate_ids = tuple(
+        candidate.candidate_id for candidate in validated_candidates
+    )
+    coverage = _canonicalize_coverage(search_coverage, kept_candidate_ids)
+
+    return _select_automatic_commitment_values_validated(
+        baseline_value,
+        validated_candidates,
+        horizon=horizon,
+        discount=discount,
+        tolerance=tolerance,
+        max_horizon=max_horizon,
+        configuration=configuration,
+        coverage=coverage,
+        timing_row_count=timing_row_count,
     )
 
 
@@ -642,11 +902,9 @@ def select_automatic_commitments(
 ) -> AutomaticCommitmentSelectionReport:
     """Select the bounded Hero commitment conditionally for every ``m``.
 
-    Every comparison in ``report.comparisons`` is searched; existing eligible,
-    minimum-Villain-EV, Pareto, or ranking labels are not consulted.  The
-    existing :func:`calculate_candidate_adaptation_deadlines` implementation is
-    called once with ``response_mode="worst"`` after all request, scalar, ID and
-    pre-materialisation cap checks pass.
+    This public generic-tree adapter preserves the original validation and cap
+    order, converts every comparison losslessly to the domain-neutral value
+    contract, and delegates to the same selection kernel as domain adapters.
     """
 
     validate_automatic_commitment_selection_parameters(
@@ -679,54 +937,28 @@ def select_automatic_commitments(
         comparison.candidate.candidate_id for comparison in comparisons
     )
     coverage = _canonicalize_coverage(search_coverage, kept_candidate_ids)
-
-    deadlines = calculate_candidate_adaptation_deadlines(
-        report,
-        horizon=horizon,
-        discount=discount,
-        response_mode=RESPONSE_MODE_WORST,
-        tolerance=tolerance,
-        max_horizon=max_horizon,
+    value_candidates = tuple(
+        AutomaticCommitmentValueCandidate(
+            candidate_id=comparison.candidate.candidate_id,
+            fixed_profile_value=comparison.fixed_profile_value,
+            post_response_hero_ev_worst=comparison.best_response.ev_h_worst,
+            post_response_hero_ev_best=comparison.best_response.ev_h_best,
+            post_response_hero_ev_worst_diff=(
+                comparison.post_response_hero_ev_worst_diff
+            ),
+            l1_distance=comparison.candidate.l1_distance,
+        )
+        for comparison in comparisons
     )
-    _validate_deadline_outputs(deadlines, horizon)
-    deadlines_by_id = {deadline.candidate_id: deadline for deadline in deadlines}
-    if tuple(sorted(deadlines_by_id)) != kept_candidate_ids:
-        raise ValueError(
-            "automatic selection deadline candidate ids do not match the report"
-        )
 
-    rows: List[AutomaticCommitmentSelectionRow] = []
-    for opportunity in range(1, horizon + 2):
-        scores = tuple(
-            _CandidateScore(
-                comparison=comparison,
-                total_hero_ev_delta=deadlines_by_id[
-                    comparison.candidate.candidate_id
-                ].result.timing[opportunity - 1].delta_from_baseline,
-            )
-            for comparison in comparisons
-        )
-        rows.append(
-            _select_row(
-                scores,
-                opportunity,
-                configuration.minimum_total_uplift,
-                tolerance,
-            )
-        )
-
-    return AutomaticCommitmentSelectionReport(
-        status=AUTOMATIC_COMMITMENT_SELECTION_STATUS_COMPLETE,
-        baseline_identity=_baseline_identity(report),
-        baseline_hero_ev=report.baseline_value.hero_ev,
-        baseline_villain_ev=report.baseline_value.villain_ev,
-        baseline_house_rake=report.baseline_value.house_rake,
+    return _select_automatic_commitment_values_validated(
+        report.baseline_value,
+        value_candidates,
         horizon=horizon,
         discount=discount,
         tolerance=tolerance,
         max_horizon=max_horizon,
         configuration=configuration,
-        search_coverage=coverage,
-        timing_row_evaluation_count=timing_row_count,
-        rows=tuple(rows),
+        coverage=coverage,
+        timing_row_count=timing_row_count,
     )

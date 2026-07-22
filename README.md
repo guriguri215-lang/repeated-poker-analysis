@@ -268,6 +268,27 @@ It is supplied-profile commitment analysis, not endogenous solving, a range
 chart, a joint/external-game equilibrium or optimality claim, profitability or
 real-money advice, a real-world dataset, or pipeline/GUI integration.
 
+#### Exact real-card candidate/repeated bridge
+
+The in-memory `repeated_poker.aiof_preflop_candidate_repeated` bridge composes
+the supplied-profile real-card evaluator with bounded one-/two-exact-combo Hero
+probability shifts and automatic repeated-value selection. It supports only
+exact exhaustive, heads-up, fee-zero net ChipEV: SB Hero shifts shove
+probability and BB Hero shifts call probability. The complete declared
+candidate set is retained without filtering, and each candidate keeps the
+native factorized per-combo opponent response rather than a pure-strategy
+Cartesian product.
+
+All candidate, total-board, response-row, and timing-row workloads are checked
+before candidate construction and analysis. Any failure returns the existing
+`AiofStatus` with no payload; there is no sampling, normalization, clamping,
+truncation, or fallback. See
+[docs/aiof_preflop_candidate_repeated_bridge.md](docs/aiof_preflop_candidate_repeated_bridge.md)
+for the API, identities, cap formulas, value semantics, and interpretation
+boundary. This is a conditional comparison over a finite caller-declared
+library, not a range chart, global optimum, equilibrium, adaptation prediction,
+profitability claim, or real-money strategy recommendation.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
