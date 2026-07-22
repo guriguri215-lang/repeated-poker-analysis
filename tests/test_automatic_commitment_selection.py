@@ -30,7 +30,9 @@ from repeated_poker.automatic_commitment_selection import (
     NO_BENEFICIAL_COMMITMENT,
     AutomaticCommitmentSearchCoverage,
     AutomaticCommitmentSelectionConfig,
+    AutomaticCommitmentValueCandidate,
     select_automatic_commitments,
+    select_automatic_commitment_values,
 )
 
 
@@ -107,6 +109,101 @@ def _run_pipeline(**overrides):
         baseline_villain_strategy(),
         **kwargs,
     )
+
+
+def _value_candidates(report):
+    return tuple(
+        AutomaticCommitmentValueCandidate(
+            candidate_id=comparison.candidate.candidate_id,
+            fixed_profile_value=comparison.fixed_profile_value,
+            post_response_hero_ev_worst=comparison.best_response.ev_h_worst,
+            post_response_hero_ev_best=comparison.best_response.ev_h_best,
+            post_response_hero_ev_worst_diff=(
+                comparison.post_response_hero_ev_worst_diff
+            ),
+            l1_distance=comparison.candidate.l1_distance,
+        )
+        for comparison in report.comparisons
+    )
+
+
+def test_domain_neutral_value_api_is_byte_identical_to_legacy_adapter():
+    report = _report(
+        [
+            _comparison(
+                "z",
+                pre=0.25,
+                worst=-0.1,
+                best=0.0,
+                post_worst_diff=0.1,
+                l1_distance=0.4,
+            ),
+            _comparison(
+                "a",
+                pre=0.1,
+                worst=0.05,
+                post_worst_diff=0.25,
+                l1_distance=0.2,
+            ),
+        ],
+        baseline=-0.2,
+    )
+    configuration = AutomaticCommitmentSelectionConfig(
+        minimum_total_uplift=0.1,
+        max_candidates=10,
+        max_timing_rows=100,
+    )
+    coverage = AutomaticCommitmentSearchCoverage(
+        input_candidate_ids=("z", "a"),
+        kept_candidate_ids=("z", "a"),
+        source="parity_fixture",
+        filtering_applied=False,
+    )
+    legacy = select_automatic_commitments(
+        report,
+        horizon=3,
+        discount=0.9,
+        tolerance=1e-9,
+        max_horizon=10,
+        configuration=configuration,
+        search_coverage=coverage,
+    )
+    neutral = select_automatic_commitment_values(
+        report.baseline_value,
+        _value_candidates(report),
+        horizon=3,
+        discount=0.9,
+        tolerance=1e-9,
+        max_horizon=10,
+        configuration=configuration,
+        search_coverage=coverage,
+    )
+    assert json.dumps(legacy.to_dict(), sort_keys=True, separators=(",", ":")) == (
+        json.dumps(neutral.to_dict(), sort_keys=True, separators=(",", ":"))
+    )
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        AutomaticCommitmentValueCandidate(
+            "x", FixedProfileValue(0.0, 0.0, 0.0), 1.0, 0.0, 1.0, 0.1
+        ),
+        AutomaticCommitmentValueCandidate(
+            "x", FixedProfileValue(0.0, 0.0, 0.0), 0.0, 0.0, 0.1, 0.1
+        ),
+        AutomaticCommitmentValueCandidate(
+            "x", FixedProfileValue(0.0, 0.0, 0.0), 0.0, 0.0, 0.0, -0.1
+        ),
+    ],
+)
+def test_domain_neutral_value_api_rejects_inconsistent_scalar_contract(candidate):
+    with pytest.raises(ValueError):
+        select_automatic_commitment_values(
+            FixedProfileValue(0.0, 0.0, 0.0),
+            (candidate,),
+            horizon=1,
+        )
 
 
 def test_crossing_winner_fixture_switches_and_includes_m_n_plus_one():
