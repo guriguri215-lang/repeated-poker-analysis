@@ -289,6 +289,25 @@ boundary. This is a conditional comparison over a finite caller-declared
 library, not a range chart, global optimum, equilibrium, adaptation prediction,
 profitability claim, or real-money strategy recommendation.
 
+#### Known-board real-card heads-up river/rake adapter
+
+The in-memory `repeated_poker.known_board_real_card_hu_river` adapter accepts one
+fixed five-card river board, weighted real-card Hero=IP and Villain=OOP ranges,
+complete action profiles, rake, and a bounded one-/two-information-set Hero
+shift lattice. It conditions the ordered exact-combo joint distribution once,
+keeps each compatible combo pair and showdown result explicit, and builds a
+dedicated native seven-line river tree. It then retains the native fixed-profile
+comparison, DP-only exact-response correspondence, and unchanged M27 automatic
+commitment selection result.
+
+All workload caps are projected before joint-row, evaluator, tree, candidate,
+or analysis materialization. Failures use `AiofStatus` with no partial payload;
+there is no factorized-marginal reconstruction, automatic bucket grouping,
+sampling, truncation, or fallback. See
+[docs/known_board_real_card_hu_river_rake_adapter.md](docs/known_board_real_card_hu_river_rake_adapter.md)
+for the v1 API, exact accounting and mapping rules, hard ceilings, identities,
+worked example, and interpretation boundary.
+
 The exact Villain response is computed by lexicographic backward induction
 over Villain information sets by default (`solve_exact_response(...,
 method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
