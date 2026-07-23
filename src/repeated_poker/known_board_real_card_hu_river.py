@@ -1699,6 +1699,10 @@ def _prepared_joint_identity(
         {
             "algorithm": JOINT_IDENTITY_ALGORITHM,
             "board_identity": board_identity,
+            "hero_pre_removal_range_identity": projection.hero_initial.content_identity,
+            "villain_pre_removal_range_identity": (
+                projection.villain_initial.content_identity
+            ),
             "hero_range_identity": projection.hero_final.content_identity,
             "villain_range_identity": projection.villain_final.content_identity,
             "prepared_ranges_identity": prepared.content_identity,

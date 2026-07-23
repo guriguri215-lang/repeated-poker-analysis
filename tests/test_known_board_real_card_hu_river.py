@@ -986,6 +986,54 @@ def test_19_semantic_permutations_are_byte_identical_and_identity_sensitivity_is
         assert changed_payload.baseline_identity != base.baseline_identity
 
 
+def test_19b_removed_range_weight_changes_are_identity_sensitive_but_order_is_not():
+    hero_mapping = _mapping({"AsAh": "AsAh"}, "AsAh")
+    common = dict(
+        hero_mapping=hero_mapping,
+        hero_profile=_hero_profile(("AsAh",)),
+        shift_amounts=(),
+    )
+    range_a = _exact_range(
+        ("AsAh", 1.0),
+        ("2c6d", 0.2),
+        ("3d7c", 0.3),
+    )
+    range_b = _exact_range(
+        ("AsAh", 1.0),
+        ("2c6d", 0.3),
+        ("3d7c", 0.2),
+    )
+    request_a = _request(hero_range=range_a, **common)
+    request_b = _request(hero_range=range_b, **common)
+
+    result_a = analyze_known_board_real_card_hu_river(request_a)
+    result_b = analyze_known_board_real_card_hu_river(request_b)
+    assert result_a.status is result_b.status is AiofStatus.SUCCESS
+    assert result_a.payload is not None and result_b.payload is not None
+    assert result_a.payload.prepared_joint_identity != result_b.payload.prepared_joint_identity
+    assert result_a.payload.baseline_identity != result_b.payload.baseline_identity
+    assert result_a.payload.analysis_identity != result_b.payload.analysis_identity
+    assert _json_bytes(result_a) != _json_bytes(result_b)
+
+    stale_pin = analyze_known_board_real_card_hu_river(
+        replace(
+            request_b,
+            expected_baseline_identity=result_a.payload.baseline_identity,
+        )
+    )
+    assert stale_pin.status is AiofStatus.INVALID_INPUT
+    assert stale_pin.payload is None
+
+    permuted_a = analyze_known_board_real_card_hu_river(
+        replace(
+            request_a,
+            hero_range=RangeSpec(tuple(reversed(request_a.hero_range.entries))),
+        )
+    )
+    assert permuted_a.status is AiofStatus.SUCCESS
+    assert _json_bytes(result_a) == _json_bytes(permuted_a)
+
+
 def test_20_expected_pin_collision_and_nonfinite_derived_values_fail_closed(monkeypatch):
     mismatch = analyze_known_board_real_card_hu_river(
         _request(expected_baseline_identity="sha256:" + "0" * 64)
