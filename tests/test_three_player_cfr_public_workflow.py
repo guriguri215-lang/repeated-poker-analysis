@@ -269,7 +269,7 @@ def test_public_docs_link_command_status_and_claim_boundaries():
         assert phrase in normalized or phrase in " ".join(readme.split())
 
 
-def test_mvp_preserves_seven_checks_and_adds_three_player_as_eighth():
+def test_mvp_keeps_cfr_as_eighth_and_appends_exact_workflow_as_ninth():
     source = CHECK_MVP.read_text(encoding="utf-8")
     tree = ast.parse(source)
     assignment = next(
@@ -280,15 +280,19 @@ def test_mvp_preserves_seven_checks_and_adds_three_player_as_eighth():
     )
     assert isinstance(assignment.value, ast.List)
     assert len(assignment.value.elts) == 7
-    new_example = "examples/three_player_cfr_diagnostic_workflow.py"
-    assert source.count(new_example) == 1
-    assert source.index(new_example) > source.index(
+    cfr_example = "examples/three_player_cfr_diagnostic_workflow.py"
+    exact_example = "examples/three_player_candidate_repeated_workflow.py"
+    assert source.count(cfr_example) == 1
+    assert source.count(exact_example) == 1
+    assert source.index(cfr_example) > source.index(
         "examples/stage_plan_diagnostic_workflow.py"
     )
+    assert source.index(exact_example) > source.index(cfr_example)
 
     spec = importlib.util.spec_from_file_location("m20_check_mvp", CHECK_MVP)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert len(module.COMMANDS) == 8
-    assert module.COMMANDS[-1][1] == new_example
+    assert len(module.COMMANDS) == 9
+    assert module.COMMANDS[-2][1] == cfr_example
+    assert module.COMMANDS[-1][1] == exact_example

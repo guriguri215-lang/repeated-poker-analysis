@@ -30,6 +30,9 @@
     fixed-Hero, two-opponent finite-iteration diagnostic and capped oracle.
 12. `examples/aiof_real_card_workflow.py` - run a tiny public-only real-card
     exact-combo workflow after reading its dedicated guardrails.
+13. `examples/three_player_candidate_repeated_workflow.py` - run the separate
+    exact M30-M32 abstract river/rake, bounded candidate, and repeated-value
+    workflow after reading its dedicated guardrails.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -130,6 +133,36 @@ is a tiny evaluator/mixture/unilateral-gain cross-check. Neither is a solution,
 convergence, equilibrium, Nash, exact-best-response, joint/coalition-stability,
 optimality, profitability, or real-money-advice claim.
 
+## Exact three-player candidate / repeated workflow
+
+Run the deterministic public-submodule-only example with:
+
+```powershell
+python examples/three_player_candidate_repeated_workflow.py
+```
+
+Read
+[three_player_candidate_repeated_workflow.md](three_player_candidate_repeated_workflow.md)
+before interpreting its one-line strict JSON output. This is not the guarded
+CFR-style diagnostic above. It sends a complete fixed Hero policy and complete
+O1/O2 initial profile through the existing M31 abstract river/rake evaluator,
+uses the native complete M30 non-cooperative exact response correspondence for
+the baseline and every declared candidate, and reports M32 timing rows with
+full ties.
+
+The fixture uses zero rake, exact probability shifts `1/2` and `1`, horizon `3`,
+discount `1`, `search_mode=robust_all`, and
+`adaptation_mode=simultaneous_o1_o2`. Its hand-checkable values are
+`H/O1/O2/R = 20/-10/-10/0`; both candidates tie at zero repeated-value uplift,
+so every row is `NO_BENEFICIAL_COMMITMENT`. Hero safety is only the native
+complete M31 `response.hero_worst`, never current CFR, a first witness, the pure
+subset, coalition stress, or `hero_best`.
+
+The result is conditional on a caller-declared bounded finite universe. It is
+not a full solver, Nash/equilibrium certificate, global optimum, real-card
+three-player evaluation, profitability result, or real-money advice. The
+example adds no CLI or saved-file schema.
+
 ## Example reference
 
 ### `examples/nuts_chop_river.py`
@@ -203,6 +236,7 @@ python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
 python examples/stage_plan_diagnostic_workflow.py
 python examples/three_player_cfr_diagnostic_workflow.py
 python examples/aiof_real_card_workflow.py
+python examples/three_player_candidate_repeated_workflow.py
 ```
 
 ## How to interpret common output fields
@@ -578,3 +612,4 @@ exports.
 - [Assumptions and Limitations](assumptions_and_limitations.md)
 - [Real-card AIoF public workflow](aiof_real_card_workflow.md)
 - [Guarded three-player CFR-style diagnostic workflow](three_player_cfr_diagnostic_workflow.md)
+- [Exact three-player candidate / repeated workflow](three_player_candidate_repeated_workflow.md)
