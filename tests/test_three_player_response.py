@@ -583,6 +583,28 @@ def test_a14_derived_vertex_denominator_bit_cap_discards_all_partial_cells():
     assert_no_partial(result, CAP_EXCEEDED)
 
 
+def test_vertex_pair_cap_preflights_before_verifier_entry(monkeypatch):
+    verifier_called = False
+
+    def forbidden_verifier(*_args, **_kwargs):
+        nonlocal verifier_called
+        verifier_called = True
+        raise AssertionError("verifier must not run before vertex-pair preflight")
+
+    monkeypatch.setattr(module, "_verify_correspondence", forbidden_verifier)
+    result = solve(
+        coordination(),
+        limits=replace(
+            ExactResponseLimits(),
+            max_vertex_pairs_evaluated=1,
+        ),
+    )
+    assert_no_partial(result, CAP_EXCEEDED)
+    assert result.error.phase == "extrema"
+    assert result.error.message == "max_vertex_pairs_evaluated exceeded"
+    assert verifier_called is False
+
+
 @pytest.mark.parametrize(
     "bad",
     [
@@ -870,6 +892,10 @@ def test_success_output_has_required_contract_counts_extrema_and_identity_fields
     }
     assert output["counts"]["support_pairs_total"] == 9
     assert output["counts"]["support_pairs_visited"] == 9
+    assert (
+        output["counts"]["vertex_pairs_evaluated"]
+        == output["independent_verification"]["vertex_pairs_verified"]
+    )
     assert output["independent_verification"]["operations_used"] > 0
     assert output["limits"]["max_pure_plans_o1"] == 4
 
@@ -920,6 +946,94 @@ def test_output_witness_cap_failure_discards_primary_payload(monkeypatch):
     assert pure_called is False
 
 
+def test_combined_cell_vertex_cap_precedes_fourth_solver_and_verifier_vertex():
+    candidate = fully_degenerate()
+    limits = replace(ExactResponseLimits(), max_vertices_per_cell=3)
+    result = solve(candidate, limits=limits)
+    assert_no_partial(result, CAP_EXCEEDED)
+    assert result.error.phase == "solver"
+    assert "before vertex allocation" in result.error.message
+
+    table, _ = module._payoff_table(
+        candidate,
+        candidate.o1_plan_ids,
+        candidate.o2_plan_ids,
+        limits,
+    )
+    support = (0, 1)
+    eq1, ineq1 = module._solver_constraints(
+        table,
+        support,
+        support,
+        mixture_player="O1",
+        limits=limits,
+    )
+    eq2, ineq2 = module._solver_constraints(
+        table,
+        support,
+        support,
+        mixture_player="O2",
+        limits=limits,
+    )
+    counters = module._SolveCounters()
+    local_o1 = module._solver_vertices(
+        eq1,
+        ineq1,
+        2,
+        limits,
+        counters,
+        maximum_vertices=limits.max_vertices_per_cell,
+    )
+    assert len(local_o1) == 2
+    remaining = limits.max_vertices_per_cell - len(local_o1)
+    assert remaining == 1
+    with pytest.raises(module._ResponseFailure) as solver_raised:
+        module._solver_vertices(
+            eq2,
+            ineq2,
+            2,
+            limits,
+            counters,
+            maximum_vertices=remaining,
+        )
+    assert solver_raised.value.status == CAP_EXCEEDED
+    assert "before vertex allocation" in str(solver_raised.value)
+    assert len(
+        module._solver_vertices(
+            eq2,
+            ineq2,
+            2,
+            limits,
+            module._SolveCounters(),
+            maximum_vertices=2,
+        )
+    ) == 2
+
+    default_limits = ExactResponseLimits()
+    o1_supports = module._support_subsets(2)
+    o2_supports = module._support_subsets(2)
+    cells, audit, _ = module._enumerate_support_cells(
+        table,
+        o1_supports,
+        o2_supports,
+        default_limits,
+    )
+    pair_count = module._preflight_vertex_pairs(cells, limits)
+    with pytest.raises(module._ResponseFailure) as verifier_raised:
+        module._verify_correspondence(
+            table,
+            o1_supports,
+            o2_supports,
+            cells,
+            audit,
+            limits,
+            pair_count,
+        )
+    assert verifier_raised.value.status == CAP_EXCEEDED
+    assert verifier_raised.value.phase == "verifier"
+    assert "before vertex allocation" in str(verifier_raised.value)
+
+
 def test_local_vertex_cap_is_enforced_before_cell_vertex_materialization():
     limits = replace(ExactResponseLimits(), max_vertices_per_cell=1)
     with pytest.raises(module._ResponseFailure) as raised:
@@ -935,6 +1049,14 @@ def test_local_vertex_cap_is_enforced_before_cell_vertex_materialization():
         )
     assert raised.value.status == CAP_EXCEEDED
     assert "before vertex allocation" in str(raised.value)
+
+
+def test_cap_order_correction_preserves_default_and_hard_constants():
+    limits = ExactResponseLimits()
+    assert limits.max_vertices_per_cell == 128
+    assert limits.max_vertex_pairs_evaluated == 65_536
+    assert module.HARD_MAX_VERTICES_PER_CELL == 1_024
+    assert module.HARD_MAX_VERTEX_PAIRS_EVALUATED == 1_000_000
 
 
 def test_linear_system_and_verifier_operation_caps_fail_closed():

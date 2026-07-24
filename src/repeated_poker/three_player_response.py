@@ -788,7 +788,21 @@ def _solver_vertices(
     variable_count: int,
     limits: ExactResponseLimits,
     counters: _SolveCounters,
+    *,
+    maximum_vertices: int | None = None,
 ) -> tuple[tuple[Fraction, ...], ...]:
+    if maximum_vertices is None:
+        maximum_vertices = limits.max_vertices_per_cell
+    if (
+        type(maximum_vertices) is not int
+        or maximum_vertices < 0
+        or maximum_vertices > limits.max_vertices_per_cell
+    ):
+        raise _ResponseFailure(
+            INTERNAL_FAILURE,
+            "solver",
+            "invalid local vertex budget",
+        )
     rank, inconsistent = _solver_equality_rank(
         equalities, variable_count, limits
     )
@@ -823,7 +837,7 @@ def _solver_vertices(
         ):
             continue
         if solution not in vertices:
-            if len(vertices) + 1 > limits.max_vertices_per_cell:
+            if len(vertices) >= maximum_vertices:
                 raise _ResponseFailure(
                     CAP_EXCEEDED,
                     "solver",
@@ -959,7 +973,12 @@ def _enumerate_support_cells(
                 limits=limits,
             )
             local_o1 = _solver_vertices(
-                eq1, ineq1, len(o1_support), limits, counters
+                eq1,
+                ineq1,
+                len(o1_support),
+                limits,
+                counters,
+                maximum_vertices=limits.max_vertices_per_cell,
             )
             pair_key = (o1_support, o2_support)
             if not local_o1:
@@ -979,7 +998,14 @@ def _enumerate_support_cells(
                 limits=limits,
             )
             local_o2 = _solver_vertices(
-                eq2, ineq2, len(o2_support), limits, counters
+                eq2,
+                ineq2,
+                len(o2_support),
+                limits,
+                counters,
+                maximum_vertices=(
+                    limits.max_vertices_per_cell - len(local_o1)
+                ),
             )
             if not local_o2:
                 audit.append(
@@ -1002,12 +1028,6 @@ def _enumerate_support_cells(
                     for vertex in local_o2
                 )
             )
-            if len(o1_vertices) + len(o2_vertices) > limits.max_vertices_per_cell:
-                raise _ResponseFailure(
-                    CAP_EXCEEDED,
-                    "solver",
-                    "max_vertices_per_cell exceeded",
-                )
             counters.raw_nonempty_support_cells += 1
             key = (o1_vertices, o2_vertices)
             existing = cells_by_key.get(key)
@@ -1300,7 +1320,21 @@ def _verifier_vertices(
     variable_count: int,
     limits: ExactResponseLimits,
     budget: _VerifierBudget,
+    *,
+    maximum_vertices: int | None = None,
 ) -> tuple[tuple[Fraction, ...], ...]:
+    if maximum_vertices is None:
+        maximum_vertices = limits.max_vertices_per_cell
+    if (
+        type(maximum_vertices) is not int
+        or maximum_vertices < 0
+        or maximum_vertices > limits.max_vertices_per_cell
+    ):
+        raise _ResponseFailure(
+            INTERNAL_FAILURE,
+            "verifier",
+            "invalid local vertex budget",
+        )
     rank, inconsistent = _verifier_rank(
         equalities, variable_count, limits, budget
     )
@@ -1335,7 +1369,7 @@ def _verifier_vertices(
                 valid = False
                 break
         if valid and point not in vertices:
-            if len(vertices) + 1 > limits.max_vertices_per_cell:
+            if len(vertices) >= maximum_vertices:
                 raise _ResponseFailure(
                     CAP_EXCEEDED,
                     "verifier",
@@ -1495,6 +1529,23 @@ def _unilateral_residuals(
     }
 
 
+def _preflight_vertex_pairs(
+    cells: Sequence[_SupportCell],
+    limits: ExactResponseLimits,
+) -> int:
+    total = 0
+    for cell in cells:
+        cell_pairs = len(cell.o1_vertices) * len(cell.o2_vertices)
+        if total > limits.max_vertex_pairs_evaluated - cell_pairs:
+            raise _ResponseFailure(
+                CAP_EXCEEDED,
+                "extrema",
+                "max_vertex_pairs_evaluated exceeded",
+            )
+        total += cell_pairs
+    return total
+
+
 def _verify_correspondence(
     table: tuple[tuple[_Utility, ...], ...],
     o1_supports: Sequence[tuple[int, ...]],
@@ -1502,6 +1553,7 @@ def _verify_correspondence(
     cells: Sequence[_SupportCell],
     audit: Sequence[dict[str, Any]],
     limits: ExactResponseLimits,
+    expected_vertex_pairs: int,
 ) -> dict[str, Any]:
     """Independently reconstruct and verify the complete support-cell union."""
 
@@ -1532,6 +1584,7 @@ def _verify_correspondence(
                 len(o1_support),
                 limits,
                 budget,
+                maximum_vertices=limits.max_vertices_per_cell,
             )
             pair = (o1_support, o2_support)
             if not local_o1:
@@ -1551,6 +1604,9 @@ def _verify_correspondence(
                 len(o2_support),
                 limits,
                 budget,
+                maximum_vertices=(
+                    limits.max_vertices_per_cell - len(local_o1)
+                ),
             )
             if not local_o2:
                 expected_outcome_by_pair[pair] = "empty_o2_mixture_polytope"
@@ -1665,6 +1721,12 @@ def _verify_correspondence(
             "verifier",
             "valid finite game produced zero equilibrium support cells",
         )
+    if verified_vertex_pairs != expected_vertex_pairs:
+        raise _ResponseFailure(
+            NUMERIC_FAILURE,
+            "verifier",
+            "vertex-pair coverage mismatch",
+        )
     return {
         "version": VERIFIER_VERSION,
         "status": "VERIFIED",
@@ -1721,16 +1783,8 @@ def _extrema_and_vertex_pairs(
     o2_plan_ids: tuple[str, ...],
     limits: ExactResponseLimits,
     output_budget: _OutputRecordBudget,
+    vertex_pair_count: int,
 ) -> tuple[dict[str, Any], int]:
-    vertex_pair_count = 0
-    for cell in cells:
-        vertex_pair_count += len(cell.o1_vertices) * len(cell.o2_vertices)
-        if vertex_pair_count > limits.max_vertex_pairs_evaluated:
-            raise _ResponseFailure(
-                CAP_EXCEEDED,
-                "extrema",
-                "max_vertex_pairs_evaluated exceeded",
-            )
     extrema: dict[str, dict[str, Any]] = {
         name: {
             "minimum": None,
@@ -2237,8 +2291,15 @@ def _solve_exact_response(
             "solver",
             "not every nonempty support pair was visited",
         )
+    vertex_pair_count = _preflight_vertex_pairs(cells, limits)
     verifier = _verify_correspondence(
-        table, o1_supports, o2_supports, cells, audit, limits
+        table,
+        o1_supports,
+        o2_supports,
+        cells,
+        audit,
+        limits,
+        vertex_pair_count,
     )
     output_budget = _OutputRecordBudget(limits.max_output_records)
     output_budget.reserve(_base_output_records(cells, len(audit)))
@@ -2249,6 +2310,7 @@ def _solve_exact_response(
         o2_plan_ids,
         limits,
         output_budget,
+        vertex_pair_count,
     )
     pure_subset = _pure_stability_subset(
         table, o1_plan_ids, o2_plan_ids, limits, output_budget
