@@ -209,6 +209,35 @@ response, equilibrium/Nash or convergence result, solver-grade output,
 strategy recommendation, profitability claim, or real-money advice, and it
 does not add pipeline, manifest, report, GUI, or top-level-package integration.
 
+### Exact three-player candidate / repeated workflow
+
+The separate M30-M32 path evaluates a caller-declared tiny abstract one-street
+river/rake scenario with fixed Hero and separate O1/O2 players. It computes the
+bounded complete non-cooperative exact O1/O2 response correspondence for the
+baseline and every candidate in a declared finite `robust_all` Hero-shift
+universe, then reports simultaneous-O1/O2-adaptation repeated-value sensitivity
+and full selection ties.
+
+```powershell
+python examples/three_player_candidate_repeated_workflow.py
+```
+
+See
+[docs/three_player_candidate_repeated_workflow.md](docs/three_player_candidate_repeated_workflow.md)
+for the zero-rake hand calculation, complete Hero/O1/O2 profiles,
+human-traceable perfect-recall attestation, deterministic output allowlist, and
+current v1 boundary:
+`search_mode=robust_all`, `adaptation_mode=simultaneous_o1_o2`, and a declared
+bounded finite universe. Hero safety uses only the native complete M31
+`response.hero_worst`; it never substitutes current CFR, a first witness, the
+pure subset, coalition stress, or `hero_best`.
+
+This exact path is not the guarded CFR-style diagnostic above. It is also not a
+full solver, Nash/equilibrium certificate, Hero equilibrium, global or
+continuous optimum, real-card three-player evaluation, profitability claim, or
+real-money advice. It adds no CLI, saved-file schema, pipeline, manifest,
+report, GUI, dependency, CI workflow, or top-level package export.
+
 ### Real-card AIoF public workflow
 
 M13's existing submodule APIs also provide a bounded real-card path. The worked

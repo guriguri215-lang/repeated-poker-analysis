@@ -29,6 +29,28 @@
   profitable-strategy or real-money advice.
 - The unilateral deviation-gain diagnostic varies one opponent at a time and
   does not test joint or coalition deviations.
+- The separate M30-M32 path is exposed by
+  `examples/three_player_candidate_repeated_workflow.py`. It accepts a
+  caller-declared tiny abstract one-street river/rake scenario, complete fixed
+  Hero policy, complete O1/O2 initial profile, and human-traceable
+  perfect-recall attestation. M31 constructs the exact scenario, M30 computes
+  the bounded complete non-cooperative O1/O2 exact response correspondence, and
+  M32 evaluates every candidate in the declared finite Hero-shift universe.
+- The current M32 v1 boundary is `search_mode=robust_all`,
+  `adaptation_mode=simultaneous_o1_o2`, and a caller-declared bounded finite
+  universe. `baseline_targeted`, `hybrid`, individual `(m1,m2)` timing, large or
+  continuous search, and approximate/CFR fallback are unsupported.
+- The only M32 Hero safety scalar is the native complete M31
+  `m31_scenario_response.response.hero_worst`. Current CFR, a first witness, the
+  pure-profile unilateral-stability subset, the separate coalition stress
+  diagnostic, and `hero_best` are not substitutes.
+- M30 exact response means exact within the supplied bounded abstract game. It
+  is not a full solver, Nash/equilibrium certificate, Hero equilibrium, global
+  optimum, real-card three-player evaluation, opponent-learning model,
+  profitability result, deployment recommendation, or real-money advice.
+- O1 and O2 remain separate non-cooperative players. Summing `O1+O2` for the
+  existing selection kernel's accounting field is not a coalition,
+  collusion, or transferable-utility claim.
 - Rake makes the two-player payoff accounting non-zero-sum.
 - The house / rake account is accounting only; it is **not a strategic player**
   and chooses no actions.
