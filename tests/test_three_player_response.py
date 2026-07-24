@@ -885,7 +885,7 @@ def test_identity_grammar_and_plan_id_grammar_are_strict():
     )
 
 
-def test_output_witness_cap_failure_discards_primary_payload():
+def test_output_witness_cap_failure_discards_primary_payload(monkeypatch):
     baseline = success(fully_degenerate())
     witness_records = sum(
         len(baseline["utility_extrema"][name]["minimum_witnesses"])
@@ -893,11 +893,48 @@ def test_output_witness_cap_failure_discards_primary_payload():
         for name in ("H", "O1", "O2", "R")
     )
     assert witness_records > 4
+    base_records = 256 + baseline["counts"]["support_pairs_total"] + sum(
+        8
+        + len(cell["source_support_pairs"])
+        + cell["o1_mixture_polytope"]["vertex_count"]
+        + cell["o2_mixture_polytope"]["vertex_count"]
+        for cell in baseline["support_cells"]
+    )
+    pure_called = False
+    original = module._pure_stability_subset
+
+    def tracked_pure(*args, **kwargs):
+        nonlocal pure_called
+        pure_called = True
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_pure_stability_subset", tracked_pure)
     result = solve(
         fully_degenerate(),
-        limits=replace(ExactResponseLimits(), max_output_records=10),
+        limits=replace(
+            ExactResponseLimits(), max_output_records=base_records + 1
+        ),
     )
     assert_no_partial(result, CAP_EXCEEDED)
+    assert result.error.phase == "output"
+    assert pure_called is False
+
+
+def test_local_vertex_cap_is_enforced_before_cell_vertex_materialization():
+    limits = replace(ExactResponseLimits(), max_vertices_per_cell=1)
+    with pytest.raises(module._ResponseFailure) as raised:
+        module._solver_vertices(
+            [((Fraction(1), Fraction(1)), Fraction(1))],
+            [
+                ((Fraction(-1), Fraction(0)), Fraction(0)),
+                ((Fraction(0), Fraction(-1)), Fraction(0)),
+            ],
+            2,
+            limits,
+            module._SolveCounters(),
+        )
+    assert raised.value.status == CAP_EXCEEDED
+    assert "before vertex allocation" in str(raised.value)
 
 
 def test_linear_system_and_verifier_operation_caps_fail_closed():

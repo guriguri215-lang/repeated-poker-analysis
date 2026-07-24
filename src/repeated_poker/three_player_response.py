@@ -264,6 +264,30 @@ class _VerifierBudget:
             )
 
 
+class _OutputRecordBudget:
+    def __init__(self, maximum: int) -> None:
+        self.maximum = maximum
+        self.used = 0
+
+    def reserve(self, count: int = 1) -> None:
+        if count < 0 or self.used > self.maximum - count:
+            raise _ResponseFailure(
+                CAP_EXCEEDED,
+                "output",
+                "max_output_records exceeded before record allocation",
+            )
+        self.used += count
+
+    def release(self, count: int) -> None:
+        if count < 0 or count > self.used:
+            raise _ResponseFailure(
+                INTERNAL_FAILURE,
+                "output",
+                "invalid output record budget release",
+            )
+        self.used -= count
+
+
 _HARD_LIMITS = {
     "max_pure_plans_o1": HARD_MAX_PURE_PLANS_O1,
     "max_pure_plans_o2": HARD_MAX_PURE_PLANS_O2,
@@ -798,7 +822,14 @@ def _solver_vertices(
             for coefficients, rhs in inequalities
         ):
             continue
-        vertices.add(solution)
+        if solution not in vertices:
+            if len(vertices) + 1 > limits.max_vertices_per_cell:
+                raise _ResponseFailure(
+                    CAP_EXCEEDED,
+                    "solver",
+                    "max_vertices_per_cell exceeded before vertex allocation",
+                )
+            vertices.add(solution)
     return tuple(sorted(vertices))
 
 
@@ -1303,7 +1334,13 @@ def _verifier_vertices(
             ) > rhs:
                 valid = False
                 break
-        if valid:
+        if valid and point not in vertices:
+            if len(vertices) + 1 > limits.max_vertices_per_cell:
+                raise _ResponseFailure(
+                    CAP_EXCEEDED,
+                    "verifier",
+                    "max_vertices_per_cell exceeded before vertex allocation",
+                )
             vertices.add(point)
     return tuple(sorted(vertices))
 
@@ -1683,6 +1720,7 @@ def _extrema_and_vertex_pairs(
     o1_plan_ids: tuple[str, ...],
     o2_plan_ids: tuple[str, ...],
     limits: ExactResponseLimits,
+    output_budget: _OutputRecordBudget,
 ) -> tuple[dict[str, Any], int]:
     vertex_pair_count = 0
     for cell in cells:
@@ -1724,10 +1762,12 @@ def _extrema_and_vertex_pairs(
             ]
             if current is None or comparison(value, current):
                 record[direction] = value
+                output_budget.release(len(witnesses))
                 witnesses.clear()
             if value == record[direction]:
                 witness = witnesses.get(key)
                 if witness is None:
+                    output_budget.reserve()
                     witness = {
                         "support_cell_ids": [],
                         "o1_support": _positive_support(o1_plan_ids, o1_mixture),
@@ -1811,6 +1851,7 @@ def _pure_stability_subset(
     o1_plan_ids: tuple[str, ...],
     o2_plan_ids: tuple[str, ...],
     limits: ExactResponseLimits,
+    output_budget: _OutputRecordBudget,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for i, o1_plan_id in enumerate(o1_plan_ids):
@@ -1828,6 +1869,7 @@ def _pure_stability_subset(
                 table, o1_mixture, o2_mixture, utility, limits
             )
             if residuals["O1"] == 0 and residuals["O2"] == 0:
+                output_budget.reserve()
                 rows.append(
                     {
                         "profile_id": f"O1:{i}|O2:{j}",
@@ -1857,6 +1899,7 @@ def _joint_plan_stress(
     response_game_identity: str,
     hero_worst_response: Fraction,
     limits: ExactResponseLimits,
+    output_budget: _OutputRecordBudget,
 ) -> dict[str, Any]:
     minimum = min(
         table[i][j].H
@@ -1868,6 +1911,7 @@ def _joint_plan_stress(
         for j, o2_plan_id in enumerate(o2_plan_ids):
             utility = table[i][j]
             if utility.H == minimum:
+                output_budget.reserve()
                 witnesses.append(
                     {
                         "profile_id": f"O1:{i}|O2:{j}",
@@ -1955,7 +1999,19 @@ def _projected_output_records(
     extrema: Mapping[str, Any],
     stress_count: int,
 ) -> int:
-    count = 256 + audit_count + pure_count + stress_count
+    count = _base_output_records(cells, audit_count)
+    count += pure_count + stress_count
+    for name in ("H", "O1", "O2", "R"):
+        count += len(extrema[name]["minimum_witnesses"])
+        count += len(extrema[name]["maximum_witnesses"])
+    return count
+
+
+def _base_output_records(
+    cells: Sequence[_SupportCell],
+    audit_count: int,
+) -> int:
+    count = 256 + audit_count
     for cell in cells:
         count += (
             8
@@ -1963,9 +2019,6 @@ def _projected_output_records(
             + len(cell.o1_vertices)
             + len(cell.o2_vertices)
         )
-    for name in ("H", "O1", "O2", "R"):
-        count += len(extrema[name]["minimum_witnesses"])
-        count += len(extrema[name]["maximum_witnesses"])
     return count
 
 
@@ -2187,11 +2240,18 @@ def _solve_exact_response(
     verifier = _verify_correspondence(
         table, o1_supports, o2_supports, cells, audit, limits
     )
+    output_budget = _OutputRecordBudget(limits.max_output_records)
+    output_budget.reserve(_base_output_records(cells, len(audit)))
     extrema, vertex_pairs_evaluated = _extrema_and_vertex_pairs(
-        table, cells, o1_plan_ids, o2_plan_ids, limits
+        table,
+        cells,
+        o1_plan_ids,
+        o2_plan_ids,
+        limits,
+        output_budget,
     )
     pure_subset = _pure_stability_subset(
-        table, o1_plan_ids, o2_plan_ids, limits
+        table, o1_plan_ids, o2_plan_ids, limits, output_budget
     )
     stress = _joint_plan_stress(
         table,
@@ -2200,6 +2260,7 @@ def _solve_exact_response(
         response_game_identity,
         Fraction(extrema["H"]["minimum"]),
         limits,
+        output_budget,
     )
     records = _projected_output_records(
         cells,
@@ -2208,6 +2269,12 @@ def _solve_exact_response(
         extrema,
         len(stress["witnesses"]),
     )
+    if records != output_budget.used:
+        raise _ResponseFailure(
+            NUMERIC_FAILURE,
+            "output",
+            "output record budget accounting mismatch",
+        )
     _preflight_output(
         records, cells, o1_plan_ids, o2_plan_ids, limits
     )
