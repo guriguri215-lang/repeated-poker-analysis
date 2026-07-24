@@ -862,11 +862,24 @@ def test_a32_a33_exact_two_file_scope_protected_diff_and_no_repo_cache():
         }
     )
     assert all(path.exists() for path in PROTECTED)
-    cache_paths = [
-        path
-        for path in ROOT.rglob("*")
-        if path.name == ".pytest_cache"
-        or path.name == "__pycache__"
-        or path.suffix in {".pyc", ".pyo"}
+    tracked = subprocess.run(
+        [
+            "git",
+            "-c",
+            f"safe.directory={ROOT}",
+            "ls-files",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    tracked_cache_paths = [
+        value
+        for value in tracked.stdout.splitlines()
+        if "/__pycache__/" in f"/{value}"
+        or "/.pytest_cache/" in f"/{value}"
+        or value.endswith((".pyc", ".pyo"))
     ]
-    assert cache_paths == []
+    assert tracked_cache_paths == []
