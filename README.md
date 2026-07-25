@@ -291,9 +291,10 @@ See
 [docs/certified_global_optimizer_core.md](docs/certified_global_optimizer_core.md)
 for the scalar-oracle boundary, soundness argument, certificate fields, caps,
 identity contract, analytic example, and direct API. M36 is the optimizer core
-only. M37 connects the real-card preflop consumer as described next;
-known-board heads-up and abstract/real-card three-player consumers remain later
-scope. The certificate claims only a specified-tolerance global optimum for a
+only. M37 connects the real-card preflop consumer and M38 connects the
+known-board real-card heads-up river/rake consumer as described next;
+abstract/real-card three-player consumers remain later scope. The certificate
+claims only a specified-tolerance global optimum for a
 conforming bounded scalar oracle, not an equilibrium, solver-grade scale,
 real-world profitability, or strategy advice.
 
@@ -328,13 +329,42 @@ caps, no-partial contract, public API, and claim boundary. Success is only
 `CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL`. It certifies the identified
 real-card preflop scalar objective at the requested tolerance, not an
 equilibrium, ICM result, solver-grade scale, profitability result, or strategy
-recommendation. M37 is one R8 consumer integration; M38-M40 remain.
+recommendation. M37 is one R8 consumer integration; M38 adds a second, while
+M39-M40 remain.
 The M37 output caps measure the complete public result wrapper in the same
 canonical UTF-8 shape returned by
 `exact_aiof_preflop_certified_global_json`; a deterministic streaming preflight
 runs before any aggregate success projection or full encoded output is
 allocated. An exact cap is accepted, while a result one record or byte over the
 cap fails with a null payload and retains the completed work counters.
+
+### Known-board real-card HU certified global integration
+
+`repeated_poker.known_board_real_card_hu_certified_global` reuses M29's strict
+five-card board, extra-dead filtering, ordered joint combo conditioning,
+bucket mappings, seven-line IP-vs-OOP river tree, and rake accounting. It
+derives every surviving Hero action simplex and sends their complete product
+to M36; M29 shift candidates and M27 selection do not define or narrow this
+domain.
+
+```powershell
+python examples/known_board_real_card_hu_certified_global.py
+```
+
+The M38 point oracle distinguishes the fixed baseline Villain value from a
+fresh complete Villain response. The latter is solved exactly by a
+Villain-bucket perfect-recall DP, retaining all ties and using Hero-worst in
+the repeated objective without enumerating the full opponent pure-strategy
+product. A known-board terminal-affine interval DP supplies a sound whole-cell
+bound and agrees with the exact response at singleton cells. Binary64 public
+inputs are losslessly lifted before objective and bound arithmetic.
+
+See
+[docs/known_board_real_card_hu_certified_global.md](docs/known_board_real_card_hu_certified_global.md)
+for the proof, identities, caps, output wrapper, and claim boundary. Success
+certifies only the identified bounded scalar maximum at its reported gap. It
+does not certify an equilibrium, ICM, solver-grade scale, profitability,
+adaptation behavior, or strategy advice.
 
 ### Real-card AIoF public workflow
 
