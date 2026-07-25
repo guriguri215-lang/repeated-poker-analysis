@@ -135,9 +135,20 @@
   not only its payload. A streaming exact preflight runs before aggregate
   success projection or full UTF-8 encoding; output-cap failure keeps completed
   native/consumer counters but exposes no payload or partial certificate.
-- M29 and M30-M35 consumers are not connected to M36 yet. M37 alone does not
-  fulfill R8; the known-board heads-up, abstract/real-card three-player, and
-  unified workflow/closeout work remains in M38-M40.
+- M38 connects M29's known-board real-card heads-up river/rake semantics to
+  M36. It derives the full product of all surviving bucket-level Hero action
+  simplexes, not M29's finite shift library. Its point response is a fresh
+  complete factorized OOP correspondence with Hero-worst tie handling.
+- The M38 whole-cell proof is consumer-specific: losslessly lifted M29
+  terminal coefficients are bounded over simplex intersections, and every OOP
+  action that can be optimal anywhere in a cell remains in the interval DP.
+  Rake-induced tie discontinuities are not smoothed or discarded.
+- M38 preparation, response, point, bound, M36, and final-wrapper output caps
+  fail closed with no truncation, sampling, fallback, or partial certificate.
+  Its output failure retains completed native/consumer counters.
+- M30-M35 consumers are not connected to M36 yet. M37 and M38 still do not
+  fulfill R8; abstract/real-card three-player integration and unified
+  workflow/closeout remain in M39-M40.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
