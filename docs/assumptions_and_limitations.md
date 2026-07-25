@@ -146,9 +146,20 @@
 - M38 preparation, response, point, bound, M36, and final-wrapper output caps
   fail closed with no truncation, sampling, fallback, or partial certificate.
   Its output failure retains completed native/consumer counters.
-- M30-M35 consumers are not connected to M36 yet. M37 and M38 still do not
-  fulfill R8; abstract/real-card three-player integration and unified
-  workflow/closeout remain in M39-M40.
+- M39 connects both the abstract M31 and known-board real-card M35
+  three-player river/rake consumers to M36. The complete scenario-derived Hero
+  simplex product is searched; M32 finite candidates never restrict it.
+- Every non-baseline M39 point uses a fresh complete M30 two-opponent
+  non-cooperative correspondence and only its Hero-worst value. The sound
+  whole-cell bound is a conservative exact envelope over all independently
+  validated M31 terminal Hero utilities. It retains all response ties and
+  rake/cap discontinuities, and it equals the complete point oracle on a
+  simplex singleton.
+- The M39 envelope can be loose. If the requested tolerance cannot be proved
+  within the declared M36/M39 caps, the result is
+  `LIMIT_REACHED_NO_CERTIFICATE`, never a local/grid/candidate fallback.
+- M37-M39 consumer integrations still do not fulfill the broader R8 lifecycle;
+  M40 unified workflow and human merge/post-merge closeout remain outstanding.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
