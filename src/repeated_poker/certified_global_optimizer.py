@@ -522,6 +522,68 @@ def _rational_text(value: Fraction) -> str:
     return f"{value.numerator}/{value.denominator}"
 
 
+def _require_rational_within_limits(
+    value: Fraction,
+    phase: str,
+    limits: CertifiedGlobalOptimizerLimits,
+) -> Fraction:
+    """Fail closed before an exact rational is retained or exposed."""
+
+    if not isinstance(value, Fraction):
+        raise _OptimizerFailure(
+            INTERNAL_FAILURE,
+            phase,
+            f"{phase} internal value must be Fraction",
+        )
+    if value.numerator.bit_length() > limits.max_rational_numerator_bits:
+        raise _OptimizerFailure(
+            NUMERIC_FAILURE, phase, f"{phase} numerator bit cap exceeded"
+        )
+    if value.denominator.bit_length() > limits.max_rational_denominator_bits:
+        raise _OptimizerFailure(
+            NUMERIC_FAILURE, phase, f"{phase} denominator bit cap exceeded"
+        )
+    return value
+
+
+def _rational_text_within_limits(
+    value: Fraction,
+    phase: str,
+    limits: CertifiedGlobalOptimizerLimits,
+) -> str:
+    return _rational_text(
+        _require_rational_within_limits(value, phase, limits)
+    )
+
+
+def _preflight_integer_token(
+    token: str,
+    phase: str,
+    maximum_bits: int,
+    component: str,
+) -> None:
+    digits = token[1:] if token.startswith("-") else token
+    if len(digits) > 1 and 3 * (len(digits) - 1) >= maximum_bits:
+        raise _OptimizerFailure(
+            NUMERIC_FAILURE,
+            phase,
+            f"{phase} {component} bit cap exceeded before integer conversion",
+        )
+
+
+def _sum_rationals_within_limits(
+    values: Any,
+    phase: str,
+    limits: CertifiedGlobalOptimizerLimits,
+) -> Fraction:
+    total = Fraction(0)
+    for index, value in enumerate(values):
+        total = _require_rational_within_limits(
+            total + value, f"{phase}[{index}]", limits
+        )
+    return total
+
+
 def _parse_rational(
     value: object,
     phase: str,
@@ -540,6 +602,12 @@ def _parse_rational(
         result = Fraction(value)
     elif type(value) is str:
         if _INTEGER_RE.fullmatch(value):
+            _preflight_integer_token(
+                value,
+                phase,
+                limits.max_rational_numerator_bits,
+                "numerator",
+            )
             result = Fraction(int(value))
         else:
             match = _FRACTION_RE.fullmatch(value)
@@ -549,6 +617,18 @@ def _parse_rational(
                     phase,
                     f"{phase} must be a canonical integer or fraction",
                 )
+            _preflight_integer_token(
+                match.group(1),
+                phase,
+                limits.max_rational_numerator_bits,
+                "numerator",
+            )
+            _preflight_integer_token(
+                match.group(2),
+                phase,
+                limits.max_rational_denominator_bits,
+                "denominator",
+            )
             numerator = int(match.group(1))
             denominator = int(match.group(2))
             if denominator == 1:
@@ -568,14 +648,7 @@ def _parse_rational(
         raise _OptimizerFailure(
             INVALID_INPUT, phase, f"{phase} must be an exact rational"
         )
-    if result.numerator.bit_length() > limits.max_rational_numerator_bits:
-        raise _OptimizerFailure(
-            NUMERIC_FAILURE, phase, f"{phase} numerator bit cap exceeded"
-        )
-    if result.denominator.bit_length() > limits.max_rational_denominator_bits:
-        raise _OptimizerFailure(
-            NUMERIC_FAILURE, phase, f"{phase} denominator bit cap exceeded"
-        )
+    _require_rational_within_limits(result, phase, limits)
     if nonnegative and result < 0:
         raise _OptimizerFailure(
             INVALID_INPUT, phase, f"{phase} must be nonnegative"
@@ -818,7 +891,12 @@ def _canonical_policy(
                 phase,
                 f"{phase}.{information_set_id} must contain every legal action",
             )
-        if sum(action_map.values(), Fraction(0)) != 1:
+        probability_sum = _sum_rationals_within_limits(
+            action_map.values(),
+            f"{phase}.{information_set_id}.sum",
+            limits,
+        )
+        if probability_sum != 1:
             raise _OptimizerFailure(
                 INVALID_INPUT,
                 phase,
@@ -927,10 +1005,17 @@ def _cell_fraction_rows(
                     "cell interval is outside [0,1] or reversed",
                 )
             actions.append((action.action_id, lower, upper))
-        if (
-            sum(action[1] for action in actions) > 1
-            or sum(action[2] for action in actions) < 1
-        ):
+        lower_sum = _sum_rationals_within_limits(
+            (action[1] for action in actions),
+            f"{phase}.{row.information_set_id}.lower_sum",
+            limits,
+        )
+        upper_sum = _sum_rationals_within_limits(
+            (action[2] for action in actions),
+            f"{phase}.{row.information_set_id}.upper_sum",
+            limits,
+        )
+        if lower_sum > 1 or upper_sum < 1:
             raise _OptimizerFailure(
                 INVALID_ORACLE_CONTRACT,
                 phase,
@@ -1053,6 +1138,14 @@ def _policy_identity(
     counters: _MutableCounters,
     limits: CertifiedGlobalOptimizerLimits,
 ) -> str:
+    for row in policy.rows:
+        for action in row.actions:
+            _parse_rational(
+                action.probability,
+                f"identity.policy.{row.information_set_id}.{action.action_id}",
+                limits,
+                nonnegative=True,
+            )
     _reserve_identity(counters, limits, "identity.policy")
     return _identity(
         {
@@ -1069,6 +1162,7 @@ def _cell_identity(
     counters: _MutableCounters,
     limits: CertifiedGlobalOptimizerLimits,
 ) -> str:
+    _cell_fraction_rows(cell, limits, "identity.cell")
     _reserve_identity(counters, limits, "identity.cell")
     return _identity(
         {
@@ -1099,13 +1193,33 @@ def _cell_center(
     cell: ExactBehaviorCell,
     limits: CertifiedGlobalOptimizerLimits,
 ) -> ExactBehaviorPolicy:
-    rows: list[ExactBehaviorRow] = []
+    planned_rows: list[
+        tuple[str, tuple[tuple[str, Fraction], ...]]
+    ] = []
     parsed_rows = _cell_fraction_rows(cell, limits, "cell.center")
     for information_set_id, actions in parsed_rows:
         lowers = [action[1] for action in actions]
-        capacities = [action[2] - action[1] for action in actions]
-        residual = Fraction(1) - sum(lowers, Fraction(0))
-        total_capacity = sum(capacities, Fraction(0))
+        capacities = [
+            _require_rational_within_limits(
+                action[2] - action[1],
+                f"cell.center.{information_set_id}.{action[0]}.capacity",
+                limits,
+            )
+            for action in actions
+        ]
+        lower_sum = _sum_rationals_within_limits(
+            lowers, f"cell.center.{information_set_id}.lower_sum", limits
+        )
+        residual = _require_rational_within_limits(
+            Fraction(1) - lower_sum,
+            f"cell.center.{information_set_id}.residual",
+            limits,
+        )
+        total_capacity = _sum_rationals_within_limits(
+            capacities,
+            f"cell.center.{information_set_id}.total_capacity",
+            limits,
+        )
         if total_capacity == 0:
             if residual != 0:
                 raise _OptimizerFailure(
@@ -1115,29 +1229,76 @@ def _cell_center(
                 )
             values = lowers
         else:
-            values = [
-                lower + residual * capacity / total_capacity
-                for lower, capacity in zip(lowers, capacities)
-            ]
-        if sum(values, Fraction(0)) != 1:
+            values = []
+            for action, lower, capacity in zip(
+                actions, lowers, capacities
+            ):
+                allocation_numerator = _require_rational_within_limits(
+                    residual * capacity,
+                    (
+                        f"cell.center.{information_set_id}."
+                        f"{action[0]}.allocation_numerator"
+                    ),
+                    limits,
+                )
+                allocation = _require_rational_within_limits(
+                    allocation_numerator / total_capacity,
+                    (
+                        f"cell.center.{information_set_id}."
+                        f"{action[0]}.allocation"
+                    ),
+                    limits,
+                )
+                values.append(
+                    _require_rational_within_limits(
+                        lower + allocation,
+                        (
+                            f"cell.center.{information_set_id}."
+                            f"{action[0]}.probability"
+                        ),
+                        limits,
+                    )
+                )
+        value_sum = _sum_rationals_within_limits(
+            values, f"cell.center.{information_set_id}.sum", limits
+        )
+        if value_sum != 1:
             raise _OptimizerFailure(
                 NUMERIC_FAILURE,
                 "cell.center",
                 "exact center does not sum to one",
             )
-        rows.append(
-            ExactBehaviorRow(
-                information_set_id=information_set_id,
-                actions=tuple(
-                    ExactActionProbability(
-                        action_id=action[0],
-                        probability=_rational_text(value),
-                    )
+        planned_rows.append(
+            (
+                information_set_id,
+                tuple(
+                    (action[0], value)
                     for action, value in zip(actions, values)
                 ),
             )
         )
-    return ExactBehaviorPolicy(rows=tuple(rows))
+    return ExactBehaviorPolicy(
+        rows=tuple(
+            ExactBehaviorRow(
+                information_set_id=information_set_id,
+                actions=tuple(
+                    ExactActionProbability(
+                        action_id=action_id,
+                        probability=_rational_text_within_limits(
+                            value,
+                            (
+                                f"cell.center.{information_set_id}."
+                                f"{action_id}.probability"
+                            ),
+                            limits,
+                        ),
+                    )
+                    for action_id, value in actions
+                ),
+            )
+            for information_set_id, actions in planned_rows
+        )
+    )
 
 
 def _oracle_metadata(
@@ -1264,10 +1425,13 @@ def _validate_evaluation(
         f"{phase}.candidate_total_repeated_hero_ev",
         limits,
     )
+    derived_uplift = _require_rational_within_limits(
+        candidate - baseline, f"{phase}.derived_uplift", limits
+    )
     uplift = _parse_rational(
         evaluation.uplift, f"{phase}.uplift", limits
     )
-    if candidate - baseline != uplift:
+    if derived_uplift != uplift:
         raise _OptimizerFailure(
             INVALID_ORACLE_CONTRACT,
             phase,
@@ -1481,17 +1645,50 @@ def _effective_split(
 ) -> tuple[int, int, Fraction] | None:
     rows = _cell_fraction_rows(cell, limits, "cell.split")
     best: tuple[int, int, Fraction] | None = None
-    for row_index, (_, actions) in enumerate(rows):
-        total_lower = sum(action[1] for action in actions)
-        total_upper = sum(action[2] for action in actions)
+    for row_index, (information_set_id, actions) in enumerate(rows):
+        total_lower = _sum_rationals_within_limits(
+            (action[1] for action in actions),
+            f"cell.split.{information_set_id}.total_lower",
+            limits,
+        )
+        total_upper = _sum_rationals_within_limits(
+            (action[2] for action in actions),
+            f"cell.split.{information_set_id}.total_upper",
+            limits,
+        )
         for action_index, (_, lower, upper) in enumerate(actions):
+            action_id = actions[action_index][0]
+            simplex_lower = _require_rational_within_limits(
+                Fraction(1) - (total_upper - upper),
+                f"cell.split.{information_set_id}.{action_id}.simplex_lower",
+                limits,
+            )
+            simplex_upper = _require_rational_within_limits(
+                Fraction(1) - (total_lower - lower),
+                f"cell.split.{information_set_id}.{action_id}.simplex_upper",
+                limits,
+            )
             effective_lower = max(
-                lower, Fraction(1) - (total_upper - upper)
+                lower, simplex_lower
             )
             effective_upper = min(
-                upper, Fraction(1) - (total_lower - lower)
+                upper, simplex_upper
             )
-            width = effective_upper - effective_lower
+            _require_rational_within_limits(
+                effective_lower,
+                f"cell.split.{information_set_id}.{action_id}.effective_lower",
+                limits,
+            )
+            _require_rational_within_limits(
+                effective_upper,
+                f"cell.split.{information_set_id}.{action_id}.effective_upper",
+                limits,
+            )
+            width = _require_rational_within_limits(
+                effective_upper - effective_lower,
+                f"cell.split.{information_set_id}.{action_id}.width",
+                limits,
+            )
             if width <= 0:
                 continue
             if best is None or width > best[2]:
@@ -1506,26 +1703,72 @@ def _split_cell(
 ) -> tuple[ExactBehaviorCell, ExactBehaviorCell]:
     row_index, action_index, _ = split
     parsed = _cell_fraction_rows(cell, limits, "cell.split")
-    _, actions = parsed[row_index]
+    information_set_id, actions = parsed[row_index]
     target = actions[action_index]
-    total_lower = sum(action[1] for action in actions)
-    total_upper = sum(action[2] for action in actions)
+    total_lower = _sum_rationals_within_limits(
+        (action[1] for action in actions),
+        f"cell.split.{information_set_id}.total_lower",
+        limits,
+    )
+    total_upper = _sum_rationals_within_limits(
+        (action[2] for action in actions),
+        f"cell.split.{information_set_id}.total_upper",
+        limits,
+    )
+    simplex_lower = _require_rational_within_limits(
+        Fraction(1) - (total_upper - target[2]),
+        f"cell.split.{information_set_id}.{target[0]}.simplex_lower",
+        limits,
+    )
+    simplex_upper = _require_rational_within_limits(
+        Fraction(1) - (total_lower - target[1]),
+        f"cell.split.{information_set_id}.{target[0]}.simplex_upper",
+        limits,
+    )
     effective_lower = max(
-        target[1], Fraction(1) - (total_upper - target[2])
+        target[1], simplex_lower
     )
     effective_upper = min(
-        target[2], Fraction(1) - (total_lower - target[1])
+        target[2], simplex_upper
     )
-    midpoint = (effective_lower + effective_upper) / 2
+    _require_rational_within_limits(
+        effective_lower,
+        f"cell.split.{information_set_id}.{target[0]}.effective_lower",
+        limits,
+    )
+    _require_rational_within_limits(
+        effective_upper,
+        f"cell.split.{information_set_id}.{target[0]}.effective_upper",
+        limits,
+    )
+    midpoint_numerator = _require_rational_within_limits(
+        effective_lower + effective_upper,
+        "cell.split.midpoint_numerator",
+        limits,
+    )
+    midpoint = _require_rational_within_limits(
+        midpoint_numerator / 2, "cell.split.midpoint", limits
+    )
 
-    children: list[ExactBehaviorCell] = []
+    planned_children: list[
+        list[tuple[str, list[tuple[str, Fraction, Fraction]]]]
+    ] = []
     for side in ("left", "right"):
-        rows: list[ExactBehaviorCellRow] = []
-        for current_row_index, row in enumerate(cell.rows):
-            intervals: list[ExactActionInterval] = []
-            for current_action_index, interval in enumerate(row.actions):
-                lower = Fraction(interval.lower)
-                upper = Fraction(interval.upper)
+        planned_rows: list[
+            tuple[str, list[tuple[str, Fraction, Fraction]]]
+        ] = []
+        for current_row_index, (
+            current_information_set_id,
+            current_actions,
+        ) in enumerate(parsed):
+            intervals: list[tuple[str, Fraction, Fraction]] = []
+            for current_action_index, (
+                action_id,
+                source_lower,
+                source_upper,
+            ) in enumerate(current_actions):
+                lower = source_lower
+                upper = source_upper
                 if (
                     current_row_index == row_index
                     and current_action_index == action_index
@@ -1534,28 +1777,109 @@ def _split_cell(
                         upper = min(upper, midpoint)
                     else:
                         lower = max(lower, midpoint)
+                lower = _require_rational_within_limits(
+                    lower,
+                    (
+                        f"cell.split.{side}.{current_information_set_id}."
+                        f"{action_id}.lower"
+                    ),
+                    limits,
+                )
+                upper = _require_rational_within_limits(
+                    upper,
+                    (
+                        f"cell.split.{side}.{current_information_set_id}."
+                        f"{action_id}.upper"
+                    ),
+                    limits,
+                )
                 intervals.append(
-                    ExactActionInterval(
-                        action_id=interval.action_id,
-                        lower=_rational_text(lower),
-                        upper=_rational_text(upper),
-                    )
+                    (action_id, lower, upper)
                 )
-            rows.append(
-                ExactBehaviorCellRow(
-                    information_set_id=row.information_set_id,
-                    actions=tuple(intervals),
-                )
+            lower_sum = _sum_rationals_within_limits(
+                (interval[1] for interval in intervals),
+                f"cell.split.{side}.{current_information_set_id}.lower_sum",
+                limits,
             )
-        child = ExactBehaviorCell(rows=tuple(rows))
+            upper_sum = _sum_rationals_within_limits(
+                (interval[2] for interval in intervals),
+                f"cell.split.{side}.{current_information_set_id}.upper_sum",
+                limits,
+            )
+            if lower_sum > 1 or upper_sum < 1:
+                raise _OptimizerFailure(
+                    NUMERIC_FAILURE,
+                    f"cell.split.{side}",
+                    "split child does not intersect its exact simplex",
+                )
+            planned_rows.append((current_information_set_id, intervals))
+        planned_children.append(planned_rows)
+
+    children = tuple(
+        ExactBehaviorCell(
+            rows=tuple(
+                ExactBehaviorCellRow(
+                    information_set_id=current_information_set_id,
+                    actions=tuple(
+                        ExactActionInterval(
+                            action_id=action_id,
+                            lower=_rational_text_within_limits(
+                                lower,
+                                (
+                                    f"cell.split.{side}."
+                                    f"{current_information_set_id}."
+                                    f"{action_id}.lower"
+                                ),
+                                limits,
+                            ),
+                            upper=_rational_text_within_limits(
+                                upper,
+                                (
+                                    f"cell.split.{side}."
+                                    f"{current_information_set_id}."
+                                    f"{action_id}.upper"
+                                ),
+                                limits,
+                            ),
+                        )
+                        for action_id, lower, upper in intervals
+                    ),
+                )
+                for current_information_set_id, intervals in planned_rows
+            )
+        )
+        for side, planned_rows in zip(("left", "right"), planned_children)
+    )
+    for child in children:
         _cell_fraction_rows(child, limits, "cell.child")
-        children.append(child)
     return children[0], children[1]
 
 
-def _relative_gap(lower: Fraction, gap: Fraction) -> Fraction:
-    denominator = max(Fraction(1), abs(lower))
-    return gap / denominator
+def _certificate_gaps(
+    lower: Fraction,
+    upper: Fraction,
+    limits: CertifiedGlobalOptimizerLimits,
+) -> tuple[Fraction, Fraction]:
+    if upper < lower:
+        raise _OptimizerFailure(
+            NUMERIC_FAILURE,
+            "certificate",
+            "global upper bound is below incumbent lower bound",
+        )
+    gap = _require_rational_within_limits(
+        upper - lower, "certificate.absolute_gap", limits
+    )
+    relative_denominator = _require_rational_within_limits(
+        max(Fraction(1), abs(lower)),
+        "certificate.relative_gap_denominator",
+        limits,
+    )
+    relative_gap = _require_rational_within_limits(
+        gap / relative_denominator,
+        "certificate.relative_gap",
+        limits,
+    )
+    return gap, relative_gap
 
 
 def _certified_status(
@@ -1563,19 +1887,14 @@ def _certified_status(
     upper: Fraction,
     absolute_tolerance: Fraction,
     relative_tolerance: Fraction,
+    limits: CertifiedGlobalOptimizerLimits,
 ) -> str | None:
-    if upper < lower:
-        raise _OptimizerFailure(
-            NUMERIC_FAILURE,
-            "certificate",
-            "global upper bound is below incumbent lower bound",
-        )
-    gap = upper - lower
+    gap, relative_gap = _certificate_gaps(lower, upper, limits)
     if gap == 0:
         return CERTIFIED_GLOBAL
     if gap <= absolute_tolerance:
         return CERTIFIED_EPSILON_GLOBAL
-    if relative_tolerance > 0 and _relative_gap(lower, gap) <= relative_tolerance:
+    if relative_tolerance > 0 and relative_gap <= relative_tolerance:
         return CERTIFIED_EPSILON_GLOBAL
     return None
 
@@ -1666,15 +1985,48 @@ def _success_result(
     selected_id = tied_ids[0]
     selected_policy, selected_evaluation = incumbent.policies[selected_id]
     no_benefit = incumbent.value <= 0
+    incumbent_lower = _require_rational_within_limits(
+        incumbent.value, "certificate.incumbent_lower_bound", limits
+    )
+    certified_upper = _require_rational_within_limits(
+        global_upper, "certificate.valid_global_upper_bound", limits
+    )
+    absolute_gap, relative_gap = _certificate_gaps(
+        incumbent_lower, certified_upper, limits
+    )
+    certified_absolute_tolerance = _require_rational_within_limits(
+        absolute_tolerance,
+        "certificate.requested_absolute_tolerance",
+        limits,
+    )
+    certified_relative_tolerance = _require_rational_within_limits(
+        relative_tolerance,
+        "certificate.requested_relative_tolerance",
+        limits,
+    )
     certificate = CertifiedGlobalCertificate(
-        incumbent_lower_bound=_rational_text(incumbent.value),
-        valid_global_upper_bound=_rational_text(global_upper),
-        absolute_gap=_rational_text(global_upper - incumbent.value),
-        relative_gap=_rational_text(
-            _relative_gap(incumbent.value, global_upper - incumbent.value)
+        incumbent_lower_bound=_rational_text_within_limits(
+            incumbent_lower, "certificate.incumbent_lower_bound", limits
         ),
-        requested_absolute_tolerance=_rational_text(absolute_tolerance),
-        requested_relative_tolerance=_rational_text(relative_tolerance),
+        valid_global_upper_bound=_rational_text_within_limits(
+            certified_upper, "certificate.valid_global_upper_bound", limits
+        ),
+        absolute_gap=_rational_text_within_limits(
+            absolute_gap, "certificate.absolute_gap", limits
+        ),
+        relative_gap=_rational_text_within_limits(
+            relative_gap, "certificate.relative_gap", limits
+        ),
+        requested_absolute_tolerance=_rational_text_within_limits(
+            certified_absolute_tolerance,
+            "certificate.requested_absolute_tolerance",
+            limits,
+        ),
+        requested_relative_tolerance=_rational_text_within_limits(
+            certified_relative_tolerance,
+            "certificate.requested_relative_tolerance",
+            limits,
+        ),
         domain_identity=domain_identity,
         response_oracle_identity=response_identity,
         objective_identity=objective_identity,
@@ -1919,6 +2271,7 @@ def _optimize(
             global_upper,
             absolute_tolerance,
             relative_tolerance,
+            limits,
         )
         if status is not None:
             return _success_result(

@@ -297,6 +297,111 @@ class QuadraticOracle:
         )
 
 
+def binary_scenario(label: str) -> module.HeroBehaviorScenario:
+    return module.HeroBehaviorScenario(
+        identity(f"binary-scenario:{label}"),
+        (module.HeroInformationSet("H:binary", ("a", "b")),),
+    )
+
+
+def binary_policy(a: str, b: str) -> module.ExactBehaviorPolicy:
+    return module.ExactBehaviorPolicy(
+        (
+            module.ExactBehaviorRow(
+                "H:binary",
+                (
+                    module.ExactActionProbability("a", a),
+                    module.ExactActionProbability("b", b),
+                ),
+            ),
+        )
+    )
+
+
+class RationalCapOracle:
+    """Small exact spy for rational-cap boundary and derived-value tests."""
+
+    response_semantics = module.RESPONSE_SEMANTICS
+    bound_contract_version = module.BOUND_CONTRACT_VERSION
+
+    def __init__(
+        self,
+        scenario_value: module.HeroBehaviorScenario,
+        baseline: module.ExactBehaviorPolicy,
+        *,
+        upper_bound: Fraction | int = 0,
+        candidate_policy: module.ExactBehaviorPolicy | None = None,
+        baseline_total: Fraction | int = 0,
+        values_by_a: dict[Fraction, Fraction] | None = None,
+        reported_uplifts_by_a: dict[Fraction, Fraction] | None = None,
+    ) -> None:
+        self.scenario = scenario_value
+        self.baseline = baseline
+        self.upper = Fraction(upper_bound)
+        self.candidate_policy = candidate_policy
+        self.baseline_total = Fraction(baseline_total)
+        self.values_by_a = values_by_a or {}
+        self.reported_uplifts_by_a = reported_uplifts_by_a or {}
+        self.response_oracle_identity = identity("rational-cap-response")
+        self.objective_identity = identity("rational-cap-objective")
+        self.point_policies: list[module.ExactBehaviorPolicy] = []
+        self.bound_cells: list[module.ExactBehaviorCell] = []
+
+    def evaluate(
+        self, policy_value: module.ExactBehaviorPolicy
+    ) -> module.ScalarOracleEvaluation:
+        self.point_policies.append(policy_value)
+        a_probability = Fraction(policy_value.rows[0].actions[0].probability)
+        candidate_total = self.values_by_a.get(
+            a_probability, self.baseline_total
+        )
+        uplift = self.reported_uplifts_by_a.get(
+            a_probability, candidate_total - self.baseline_total
+        )
+        policy_identity = module.behavior_policy_identity(
+            self.scenario, policy_value
+        )
+        return module.ScalarOracleEvaluation(
+            policy_identity,
+            self.response_oracle_identity,
+            self.objective_identity,
+            rational(self.baseline_total),
+            rational(candidate_total),
+            rational(uplift),
+            identity("rational-cap-complete:" + policy_identity),
+            1,
+            1,
+        )
+
+    def upper_bound(
+        self, cell: module.ExactBehaviorCell
+    ) -> module.ScalarOracleBound:
+        self.bound_cells.append(cell)
+        cell_identity = module.behavior_cell_identity(self.scenario, cell)
+        candidate_identity = (
+            None
+            if self.candidate_policy is None
+            else module.behavior_policy_identity(
+                self.scenario, self.candidate_policy
+            )
+        )
+        upper_text = rational(self.upper)
+        return module.ScalarOracleBound(
+            cell_identity,
+            self.response_oracle_identity,
+            self.objective_identity,
+            upper_text,
+            module.scalar_oracle_bound_identity(
+                cell_identity=cell_identity,
+                response_oracle_identity=self.response_oracle_identity,
+                objective_identity=self.objective_identity,
+                upper_bound=upper_text,
+                candidate_policy_identity=candidate_identity,
+            ),
+            candidate_policy=self.candidate_policy,
+        )
+
+
 COEFFICIENTS = {
     ("H:river", "fold"): Fraction(-2),
     ("H:river", "call"): Fraction(3),
@@ -547,6 +652,193 @@ def test_caps_fail_without_success_payload(limits, phase):
     assert result.partial_result is False
     assert result.error is not None
     assert result.error.phase == phase
+
+
+def test_generated_center_cap_fails_before_oracle_receives_half():
+    scenario_value = binary_scenario("center-cap")
+    baseline = binary_policy("0", "1")
+    oracle = RationalCapOracle(scenario_value, baseline)
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        limits=module.CertifiedGlobalOptimizerLimits(
+            max_rational_denominator_bits=1
+        ),
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase.startswith("cell.center.")
+    assert [
+        tuple(action.probability for action in row.actions)
+        for policy_value in oracle.point_policies
+        for row in policy_value.rows
+    ] == [("0", "1")]
+
+
+@pytest.mark.parametrize(
+    ("probabilities", "limit_name", "cap", "expected_status"),
+    (
+        (("4/5", "1/5"), "max_rational_numerator_bits", 3, module.CERTIFIED_GLOBAL),
+        (("4/5", "1/5"), "max_rational_numerator_bits", 2, module.NUMERIC_FAILURE),
+        (("1/4", "3/4"), "max_rational_denominator_bits", 3, module.CERTIFIED_GLOBAL),
+        (("1/4", "3/4"), "max_rational_denominator_bits", 2, module.NUMERIC_FAILURE),
+    ),
+)
+def test_rational_numerator_and_denominator_exact_boundary_and_cap_plus_one(
+    probabilities, limit_name, cap, expected_status
+):
+    scenario_value = binary_scenario(
+        f"boundary:{limit_name}:{cap}:{probabilities[0]}"
+    )
+    baseline = binary_policy(*probabilities)
+    oracle = RationalCapOracle(
+        scenario_value, baseline, candidate_policy=baseline
+    )
+    limits = replace(
+        module.CertifiedGlobalOptimizerLimits(), **{limit_name: cap}
+    )
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value, baseline, oracle, limits=limits
+    )
+    assert result.status == expected_status
+    assert result.partial_result is False
+    if expected_status == module.CERTIFIED_GLOBAL:
+        assert result.payload is not None
+    else:
+        assert result.payload is None
+        assert result.error is not None
+        assert result.error.phase.startswith("baseline_policy.")
+
+
+def test_split_midpoint_cap_fails_before_either_child_is_materialized():
+    scenario_value = binary_scenario("split-cap")
+    baseline = binary_policy("0", "1")
+    oracle = RationalCapOracle(
+        scenario_value,
+        baseline,
+        upper_bound=1,
+        candidate_policy=baseline,
+    )
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        limits=module.CertifiedGlobalOptimizerLimits(
+            max_rational_denominator_bits=1
+        ),
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase == "cell.split.midpoint"
+    assert result.work_counters.cells_created == 1
+    assert result.work_counters.splits == 0
+    assert len(oracle.bound_cells) == 1
+
+
+def test_candidate_baseline_derived_arithmetic_obeys_rational_cap():
+    scenario_value = binary_scenario("derived-uplift-cap")
+    baseline = binary_policy("0", "1")
+    candidate = binary_policy("1", "0")
+    oracle = RationalCapOracle(
+        scenario_value,
+        baseline,
+        upper_bound=1,
+        candidate_policy=candidate,
+        baseline_total=Fraction(1, 2),
+        values_by_a={Fraction(1): Fraction(2, 3)},
+        reported_uplifts_by_a={Fraction(1): Fraction(0)},
+    )
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        limits=module.CertifiedGlobalOptimizerLimits(
+            max_rational_denominator_bits=2
+        ),
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase == "oracle.point.root.derived_uplift"
+
+
+def test_absolute_gap_derived_arithmetic_obeys_rational_cap():
+    scenario_value = binary_scenario("absolute-gap-cap")
+    baseline = binary_policy("0", "1")
+    candidate = binary_policy("1", "0")
+    oracle = RationalCapOracle(
+        scenario_value,
+        baseline,
+        upper_bound=Fraction(2, 3),
+        candidate_policy=candidate,
+        values_by_a={Fraction(1): Fraction(1, 2)},
+    )
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        limits=module.CertifiedGlobalOptimizerLimits(
+            max_rational_denominator_bits=2
+        ),
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase == "certificate.absolute_gap"
+
+
+def test_relative_gap_derived_arithmetic_obeys_rational_cap():
+    scenario_value = binary_scenario("relative-gap-cap")
+    baseline = binary_policy("0", "1")
+    candidate = binary_policy("1", "0")
+    oracle = RationalCapOracle(
+        scenario_value,
+        baseline,
+        upper_bound=3,
+        candidate_policy=candidate,
+        values_by_a={Fraction(1): Fraction(5, 2)},
+    )
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        absolute_gap_tolerance="1",
+        limits=module.CertifiedGlobalOptimizerLimits(
+            max_rational_numerator_bits=3,
+            max_rational_denominator_bits=2,
+        ),
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase == "certificate.relative_gap"
+
+
+def test_oversized_rational_token_fails_before_integer_conversion():
+    scenario_value = binary_scenario("oversized-token")
+    baseline = binary_policy("0", "1")
+    oracle = RationalCapOracle(scenario_value, baseline)
+    result = module.optimize_certified_global_hero_commitment(
+        scenario_value,
+        baseline,
+        oracle,
+        absolute_gap_tolerance="9" * 5000,
+    )
+    assert result.status == module.NUMERIC_FAILURE
+    assert result.payload is None
+    assert result.partial_result is False
+    assert result.error is not None
+    assert result.error.phase == "tolerance.absolute"
+    assert oracle.point_policies == []
+    assert oracle.bound_cells == []
 
 
 def test_hard_ceiling_is_rejected_not_clamped():
