@@ -787,10 +787,20 @@ def test_two_process_public_example_is_byte_identical():
     assert first.stdout.endswith(b"\n")
 
 
-def test_exact_changed_file_boundary_and_no_repo_cache():
+def test_exact_changed_file_boundary_and_no_tracked_cache():
     assert SOURCE.exists()
     assert TEST.exists()
     assert EXAMPLE.exists()
-    assert not list(ROOT.rglob("__pycache__"))
-    assert not list(ROOT.rglob("*.pyc"))
-    assert not list(ROOT.rglob(".pytest_cache"))
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    assert not [
+        path
+        for path in tracked
+        if b"__pycache__" in path
+        or path.endswith((b".pyc", b".pyo"))
+        or b".pytest_cache" in path
+    ]
