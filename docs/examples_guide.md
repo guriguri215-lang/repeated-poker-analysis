@@ -33,6 +33,9 @@
 13. `examples/three_player_candidate_repeated_workflow.py` - run the separate
     exact M30-M32 abstract river/rake, bounded candidate, and repeated-value
     workflow after reading its dedicated guardrails.
+14. `examples/known_board_real_card_three_player_river_rake.py` - run one
+    known-board real-card H/O1/O2 joint-support analysis through the same exact
+    M30-M32 response/repeated path.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -162,6 +165,28 @@ The result is conditional on a caller-declared bounded finite universe. It is
 not a full solver, Nash/equilibrium certificate, global optimum, real-card
 three-player evaluation, profitability result, or real-money advice. The
 example adds no CLI or saved-file schema.
+
+## Known-board real-card three-player river/rake
+
+Run:
+
+```powershell
+python examples/known_board_real_card_three_player_river_rake.py
+```
+
+Read
+[known_board_real_card_three_player_river_rake_adapter.md](known_board_real_card_three_player_river_rake_adapter.md)
+before interpreting its strict one-line JSON. The fixture uses one compatible
+H=`AsAh`, O1=`KsKh`, O2=`QsQh` triple on board `2c 3d 4h 5s 9c`.
+It shows exact triple conditioning, Hero's wheel winner, positive rake, a
+complete scenario-native H/O1/O2 baseline, fresh exact M30 response per M32
+candidate, and repeated timing rows.
+
+The hand calculations are baseline `17/-10/-10/3`, candidate against the
+initial profile `34/-20/-20/6`, and post-response `20/-10/-10/0` for
+H/O1/O2/R. The finite shift is a worked input, not a global domain. The example
+is not a continuous/global optimizer, equilibrium certificate, profitability
+result, or strategy recommendation and adds no CLI or saved-file schema.
 
 ## Example reference
 
