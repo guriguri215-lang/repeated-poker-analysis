@@ -112,12 +112,18 @@
 ## Hero commitment assumptions
 
 - Candidate strategies represent fixed Hero mixed strategies (a commitment).
-- Current candidates are simple probability shifts at single Hero information
-  sets; they are not an exhaustive strategy search.
+- Existing M27-M35 consumer workflows use declared finite probability-shift
+  candidates; those workflows are not an exhaustive strategy search.
+- The separate M36 `certified_global_optimizer` core derives the full product
+  of legal Hero behavior-policy simplexes from its in-memory scenario. Its
+  certificate is conditional on an identified scalar response oracle providing
+  a valid upper bound over every requested cell. M28/M29/M30-M35 consumers are
+  not connected to that core yet.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
-  does not prove a full equilibrium.
+  does not prove a full equilibrium. An M36 global-objective certificate is not
+  an equilibrium certificate or a profitability result.
 
 ## Villain response assumptions
 
