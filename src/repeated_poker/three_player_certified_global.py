@@ -1109,6 +1109,20 @@ class _PreparedInputs:
 def _real_card_inputs(
     request: KnownBoardRealCardThreePlayerCertifiedGlobalRequest,
 ) -> _PreparedInputs:
+    _validate_limits(request.integration_limits)
+    _validate_pins(request.pins)
+    if type(request.optimizer_limits) is not _m36.CertifiedGlobalOptimizerLimits:
+        raise _M39Failure(
+            _m36.INVALID_INPUT,
+            "request",
+            "optimizer_limits has the wrong type",
+        )
+    if type(request.optimizer_pins) is not _m36.CertifiedGlobalOptimizerPins:
+        raise _M39Failure(
+            _m36.INVALID_INPUT,
+            "request",
+            "optimizer_pins has the wrong type",
+        )
     if type(request.source) is not _m35.KnownBoardRealCardThreePlayerRequest:
         raise _M39Failure(
             _m36.INVALID_INPUT, "real_card", "source has the wrong type"
@@ -1427,6 +1441,8 @@ def _request_projection(
     inputs: _PreparedInputs,
     *,
     repeated_projection: Mapping[str, Any],
+    absolute_gap_tolerance: str,
+    relative_gap_tolerance: str,
     scenario_identity: str,
     tree_identity: str,
     baseline_identity: str,
@@ -1438,8 +1454,8 @@ def _request_projection(
         "tree_structure_identity": tree_identity,
         "baseline_identity": baseline_identity,
         "repeated": dict(repeated_projection),
-        "absolute_gap_tolerance": inputs.absolute_gap_tolerance,
-        "relative_gap_tolerance": inputs.relative_gap_tolerance,
+        "absolute_gap_tolerance": absolute_gap_tolerance,
+        "relative_gap_tolerance": relative_gap_tolerance,
         "caps": {
             "integration": inputs.integration_limits.to_dict(),
             "optimizer": asdict(inputs.optimizer_limits),
@@ -1468,6 +1484,26 @@ def _prepare(
     pins = _validate_pins(inputs.pins)
     repeated_projection, pre, post, total = _repeated_projection(
         inputs.repeated, limits
+    )
+    bit_cap = min(
+        limits.max_rational_numerator_bits,
+        limits.max_rational_denominator_bits,
+    )
+    absolute_gap_tolerance = _rational_text(
+        _parse_exact(
+            inputs.absolute_gap_tolerance,
+            "absolute_gap_tolerance",
+            nonnegative=True,
+            maximum_bits=bit_cap,
+        )
+    )
+    relative_gap_tolerance = _rational_text(
+        _parse_exact(
+            inputs.relative_gap_tolerance,
+            "relative_gap_tolerance",
+            nonnegative=True,
+            maximum_bits=bit_cap,
+        )
     )
     counters.preparation_m31_runs += 1
     baseline_result = _m31.evaluate_three_player_river_rake(
@@ -1597,6 +1633,8 @@ def _prepare(
     request_projection = _request_projection(
         inputs,
         repeated_projection=repeated_projection,
+        absolute_gap_tolerance=absolute_gap_tolerance,
+        relative_gap_tolerance=relative_gap_tolerance,
         scenario_identity=ids["scenario"],
         tree_identity=ids["tree_structure"],
         baseline_identity=baseline_identity,
@@ -1892,12 +1930,32 @@ def _analyze(inputs: _PreparedInputs) -> ThreePlayerCertifiedGlobalResult:
         preparation, oracle, _pins, _analysis_identity = _prepare(
             inputs, counters
         )
+        bit_cap = min(
+            inputs.integration_limits.max_rational_numerator_bits,
+            inputs.integration_limits.max_rational_denominator_bits,
+        )
+        absolute_gap_tolerance = _rational_text(
+            _parse_exact(
+                inputs.absolute_gap_tolerance,
+                "absolute_gap_tolerance",
+                nonnegative=True,
+                maximum_bits=bit_cap,
+            )
+        )
+        relative_gap_tolerance = _rational_text(
+            _parse_exact(
+                inputs.relative_gap_tolerance,
+                "relative_gap_tolerance",
+                nonnegative=True,
+                maximum_bits=bit_cap,
+            )
+        )
         native = _m36.optimize_certified_global_hero_commitment(
             preparation.m36_scenario,
             preparation.baseline_policy,
             oracle,
-            absolute_gap_tolerance=inputs.absolute_gap_tolerance,
-            relative_gap_tolerance=inputs.relative_gap_tolerance,
+            absolute_gap_tolerance=absolute_gap_tolerance,
+            relative_gap_tolerance=relative_gap_tolerance,
             limits=inputs.optimizer_limits,
             pins=inputs.optimizer_pins,
         )

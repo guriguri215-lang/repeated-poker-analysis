@@ -1188,6 +1188,38 @@ def test_18_lossless_binary64_lift_and_nonfinite_fail_closed():
     )
     assert invalid.status == m36.INVALID_INPUT
     assert invalid.payload is None
+    exact_gap = module.analyze_abstract_three_player_certified_global(
+        replace(two_action_request(), absolute_gap_tolerance=0.5)
+    )
+    assert exact_gap.status in (
+        m36.CERTIFIED_GLOBAL,
+        m36.CERTIFIED_EPSILON_GLOBAL,
+    )
+
+
+def test_18b_real_card_invalid_integration_limit_precedes_m35_preparation(
+    monkeypatch,
+):
+    calls = {"prepare": 0}
+
+    def forbidden(*args, **kwargs):
+        calls["prepare"] += 1
+        raise AssertionError("M35 preparation must not run")
+
+    monkeypatch.setattr(m35, "_prepare_support_internal", forbidden)
+    request = real_card_request(
+        limits=replace(
+            module.ThreePlayerCertifiedGlobalLimits(),
+            max_point_evaluations=0,
+        )
+    )
+    result = module.analyze_known_board_real_card_three_player_certified_global(
+        request
+    )
+    assert result.status == m36.INVALID_INPUT
+    assert result.error.phase == "limits.max_point_evaluations"
+    assert result.payload is None
+    assert calls["prepare"] == 0
 
 
 def test_19_public_claim_identity_and_serializer_are_deterministic():
