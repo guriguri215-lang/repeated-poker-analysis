@@ -291,11 +291,44 @@ See
 [docs/certified_global_optimizer_core.md](docs/certified_global_optimizer_core.md)
 for the scalar-oracle boundary, soundness argument, certificate fields, caps,
 identity contract, analytic example, and direct API. M36 is the optimizer core
-only: real-card preflop, known-board heads-up, and abstract/real-card
-three-player consumers are not connected yet. The certificate claims only a
-specified-tolerance global optimum for a conforming bounded scalar oracle, not
-an equilibrium, solver-grade scale, real-world profitability, or strategy
-advice.
+only. M37 connects the real-card preflop consumer as described next;
+known-board heads-up and abstract/real-card three-player consumers remain later
+scope. The certificate claims only a specified-tolerance global optimum for a
+conforming bounded scalar oracle, not an equilibrium, solver-grade scale,
+real-world profitability, or strategy advice.
+
+### Real-card AIoF preflop certified global integration
+
+`repeated_poker.aiof_preflop_certified_global` derives one Hero information set
+for every exact combo surviving the existing real-card range expansion and
+joint blocker conditioning, attaches both legal push/fold actions, and sends
+that full product simplex to the unchanged M36 core. The supplied baseline is
+only the no-commitment comparison/incumbent. This path accepts no M28 shift
+amounts, candidate library, grid, local domain, or warm-start neighbourhood;
+the existing finite M28 workflow remains available and unchanged.
+
+```powershell
+python examples/aiof_preflop_certified_global.py
+```
+
+At each exact policy, the adapter composes fixed-opponent Hero ChipEV before a
+declared adaptation opportunity with a freshly calculated, factorized complete
+opponent response afterward. The post-response scalar is correspondence-wide
+Hero worst. Binary64 values already declared through the M13/M28 public
+dataclasses are lifted losslessly to their exact integer ratios, exhaustive
+showdown counts remain integers, and discount/gap inputs are canonical exact
+rationals. A consumer-specific affine/min inequality supplies the whole-cell
+upper bound; M36 metadata, samples, grids, vertices, and M28 candidate values
+are not used as bounds.
+
+See
+[docs/aiof_preflop_certified_global.md](docs/aiof_preflop_certified_global.md)
+for the objective equation, complete-response identity, whole-cell proof,
+caps, no-partial contract, public API, and claim boundary. Success is only
+`CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL`. It certifies the identified
+real-card preflop scalar objective at the requested tolerance, not an
+equilibrium, ICM result, solver-grade scale, profitability result, or strategy
+recommendation. M37 is one R8 consumer integration; M38-M40 remain.
 
 ### Real-card AIoF public workflow
 
