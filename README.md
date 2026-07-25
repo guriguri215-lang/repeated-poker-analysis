@@ -260,8 +260,42 @@ rake/conservation semantics, preflight caps, identities, no-partial status
 contract, and hand-calculated worked example. This is not a two-player
 marginal-product approximation, raw solver import, coalition response,
 continuous/global optimizer, equilibrium certificate, profitability claim, or
-strategy advice. Certified global commitment search remains separate future
-scope.
+strategy advice. The M36 certified-global core described below is separate;
+real-card three-player integration remains later consumer scope.
+
+### Certified continuous/global commitment optimizer core
+
+`repeated_poker.certified_global_optimizer` derives the full product of legal
+Hero behavior-policy simplexes directly from an in-memory scenario and runs an
+exact-rational cell branch-and-bound search. It accepts no candidate list,
+probability shifts, grid resolution, local domain bounds, or warm-start
+neighbourhood. A supplied baseline is only the repeated-EV comparison point
+and an initial feasible policy; it cannot restrict the search domain.
+
+```powershell
+python examples/certified_global_optimizer_core.py
+```
+
+Every search cell must receive a deterministic oracle-attested upper bound for
+the same baseline-relative total repeated Hero-EV uplift used at points. The
+oracle contract requires complete-response-correspondence `hero_worst`
+semantics and binds the full response, objective, cell, bound, and policy
+identities. The core maintains a full-domain leaf cover and returns only
+`CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL` after the incumbent/global
+upper-bound gap meets the exact requested tolerance. Missing safe bounds,
+unsupported domains, or resource ceilings return a null payload such as
+`LIMIT_REACHED_NO_CERTIFICATE`; they never fall back to a grid, sample, local
+optimizer, random restart, or partial prefix.
+
+See
+[docs/certified_global_optimizer_core.md](docs/certified_global_optimizer_core.md)
+for the scalar-oracle boundary, soundness argument, certificate fields, caps,
+identity contract, analytic example, and direct API. M36 is the optimizer core
+only: real-card preflop, known-board heads-up, and abstract/real-card
+three-player consumers are not connected yet. The certificate claims only a
+specified-tolerance global optimum for a conforming bounded scalar oracle, not
+an equilibrium, solver-grade scale, real-world profitability, or strategy
+advice.
 
 ### Real-card AIoF public workflow
 
