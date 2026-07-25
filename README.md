@@ -238,6 +238,31 @@ continuous optimum, real-card three-player evaluation, profitability claim, or
 real-money advice. It adds no CLI, saved-file schema, pipeline, manifest,
 report, GUI, dependency, CI workflow, or top-level package export.
 
+### Known-board real-card three-player river/rake adapter
+
+The in-memory
+`repeated_poker.known_board_real_card_three_player_river` adapter expands
+separate weighted H/O1/O2 real-card ranges on one exact five-card river board,
+removes board/dead/private collisions, and conditions the complete compatible
+combo-triple support once. Exact seven-card ranks drive every three-way,
+heads-up, tie, and fold terminal in a native M31 tree. The unchanged M30/M31/M32
+path evaluates the complete baseline and a fresh exact non-cooperative O1/O2
+response for every bounded finite Hero candidate.
+
+```powershell
+python examples/known_board_real_card_three_player_river_rake.py
+```
+
+See
+[docs/known_board_real_card_three_player_river_rake_adapter.md](docs/known_board_real_card_three_player_river_rake_adapter.md)
+for the public data model, joint-conditioning rule, complete H/O1/O2 profile,
+rake/conservation semantics, preflight caps, identities, no-partial status
+contract, and hand-calculated worked example. This is not a two-player
+marginal-product approximation, raw solver import, coalition response,
+continuous/global optimizer, equilibrium certificate, profitability claim, or
+strategy advice. Certified global commitment search remains separate future
+scope.
+
 ### Real-card AIoF public workflow
 
 M13's existing submodule APIs also provide a bounded real-card path. The worked
