@@ -329,6 +329,12 @@ caps, no-partial contract, public API, and claim boundary. Success is only
 real-card preflop scalar objective at the requested tolerance, not an
 equilibrium, ICM result, solver-grade scale, profitability result, or strategy
 recommendation. M37 is one R8 consumer integration; M38-M40 remain.
+The M37 output caps measure the complete public result wrapper in the same
+canonical UTF-8 shape returned by
+`exact_aiof_preflop_certified_global_json`; a deterministic streaming preflight
+runs before any aggregate success projection or full encoded output is
+allocated. An exact cap is accepted, while a result one record or byte over the
+cap fails with a null payload and retains the completed work counters.
 
 ### Real-card AIoF public workflow
 

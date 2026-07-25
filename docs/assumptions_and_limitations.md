@@ -131,6 +131,10 @@
   numeric input, or an insufficient support/coefficient/response/bound/search/
   output cap fails with a null payload. There is no grid, sampling, truncation,
   finite-candidate fallback, or partial certificate.
+- M37 output record and byte caps cover the complete canonical public result,
+  not only its payload. A streaming exact preflight runs before aggregate
+  success projection or full UTF-8 encoding; output-cap failure keeps completed
+  native/consumer counters but exposes no payload or partial certificate.
 - M29 and M30-M35 consumers are not connected to M36 yet. M37 alone does not
   fulfill R8; the known-board heads-up, abstract/real-card three-player, and
   unified workflow/closeout work remains in M38-M40.

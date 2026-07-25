@@ -193,7 +193,17 @@ expanded combos, compatible pairs, and card validity. M37 then preflights:
 - coefficient records before coefficient construction;
 - cumulative response rows/actions before each point response;
 - consumer bound records before each bound;
-- output records and bytes before exposing a success payload.
+- records and canonical UTF-8 bytes for the complete final public result,
+  including the status, error, payload, native and consumer counters, through a
+  deterministic budget-aware traversal before allocating an aggregate success
+  result/payload projection or full encoded byte string.
+
+The output traversal has the exact successful shape serialized by
+`exact_aiof_preflop_certified_global_json`. A cap equal to the measured record
+or byte count succeeds; one less returns
+`LIMIT_REACHED_NO_CERTIFICATE`, phase `output`, a null payload, and the already
+completed native M36 and consumer work counters. Keys, records, or bytes are
+never truncated to fit.
 
 M36 independently preflights cells, nodes, oracle calls, bound records,
 rational sizes, identities, and native output. Cap exhaustion never falls back

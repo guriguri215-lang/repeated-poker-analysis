@@ -71,7 +71,7 @@ import math
 from dataclasses import asdict, dataclass, fields
 from fractions import Fraction
 from numbers import Real
-from typing import Any
+from typing import Any, Callable
 
 from .aiof_cards import (
     AiofContractError,
@@ -1265,21 +1265,273 @@ def _discount_weights(
     return pre, post, pre + post
 
 
-def _count_records(value: Any, maximum: int) -> int:
-    count = 0
-    stack = [value]
-    while stack:
-        item = stack.pop()
-        count += 1
-        if count > maximum:
-            raise ScalarOracleResourceLimit(
-                "max_output_records exceeded before success payload"
+@dataclass(frozen=True)
+class _JsonObjectProjection:
+    """Lazy JSON object fields used only by output-cap preflight."""
+
+    items: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class _DeferredJsonProjection:
+    """Delay one component projection until deterministic traversal reaches it."""
+
+    factory: Callable[[], Any]
+
+
+class _OutputLimitReached(RuntimeError):
+    """The final public success result exceeded an integration output cap."""
+
+
+def _payload_output_projection(
+    payload: AiofPreflopCertifiedGlobalPayload,
+) -> _JsonObjectProjection:
+    native_payload = payload.native_optimizer_result.payload
+    return _JsonObjectProjection(
+        (
+            (
+                "contract_version",
+                AIOF_PREFLOP_CERTIFIED_GLOBAL_CONTRACT_VERSION,
+            ),
+            ("algorithm_version", AIOF_PREFLOP_CERTIFIED_GLOBAL_ALGORITHM),
+            ("domain_contract", AIOF_PREFLOP_CERTIFIED_GLOBAL_DOMAIN),
+            ("objective_contract", AIOF_PREFLOP_CERTIFIED_GLOBAL_OBJECTIVE),
+            ("response_contract", AIOF_PREFLOP_CERTIFIED_GLOBAL_RESPONSE),
+            ("bound_contract", AIOF_PREFLOP_CERTIFIED_GLOBAL_BOUND),
+            ("claim_scope", AIOF_PREFLOP_CERTIFIED_GLOBAL_CLAIM_SCOPE),
+            ("accounting", CHIP_ACCOUNTING_ID),
+            ("hero_seat", payload.request.hero_seat),
+            (
+                "opponent_seat",
+                "bb" if payload.request.hero_seat == "sb" else "sb",
+            ),
+            (
+                "preparation",
+                _DeferredJsonProjection(payload.preparation.to_dict),
+            ),
+            (
+                "repeated_configuration",
+                _JsonObjectProjection(
+                    (
+                        ("horizon", payload.request.horizon),
+                        (
+                            "adaptation_opportunity",
+                            payload.request.adaptation_opportunity,
+                        ),
+                        ("discount", payload.request.discount),
+                        (
+                            "response_tolerance",
+                            payload.request.response_tolerance,
+                        ),
+                        (
+                            "absolute_gap_tolerance",
+                            payload.request.absolute_gap_tolerance,
+                        ),
+                        (
+                            "relative_gap_tolerance",
+                            payload.request.relative_gap_tolerance,
+                        ),
+                    )
+                ),
+            ),
+            (
+                "caps",
+                _JsonObjectProjection(
+                    (
+                        (
+                            "aiof",
+                            _DeferredJsonProjection(
+                                lambda: asdict(payload.request.aiof_limits)
+                            ),
+                        ),
+                        (
+                            "effective_aiof",
+                            _DeferredJsonProjection(
+                                lambda: asdict(
+                                    payload.preparation.effective_aiof_limits
+                                )
+                            ),
+                        ),
+                        (
+                            "integration",
+                            _DeferredJsonProjection(
+                                payload.request.integration_limits.to_dict
+                            ),
+                        ),
+                        (
+                            "optimizer",
+                            _DeferredJsonProjection(
+                                lambda: asdict(
+                                    payload.request.optimizer_limits
+                                )
+                            ),
+                        ),
+                    )
+                ),
+            ),
+            (
+                "baseline_point",
+                _DeferredJsonProjection(payload.baseline_point.to_dict),
+            ),
+            (
+                "selected_point",
+                (
+                    None
+                    if payload.selected_point is None
+                    else _DeferredJsonProjection(
+                        payload.selected_point.to_dict
+                    )
+                ),
+            ),
+            (
+                "no_beneficial_commitment",
+                (
+                    native_payload.no_beneficial_commitment
+                    if native_payload is not None
+                    else None
+                ),
+            ),
+            (
+                "native_optimizer_result",
+                _DeferredJsonProjection(
+                    payload.native_optimizer_result.to_dict
+                ),
+            ),
+            (
+                "oracle_work_counters",
+                _DeferredJsonProjection(
+                    payload.oracle_work_counters.to_dict
+                ),
+            ),
+        )
+    )
+
+
+def _success_output_projection(
+    result: AiofPreflopCertifiedGlobalResult,
+) -> _JsonObjectProjection:
+    if result.payload is None or result.error is not None:
+        raise RuntimeError("success output projection requires a success result")
+    return _JsonObjectProjection(
+        (
+            ("status", result.status),
+            ("payload", _payload_output_projection(result.payload)),
+            ("error", None),
+            (
+                "optimizer_work_counters",
+                _DeferredJsonProjection(
+                    result.optimizer_work_counters.to_dict
+                ),
+            ),
+            (
+                "oracle_work_counters",
+                _DeferredJsonProjection(
+                    result.oracle_work_counters.to_dict
+                ),
+            ),
+            ("partial_result", result.partial_result),
+        )
+    )
+
+
+def _preflight_success_output(
+    result: AiofPreflopCertifiedGlobalResult,
+    *,
+    max_records: int,
+    max_bytes: int,
+) -> tuple[int, int]:
+    """Measure the final public JSON shape without its aggregate projection.
+
+    Records use the same node-count convention as the prior cap.  Bytes are
+    those produced by sorted-key, compact, strict UTF-8 JSON.  Traversal stops
+    as soon as either budget is exceeded, before constructing a complete
+    result/payload dictionary or a complete encoded byte string.
+    """
+
+    record_count = 0
+    byte_count = 0
+
+    def add_bytes(fragment: str) -> None:
+        nonlocal byte_count
+        byte_count += len(fragment.encode("utf-8"))
+        if byte_count > max_bytes:
+            raise _OutputLimitReached(
+                "max_output_bytes exceeded before success output "
+                "materialization"
             )
-        if isinstance(item, dict):
-            stack.extend(item.values())
-        elif isinstance(item, (list, tuple)):
-            stack.extend(item)
-    return count
+
+    def visit(value: Any) -> None:
+        nonlocal record_count
+        if isinstance(value, _DeferredJsonProjection):
+            visit(value.factory())
+            return
+
+        record_count += 1
+        if record_count > max_records:
+            raise _OutputLimitReached(
+                "max_output_records exceeded before success output "
+                "materialization"
+            )
+
+        if isinstance(value, _JsonObjectProjection):
+            items = sorted(value.items, key=lambda item: item[0])
+            add_bytes("{")
+            for index, (key, item) in enumerate(items):
+                if index:
+                    add_bytes(",")
+                add_bytes(
+                    json.dumps(
+                        key,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                    )
+                )
+                add_bytes(":")
+                visit(item)
+            add_bytes("}")
+            return
+
+        if isinstance(value, dict):
+            add_bytes("{")
+            for index, key in enumerate(sorted(value)):
+                if type(key) is not str:
+                    raise TypeError("canonical output keys must be strings")
+                if index:
+                    add_bytes(",")
+                add_bytes(
+                    json.dumps(
+                        key,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                    )
+                )
+                add_bytes(":")
+                visit(value[key])
+            add_bytes("}")
+            return
+
+        if isinstance(value, (list, tuple)):
+            add_bytes("[")
+            for index, item in enumerate(value):
+                if index:
+                    add_bytes(",")
+                visit(item)
+            add_bytes("]")
+            return
+
+        add_bytes(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            )
+        )
+
+    visit(_success_output_projection(result))
+    return record_count, byte_count
 
 
 class AiofPreflopCertifiedScalarOracle:
@@ -2172,6 +2424,7 @@ def analyze_aiof_preflop_certified_global(
     """Run M37 and return only certified success or a null failure payload."""
 
     preparation: AiofPreflopCertifiedGlobalPreparation | None = None
+    native: CertifiedGlobalOptimizerResult | None = None
     try:
         preparation = prepare_aiof_preflop_certified_global_oracle(request)
         native = optimize_certified_global_hero_commitment(
@@ -2232,16 +2485,7 @@ def analyze_aiof_preflop_certified_global(
             oracle_work_counters=preparation.oracle.work_counters,
             request=request,
         )
-        output = payload.to_dict()
-        _count_records(
-            output, request.integration_limits.max_output_records
-        )
-        encoded = _canonical_json_bytes(output)
-        if len(encoded) > request.integration_limits.max_output_bytes:
-            raise ScalarOracleResourceLimit(
-                "max_output_bytes exceeded before success payload"
-            )
-        return AiofPreflopCertifiedGlobalResult(
+        result = AiofPreflopCertifiedGlobalResult(
             status=native.status,
             payload=payload,
             error=None,
@@ -2249,6 +2493,12 @@ def analyze_aiof_preflop_certified_global(
             oracle_work_counters=preparation.oracle.work_counters,
             partial_result=False,
         )
+        _preflight_success_output(
+            result,
+            max_records=request.integration_limits.max_output_records,
+            max_bytes=request.integration_limits.max_output_bytes,
+        )
+        return result
     except _StaleInput as exc:
         return AiofPreflopCertifiedGlobalResult(
             status=STALE_INPUT,
@@ -2257,6 +2507,28 @@ def analyze_aiof_preflop_certified_global(
                 phase="pins", message=_clean_message(str(exc), "stale input")
             ),
             optimizer_work_counters=_empty_optimizer_counters(),
+            oracle_work_counters=(
+                AiofPreflopCertifiedOracleWorkCounters()
+                if preparation is None
+                else preparation.oracle.work_counters
+            ),
+            partial_result=False,
+        )
+    except _OutputLimitReached as exc:
+        return AiofPreflopCertifiedGlobalResult(
+            status=LIMIT_REACHED_NO_CERTIFICATE,
+            payload=None,
+            error=AiofPreflopCertifiedGlobalError(
+                phase="output",
+                message=_clean_message(
+                    str(exc), "output resource limit"
+                ),
+            ),
+            optimizer_work_counters=(
+                _empty_optimizer_counters()
+                if native is None
+                else native.work_counters
+            ),
             oracle_work_counters=(
                 AiofPreflopCertifiedOracleWorkCounters()
                 if preparation is None

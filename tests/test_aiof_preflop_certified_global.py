@@ -952,31 +952,193 @@ def test_m36_child_cell_cap_fails_before_children_are_materialized():
     assert result.optimizer_work_counters.splits == 0
 
 
-def test_output_byte_cap_discards_completed_internal_work_and_payload():
+@pytest.mark.parametrize(
+    ("limit_name", "limit_value"),
+    (("max_output_records", 1), ("max_output_bytes", 100)),
+)
+def test_low_output_caps_preflight_without_full_success_materialization(
+    monkeypatch,
+    limit_name,
+    limit_value,
+):
+    baseline = module.analyze_aiof_preflop_certified_global(
+        one_pair_request()
+    )
+    assert baseline.payload is not None
+
+    calls = Counter()
+    original_payload_to_dict = (
+        module.AiofPreflopCertifiedGlobalPayload.to_dict
+    )
+    original_result_to_dict = (
+        module.AiofPreflopCertifiedGlobalResult.to_dict
+    )
+    original_canonical_json_bytes = module._canonical_json_bytes
+
+    def payload_to_dict_spy(self):
+        calls["payload_to_dict"] += 1
+        return original_payload_to_dict(self)
+
+    def result_to_dict_spy(self):
+        calls["result_to_dict"] += 1
+        return original_result_to_dict(self)
+
+    def canonical_json_bytes_spy(value):
+        if isinstance(value, dict) and (
+            (
+                "contract_version" in value
+                and "native_optimizer_result" in value
+            )
+            or (
+                "status" in value
+                and "payload" in value
+                and "optimizer_work_counters" in value
+            )
+        ):
+            calls["full_success_encoding"] += 1
+        return original_canonical_json_bytes(value)
+
+    monkeypatch.setattr(
+        module.AiofPreflopCertifiedGlobalPayload,
+        "to_dict",
+        payload_to_dict_spy,
+    )
+    monkeypatch.setattr(
+        module.AiofPreflopCertifiedGlobalResult,
+        "to_dict",
+        result_to_dict_spy,
+    )
+    monkeypatch.setattr(
+        module, "_canonical_json_bytes", canonical_json_bytes_spy
+    )
+
     limits = replace(
         module.AiofPreflopCertifiedGlobalLimits(),
-        max_output_bytes=100,
+        **{limit_name: limit_value},
     )
     result = module.analyze_aiof_preflop_certified_global(
         one_pair_request(integration_limits=limits)
     )
+
     assert result.status == core.LIMIT_REACHED_NO_CERTIFICATE
     assert result.payload is None
     assert result.error is not None
-
-
-def test_output_record_cap_discards_payload_without_truncation():
-    limits = replace(
-        module.AiofPreflopCertifiedGlobalLimits(),
-        max_output_records=1,
-    )
-    result = module.analyze_aiof_preflop_certified_global(
-        one_pair_request(integration_limits=limits)
-    )
-    assert result.status == core.LIMIT_REACHED_NO_CERTIFICATE
-    assert result.payload is None
-    assert result.error is not None
+    assert result.error.phase == "output"
+    assert result.optimizer_work_counters == baseline.optimizer_work_counters
+    assert result.oracle_work_counters == baseline.oracle_work_counters
+    assert result.optimizer_work_counters.oracle_calls_total > 0
+    assert result.oracle_work_counters.point_evaluations > 0
     assert not result.partial_result
+    assert calls == Counter()
+
+
+def test_output_caps_are_exact_hard_ceilings_for_final_public_result():
+    def independent_record_count(value):
+        count = 0
+        stack = [value]
+        while stack:
+            item = stack.pop()
+            count += 1
+            if isinstance(item, dict):
+                stack.extend(item.values())
+            elif isinstance(item, (list, tuple)):
+                stack.extend(item)
+        return count
+
+    baseline = module.analyze_aiof_preflop_certified_global(
+        one_pair_request()
+    )
+    assert baseline.payload is not None
+    record_count = independent_record_count(baseline.to_dict())
+
+    record_limits = replace(
+        module.AiofPreflopCertifiedGlobalLimits(),
+        max_output_records=record_count,
+    )
+    record_success = module.analyze_aiof_preflop_certified_global(
+        one_pair_request(integration_limits=record_limits)
+    )
+    assert record_success.payload is not None
+    assert (
+        independent_record_count(record_success.to_dict())
+        == record_count
+        == record_limits.max_output_records
+    )
+    assert (
+        len(
+            module.exact_aiof_preflop_certified_global_json(
+                record_success
+            ).encode("utf-8")
+        )
+        <= record_limits.max_output_bytes
+    )
+
+    record_failure = module.analyze_aiof_preflop_certified_global(
+        one_pair_request(
+            integration_limits=replace(
+                record_limits,
+                max_output_records=record_count - 1,
+            )
+        )
+    )
+    assert record_failure.status == core.LIMIT_REACHED_NO_CERTIFICATE
+    assert record_failure.payload is None
+    assert record_failure.error.phase == "output"
+    assert not record_failure.partial_result
+
+    initial_byte_count = len(
+        module.exact_aiof_preflop_certified_global_json(baseline).encode(
+            "utf-8"
+        )
+    )
+    byte_probe_limits = replace(
+        module.AiofPreflopCertifiedGlobalLimits(),
+        max_output_bytes=initial_byte_count,
+    )
+    byte_probe = module.analyze_aiof_preflop_certified_global(
+        one_pair_request(integration_limits=byte_probe_limits)
+    )
+    assert byte_probe.payload is not None
+    byte_count = len(
+        module.exact_aiof_preflop_certified_global_json(byte_probe).encode(
+            "utf-8"
+        )
+    )
+
+    byte_limits = replace(
+        module.AiofPreflopCertifiedGlobalLimits(),
+        max_output_bytes=byte_count,
+    )
+    byte_success = module.analyze_aiof_preflop_certified_global(
+        one_pair_request(integration_limits=byte_limits)
+    )
+    assert byte_success.payload is not None
+    assert (
+        len(
+            module.exact_aiof_preflop_certified_global_json(
+                byte_success
+            ).encode("utf-8")
+        )
+        == byte_count
+        == byte_limits.max_output_bytes
+    )
+    assert (
+        independent_record_count(byte_success.to_dict())
+        <= byte_limits.max_output_records
+    )
+
+    byte_failure = module.analyze_aiof_preflop_certified_global(
+        one_pair_request(
+            integration_limits=replace(
+                byte_limits,
+                max_output_bytes=byte_count - 1,
+            )
+        )
+    )
+    assert byte_failure.status == core.LIMIT_REACHED_NO_CERTIFICATE
+    assert byte_failure.payload is None
+    assert byte_failure.error.phase == "output"
+    assert not byte_failure.partial_result
 
 
 def test_horizon_cap_fails_before_discount_weight_materialization():
