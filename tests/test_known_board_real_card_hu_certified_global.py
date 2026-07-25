@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from dataclasses import replace
+from dataclasses import fields, replace
 from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
@@ -384,12 +384,20 @@ def independent_value(
     policy: Policy,
     pure: Pure,
     component: int,
+    *,
+    rate: Fraction = Fraction(0),
+    cap: Fraction | None = None,
 ) -> Fraction:
     total = Fraction(0)
     for index, hero_combo in enumerate(("AsAh", "2s2h")):
         x, call, raise_ = policy[index * 3 : index * 3 + 3]
         fold = 1 - call - raise_
-        lines = terminal_lines(hero_combo, "KsKh")
+        lines = terminal_lines(
+            hero_combo,
+            "KsKh",
+            rate=rate,
+            cap=cap,
+        )
         if pure[0] == "check":
             value = (1 - x) * lines["cc"][component] + x * lines[
                 "cbc" if pure[1] == "call" else "cbf"
@@ -787,6 +795,139 @@ def test_05_tie_uses_hero_worst_and_reports_action_variation_provenance():
     )
 
 
+def test_05b_positive_rake_nested_tie_propagates_independent_hero_range():
+    prepared = module.prepare_known_board_real_card_hu_certified_global_oracle(
+        request(rake_rate=0.5, rake_cap=None)
+    )
+    point: Policy = (
+        Fraction(1, 4),
+        Fraction(1),
+        Fraction(0),
+        Fraction(1, 2),
+        Fraction(1),
+        Fraction(0),
+    )
+    expected_rows = {
+        ("check", "call", "call"): (
+            Fraction(-1),
+            Fraction(-3, 4),
+            Fraction(7, 4),
+        ),
+        ("check", "call", "fold"): (
+            Fraction(-1),
+            Fraction(-3, 4),
+            Fraction(7, 4),
+        ),
+        ("check", "fold", "call"): (
+            Fraction(1, 8),
+            Fraction(-3, 4),
+            Fraction(5, 8),
+        ),
+        ("check", "fold", "fold"): (
+            Fraction(1, 8),
+            Fraction(-3, 4),
+            Fraction(5, 8),
+        ),
+        ("bet", "call", "call"): (
+            Fraction(-3, 2),
+            Fraction(-3, 2),
+            Fraction(3),
+        ),
+        ("bet", "call", "fold"): (
+            Fraction(-3, 2),
+            Fraction(-3, 2),
+            Fraction(3),
+        ),
+        ("bet", "fold", "call"): (
+            Fraction(-3, 2),
+            Fraction(-3, 2),
+            Fraction(3),
+        ),
+        ("bet", "fold", "fold"): (
+            Fraction(-3, 2),
+            Fraction(-3, 2),
+            Fraction(3),
+        ),
+    }
+    independent_rows = {
+        pure: tuple(
+            independent_value(
+                point,
+                pure,
+                component,
+                rate=Fraction(1, 2),
+                cap=None,
+            )
+            for component in range(3)
+        )
+        for pure in pure_strategies()
+    }
+    assert len(independent_rows) == 8
+    assert independent_rows == expected_rows
+    villain_max = max(row[1] for row in independent_rows.values())
+    best_responses = tuple(
+        pure
+        for pure, row in independent_rows.items()
+        if row[1] == villain_max
+    )
+    assert villain_max == Fraction(-3, 4)
+    assert best_responses == (
+        ("check", "call", "call"),
+        ("check", "call", "fold"),
+        ("check", "fold", "call"),
+        ("check", "fold", "fold"),
+    )
+    assert min(independent_rows[pure][0] for pure in best_responses) == -1
+    assert max(independent_rows[pure][0] for pure in best_responses) == Fraction(
+        1, 8
+    )
+
+    evaluation = prepared.oracle.evaluate(exact_policy(prepared, point))
+    response = prepared.oracle.point_record(evaluation.policy_identity).response
+    assert Fraction(response.hero_worst_value) == -1
+    assert Fraction(response.hero_best_value) == Fraction(1, 8)
+    assert Fraction(response.villain_max_value) == Fraction(-3, 4)
+    assert Fraction(response.house_rake_at_hero_worst) == Fraction(7, 4)
+    assert response.complete_response_record_count == 4
+    assert response.hero_worst_witness_count == 2
+    assert response.action_variation_information_sets == (
+        "OOP_vs_IP_bet::V",
+        "OOP_vs_IP_raise::V",
+    )
+    assert tuple(
+        (
+            row.information_set_id,
+            row.villain_bucket_id,
+            row.villain_history,
+            row.conditional_best_actions,
+            row.globally_appearing_actions,
+        )
+        for row in response.rows
+    ) == (
+        (
+            "OOP_first::V",
+            "V",
+            (),
+            ("check",),
+            ("check",),
+        ),
+        (
+            "OOP_vs_IP_bet::V",
+            "V",
+            (("OOP_first::V", "check"),),
+            ("call", "fold"),
+            ("call", "fold"),
+        ),
+        (
+            "OOP_vs_IP_raise::V",
+            "V",
+            (("OOP_first::V", "bet"),),
+            ("call", "fold"),
+            ("call", "fold"),
+        ),
+    )
+
+
 def root_cell(
     prepared: module.KnownBoardRealCardHuCertifiedGlobalPreparation,
 ) -> ExactBehaviorCell:
@@ -917,6 +1058,73 @@ def test_08_identity_pins_fail_closed_before_m36():
     assert result.status == core.STALE_INPUT
     assert result.payload is None and result.error.phase == "pins"
     assert result.optimizer_work_counters == core.CertifiedGlobalWorkCounters()
+
+
+def test_08b_every_m38_pin_accepts_raw_and_equivalent_prefix_and_rejects_stale():
+    base = one_pair_request()
+    prepared = module.prepare_known_board_real_card_hu_certified_global_oracle(
+        base
+    )
+    exposed_identities = {
+        "request_identity": prepared.request_identity,
+        "board_identity": prepared.board_identity,
+        "prepared_joint_identity": prepared.prepared_joint_identity,
+        "profile_mapping_identity": prepared.profile_mapping_identity,
+        "tree_identity": prepared.tree_identity,
+        "baseline_identity": prepared.baseline_identity,
+        "scenario_identity": prepared.scenario.scenario_identity,
+        "response_oracle_identity": prepared.response_oracle_identity,
+        "objective_identity": prepared.objective_identity,
+        "analysis_identity": prepared.analysis_identity,
+    }
+    identities = {
+        name: value[7:] if value.startswith("sha256:") else value
+        for name, value in exposed_identities.items()
+    }
+    assert tuple(identities) == tuple(
+        field.name
+        for field in fields(module.KnownBoardRealCardHuCertifiedGlobalPins)
+    )
+    for name, identity in identities.items():
+        raw = successful(
+            replace(
+                base,
+                pins=module.KnownBoardRealCardHuCertifiedGlobalPins(
+                    **{name: identity}
+                ),
+            )
+        )
+        prefixed = successful(
+            replace(
+                base,
+                pins=module.KnownBoardRealCardHuCertifiedGlobalPins(
+                    **{name: f"sha256:{identity}"}
+                ),
+            )
+        )
+        assert (
+            module.exact_known_board_real_card_hu_certified_global_json(raw)
+            == module.exact_known_board_real_card_hu_certified_global_json(
+                prefixed
+            )
+        )
+        stale_identity = ("0" if identity[0] != "0" else "1") + identity[1:]
+        stale = module.analyze_known_board_real_card_hu_certified_global(
+            replace(
+                base,
+                pins=module.KnownBoardRealCardHuCertifiedGlobalPins(
+                    **{name: stale_identity}
+                ),
+            )
+        )
+        assert stale.status == core.STALE_INPUT
+        assert stale.payload is None and stale.error.phase == "pins"
+        assert stale.error.message == f"pins.{name} mismatch"
+        assert stale.optimizer_work_counters == core.CertifiedGlobalWorkCounters()
+        assert (
+            stale.oracle_work_counters
+            == module.KnownBoardRealCardHuCertifiedOracleWorkCounters()
+        )
 
 
 def reviewer_count(value: object) -> int:

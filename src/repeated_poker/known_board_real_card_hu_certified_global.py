@@ -776,6 +776,7 @@ def _validate_limits(
 def _validate_pins(value: object) -> KnownBoardRealCardHuCertifiedGlobalPins:
     if type(value) is not KnownBoardRealCardHuCertifiedGlobalPins:
         raise AiofContractError(AiofStatus.INVALID_INPUT, "pins has invalid type")
+    normalized: dict[str, str | None] = {}
     for field in fields(value):
         item = getattr(value, field.name)
         token = (
@@ -792,11 +793,13 @@ def _validate_pins(value: object) -> KnownBoardRealCardHuCertifiedGlobalPins:
                 AiofStatus.INVALID_INPUT,
                 f"pins.{field.name} must be lowercase SHA-256 or None",
             )
-    return value
+        normalized[field.name] = token
+    return KnownBoardRealCardHuCertifiedGlobalPins(**normalized)
 
 
 def _check_pin(expected: str | None, actual: str, name: str) -> None:
-    if expected is not None and expected != actual:
+    actual_token = actual[7:] if actual.startswith("sha256:") else actual
+    if expected is not None and expected != actual_token:
         raise _StaleInput(f"{name} mismatch")
 
 
@@ -1357,6 +1360,8 @@ def _aggregate_bucket_affines(
 def _point_solution(
     actions: tuple[tuple[str, _TripleAffine], ...],
     probabilities: dict[tuple[str, str], Fraction],
+    *,
+    hero_best_by_action: dict[str, Fraction] | None = None,
 ) -> _PointSolution:
     values = tuple(
         (action, *triple.value(probabilities)) for action, triple in actions
@@ -1364,7 +1369,14 @@ def _point_solution(
     villain_max = max(row[2] for row in values)
     best = tuple(row for row in values if row[2] == villain_max)
     hero_worst = min(row[1] for row in best)
-    hero_best = max(row[1] for row in best)
+    hero_best = max(
+        (
+            hero_best_by_action[row[0]]
+            if hero_best_by_action is not None
+            else row[1]
+        )
+        for row in best
+    )
     worst_row = next(row for row in best if row[1] == hero_worst)
     return _PointSolution(
         villain=villain_max,
@@ -1413,7 +1425,20 @@ def _bucket_point(
             ),
         ),
     )
-    root = _point_solution(root_actions, probabilities)
+    root = _point_solution(
+        root_actions,
+        probabilities,
+        hero_best_by_action={
+            "check": (
+                bucket.check_direct.hero.value(probabilities)
+                + check_bet.hero_best
+            ),
+            "bet": (
+                bucket.bet_direct.hero.value(probabilities)
+                + bet_raise.hero_best
+            ),
+        },
+    )
 
     complete_count = 0
     worst_count = 0
