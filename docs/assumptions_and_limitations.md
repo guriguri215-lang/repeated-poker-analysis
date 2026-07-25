@@ -117,8 +117,27 @@
 - The separate M36 `certified_global_optimizer` core derives the full product
   of legal Hero behavior-policy simplexes from its in-memory scenario. Its
   certificate is conditional on an identified scalar response oracle providing
-  a valid upper bound over every requested cell. M28/M29/M30-M35 consumers are
-  not connected to that core yet.
+  a valid upper bound over every requested cell.
+- M37 connects only the M28 real-card AIoF preflop semantics to that core. It
+  derives one two-action simplex per blocker-conditioned surviving exact Hero
+  combo, uses exact exhaustive counts and losslessly lifted declared binary64
+  inputs, and bounds the same fixed-adaptation-opportunity repeated objective
+  over every whole cell. The baseline profile is a comparison/incumbent, not a
+  domain restriction.
+- The M37 response is the fresh complete factorized opponent correspondence;
+  post-response safety uses only its Hero-worst value. Exact action ties remain
+  in the correspondence and are not collapsed to a first witness.
+- Nonzero response tolerance, Monte Carlo, unsupported accounting, unsafe
+  numeric input, or an insufficient support/coefficient/response/bound/search/
+  output cap fails with a null payload. There is no grid, sampling, truncation,
+  finite-candidate fallback, or partial certificate.
+- M37 output record and byte caps cover the complete canonical public result,
+  not only its payload. A streaming exact preflight runs before aggregate
+  success projection or full UTF-8 encoding; output-cap failure keeps completed
+  native/consumer counters but exposes no payload or partial certificate.
+- M29 and M30-M35 consumers are not connected to M36 yet. M37 alone does not
+  fulfill R8; the known-board heads-up, abstract/real-card three-player, and
+  unified workflow/closeout work remains in M38-M40.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
