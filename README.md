@@ -293,7 +293,7 @@ for the scalar-oracle boundary, soundness argument, certificate fields, caps,
 identity contract, analytic example, and direct API. M36 is the optimizer core
 only. M37 connects the real-card preflop consumer and M38 connects the
 known-board real-card heads-up river/rake consumer as described next;
-abstract/real-card three-player consumers remain later scope. The certificate
+abstract/real-card three-player consumers are connected by M39 below. The certificate
 claims only a specified-tolerance global optimum for a
 conforming bounded scalar oracle, not an equilibrium, solver-grade scale,
 real-world profitability, or strategy advice.
@@ -329,8 +329,8 @@ caps, no-partial contract, public API, and claim boundary. Success is only
 `CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL`. It certifies the identified
 real-card preflop scalar objective at the requested tolerance, not an
 equilibrium, ICM result, solver-grade scale, profitability result, or strategy
-recommendation. M37 is one R8 consumer integration; M38 adds a second, while
-M39-M40 remain.
+recommendation. M37 is one R8 consumer integration, M38 adds a second, and M39
+adds the two three-player consumers below; M40 unified workflow remains.
 The M37 output caps measure the complete public result wrapper in the same
 canonical UTF-8 shape returned by
 `exact_aiof_preflop_certified_global_json`; a deterministic streaming preflight
@@ -365,6 +365,35 @@ for the proof, identities, caps, output wrapper, and claim boundary. Success
 certifies only the identified bounded scalar maximum at its reported gap. It
 does not certify an equilibrium, ICM, solver-grade scale, profitability,
 adaptation behavior, or strategy advice.
+
+### Abstract and known-board real-card three-player certified global integration
+
+`repeated_poker.three_player_certified_global` integrates M36 with both the
+abstract M31 river/rake scenario and M35's strict known-board real-card
+three-player source. It derives the complete Hero action-simplex product from
+the validated tree. M32 candidates, shifts, grids, pure vertices, local boxes,
+and warm-start neighbourhoods do not define or narrow that domain.
+
+```powershell
+python examples/three_player_certified_global.py
+```
+
+Each non-baseline point preserves the fixed supplied-profile value, then makes
+a fresh M31 call and uses only the Hero-worst value from M30's complete exact
+two-opponent non-cooperative response correspondence. A consumer-owned exact
+terminal envelope covers every policy, response tie, and rake/cap boundary in
+each whole cell; simplex singleton cells call the same point oracle and agree
+exactly. The envelope is intentionally conservative: insufficient search caps
+produce no certificate rather than a finite-candidate or local fallback.
+
+See
+[docs/three_player_certified_global.md](docs/three_player_certified_global.md)
+for the objective, bound proof, real-card ordered-triple preservation,
+identities, final-wrapper caps, failure taxonomy, and public API. Success
+certifies only the identified bounded scalar maximum at its reported
+tolerance. It does not certify an equilibrium, solver-grade scale,
+profitability, adaptation behavior, collusion resistance, or strategy advice.
+M40 unified workflow and broader lifecycle closeout remain separate.
 
 ### Real-card AIoF public workflow
 
