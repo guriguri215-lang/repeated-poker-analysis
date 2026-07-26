@@ -158,8 +158,19 @@
 - The M39 envelope can be loose. If the requested tolerance cannot be proved
   within the declared M36/M39 caps, the result is
   `LIMIT_REACHED_NO_CERTIFICATE`, never a local/grid/candidate fallback.
-- M37-M39 consumer integrations still do not fulfill the broader R8 lifecycle;
-  M40 unified workflow and human merge/post-merge closeout remain outstanding.
+- M40 offers one four-way discriminated workflow over the stable M37-M39
+  public consumers. It calls exactly one selected analyzer and retains the
+  complete native result/certificate/counters/identities or the exact native
+  failure evidence. It does not reimplement or approximate a consumer oracle.
+- M40 final-wrapper record/byte caps are fail closed and no partial result is
+  exposed. Very-low caps stop before nested aggregate materialization.
+- M40 does not compare variants and accepts no candidate, grid, vertices,
+  local box, warm start, sampling, truncation, or fallback controls. M32
+  finite candidates remain a separate valid R6 workflow, never an R8
+  certificate.
+- M37-M40 implementation does not by itself fulfill the broader R8 lifecycle;
+  separate independent review, human merge, and post-merge final closeout
+  remain outstanding.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it

@@ -330,7 +330,8 @@ caps, no-partial contract, public API, and claim boundary. Success is only
 real-card preflop scalar objective at the requested tolerance, not an
 equilibrium, ICM result, solver-grade scale, profitability result, or strategy
 recommendation. M37 is one R8 consumer integration, M38 adds a second, and M39
-adds the two three-player consumers below; M40 unified workflow remains.
+adds the two three-player consumers below. M40 provides the unified
+exactly-one-consumer public workflow described after those integrations.
 The M37 output caps measure the complete public result wrapper in the same
 canonical UTF-8 shape returned by
 `exact_aiof_preflop_certified_global_json`; a deterministic streaming preflight
@@ -393,7 +394,35 @@ identities, final-wrapper caps, failure taxonomy, and public API. Success
 certifies only the identified bounded scalar maximum at its reported
 tolerance. It does not certify an equilibrium, solver-grade scale,
 profitability, adaptation behavior, collusion resistance, or strategy advice.
-M40 unified workflow and broader lifecycle closeout remain separate.
+M40 unifies these consumers below; independent review, human merge, and
+post-merge broader lifecycle closeout remain separate.
+
+### Unified certified-global public workflow
+
+`repeated_poker.unified_certified_global_workflow` exposes one discriminated
+public request for the M37 real-card AIoF preflop, M38 known-board real-card HU
+river/rake, M39 abstract three-player river/rake, and M39 known-board real-card
+three-player river/rake paths. It validates the exact variant/request pair and
+calls exactly one existing public analyzer. The complete native result,
+certificate, identities, counters, and failure cause are retained without
+reimplementing poker, response, objective, or bound semantics.
+
+```powershell
+python examples/unified_certified_global_workflow.py
+```
+
+See
+[docs/unified_certified_global_workflow.md](docs/unified_certified_global_workflow.md)
+for the four-way mapping, canonical identities and pins, final-wrapper caps,
+no partial failure contract, and the R1-R8 cross-module test crosswalk. M40
+accepts no candidate, grid, local box, warm start, sampling, truncation, or
+fallback controls. Its claim is only the selected variant's identified bounded
+scalar objective certified maximum at the specified tolerance; it makes no
+cross-variant, equilibrium, profitability, solver-grade, or strategy advice
+claim.
+
+This implementation does not itself complete R8. A separate independent
+review, human merge, and post-merge verification/final closeout are mandatory.
 
 ### Real-card AIoF public workflow
 
