@@ -8,6 +8,16 @@ dispatches a handful of JSON POST routes. This module factors out the parts that
 are shared across those scripts so there is a single place to read and fix them,
 and so a new GUI can reuse them instead of copying the scaffolding again.
 
+Before dispatching any POST route, the shared handler verifies that the request
+targets the server's listening authority, accepts only ``application/json``
+(with an optional ``charset`` parameter), rejects a foreign ``Origin`` and
+``Sec-Fetch-Site: cross-site``, and refuses every CORS preflight. Originless JSON
+requests remain available to non-browser clients; a browser cannot produce that
+cross-origin JSON request without the refused preflight. These checks protect the
+path-taking APIs from browser cross-site writes, but are not a filesystem sandbox:
+an accepted local client may still use the documented path and explicit overwrite
+options.
+
 What lives here is deliberately small and mode-agnostic: the request-handler
 factory and server builder, plus a few tiny payload / option primitives -- the
 JSON message shape, string coercion, the boolean-flag guard, the analyze-option
@@ -23,6 +33,42 @@ from __future__ import annotations
 import json
 import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class _RequestRejected(Exception):
+    """Carry the HTTP status for a request rejected before API dispatch."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+def _accepts_json_content_type(value: str) -> bool:
+    """Return whether ``value`` is JSON with at most one charset parameter."""
+
+    parts = [part.strip() for part in value.split(";")]
+    if not parts or parts[0].lower() != "application/json":
+        return False
+    if len(parts) == 1:
+        return True
+    if len(parts) != 2:
+        return False
+    name, separator, parameter_value = parts[1].partition("=")
+    return (
+        bool(separator)
+        and name.strip().lower() == "charset"
+        and bool(parameter_value.strip())
+    )
+
+
+def _authority_for_server(server: ThreadingHTTPServer) -> str:
+    """Return the exact HTTP authority for the server's bound address."""
+
+    host, port = server.server_address[:2]
+    host = str(host)
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return host if port == 80 else f"{host}:{port}"
 
 
 def messages_payload(messages) -> list:
@@ -117,10 +163,12 @@ def make_handler(api, page):
 
     ``api`` maps a POST path (for example ``"/api/load"``) to a function taking the
     decoded JSON payload and returning a JSON-serialisable result; ``page`` is the
-    HTML served at ``GET /``. The handler keeps the GUIs' shared safety behaviour:
-    a :class:`ValueError` becomes a short ``400`` error message, any other
-    exception becomes a generic ``500`` "internal error" with no traceback, and the
-    default per-request logging is silenced.
+    HTML served at ``GET /``. Before API dispatch, the handler enforces the bound
+    ``Host``, JSON MIME type, same-origin browser provenance, and no-CORS-preflight
+    rules described in the module docstring. It also keeps the GUIs' shared error
+    behaviour: a :class:`ValueError` becomes a short ``400`` error message, any
+    other exception becomes a generic ``500`` "internal error" with no traceback,
+    and the default per-request logging is silenced.
     """
 
     class _Handler(BaseHTTPRequestHandler):
@@ -137,8 +185,34 @@ def make_handler(api, page):
             raw = self.rfile.read(length) if length else b""
             try:
                 return json.loads(raw.decode("utf-8")) if raw else {}
-            except json.JSONDecodeError:
+            except (UnicodeDecodeError, json.JSONDecodeError):
                 raise ValueError("request body must be valid JSON")
+
+        def _validate_post_request(self):
+            authority = _authority_for_server(self.server)
+
+            host_headers = self.headers.get_all("Host", [])
+            if len(host_headers) != 1 or host_headers[0].strip() != authority:
+                raise _RequestRejected("request Host is not allowed", 403)
+
+            fetch_site_headers = self.headers.get_all("Sec-Fetch-Site", [])
+            if any(value.strip().lower() == "cross-site" for value in fetch_site_headers):
+                raise _RequestRejected("cross-site requests are not allowed", 403)
+
+            origin_headers = self.headers.get_all("Origin", [])
+            if len(origin_headers) > 1:
+                raise _RequestRejected("request Origin is not allowed", 403)
+            if origin_headers and origin_headers[0].strip() != f"http://{authority}":
+                raise _RequestRejected("request Origin is not allowed", 403)
+
+            content_type_headers = self.headers.get_all("Content-Type", [])
+            if len(content_type_headers) != 1 or not _accepts_json_content_type(
+                content_type_headers[0]
+            ):
+                raise _RequestRejected(
+                    "Content-Type must be application/json",
+                    415,
+                )
 
         def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
             if self.path in ("/", "/index.html"):
@@ -152,6 +226,12 @@ def make_handler(api, page):
                 self._send_json({"ok": False, "error": "not found"}, 404)
 
         def do_POST(self):  # noqa: N802 - BaseHTTPRequestHandler API
+            try:
+                self._validate_post_request()
+            except _RequestRejected as exc:
+                self._send_json({"ok": False, "error": str(exc)}, exc.status)
+                return
+
             handler = api.get(self.path)
             if handler is None:
                 self._send_json({"ok": False, "error": "not found"}, 404)
@@ -164,6 +244,11 @@ def make_handler(api, page):
                 self._send_json({"ok": False, "error": str(exc)}, 400)
             except Exception:  # noqa: BLE001 - never leak a traceback to the client
                 self._send_json({"ok": False, "error": "internal error"}, 500)
+
+        def do_OPTIONS(self):  # noqa: N802 - BaseHTTPRequestHandler API
+            # No route opts into CORS. In particular, never authorize the
+            # application/json preflight a cross-origin browser would require.
+            self._send_json({"ok": False, "error": "CORS is not allowed"}, 403)
 
         def log_message(self, *_args):  # silence the default per-request logging
             pass

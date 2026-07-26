@@ -130,6 +130,35 @@ The Results summary shows the analysis outputs already produced by the pipeline:
 - The GUI must be able to import an existing scenario JSON and export the current
   form state as JSON at any time.
 
+### Local GUI request-security boundary
+
+All five implemented `scripts/serve_*_gui.py` workflows construct their server
+through `scripts/gui_common.py`, so they share one HTTP request-security boundary.
+The servers bind to `127.0.0.1` by default. Before any POST route is looked up or
+called, the common handler:
+
+- requires the `Host` header to exactly match the bound listening authority;
+- accepts only `Content-Type: application/json`, optionally with one `charset`
+  parameter;
+- requires an `Origin`, when present, to be the exact `http` origin of that
+  authority;
+- rejects `Sec-Fetch-Site: cross-site`; and
+- rejects `OPTIONS` preflight without returning any CORS allow header.
+
+An absent `Origin` is accepted intentionally for existing non-browser JSON
+clients, including the command-line/integration-test clients. This does not give a
+hostile web page a simple-request path: a browser cannot send cross-origin
+`application/json` without a preflight, the server never authorizes that
+preflight, and browser-simple MIME types such as `text/plain` are rejected before
+API dispatch. Same-origin browser JSON requests and normal `GET /` serving remain
+available.
+
+This is a browser request-provenance boundary, not a filesystem sandbox or an
+authentication layer. An accepted local client can still supply an arbitrary path,
+and `force: true` still explicitly permits overwriting it. Users should run the GUI
+only on a trusted machine, keep the loopback default, and stop the server when the
+local editing session is finished.
+
 ### Scenario form model (supported modes)
 
 A first slice of this data flow already exists as a small, GUI-independent layer

@@ -30,7 +30,11 @@ Endpoints:
 Security / safety: it binds to ``127.0.0.1`` by default and makes no external
 calls. It reads and writes only the local paths you type into the form, refuses to
 overwrite an existing file unless the overwrite box is checked, and returns short
-``error`` messages (never a traceback) on failure.
+``error`` messages (never a traceback) on failure. The common handler accepts only
+JSON POSTs for the exact listening ``Host``, rejects foreign browser origins and
+cross-site fetches before API dispatch, and never authorizes CORS preflight.
+Originless JSON remains supported for non-browser clients. This request boundary
+does not restrict an accepted local client's arbitrary path or explicit overwrite.
 """
 
 from __future__ import annotations
