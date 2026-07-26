@@ -1222,6 +1222,391 @@ def test_18b_real_card_invalid_integration_limit_precedes_m35_preparation(
     assert calls["prepare"] == 0
 
 
+@pytest.mark.parametrize(
+    ("case", "expected_status", "expected_phase", "expected_cause"),
+    [
+        ("horizon_zero", m36.INVALID_INPUT, "repeated.horizon", None),
+        (
+            "adaptation_zero",
+            m36.INVALID_INPUT,
+            "repeated.adaptation_opportunity",
+            None,
+        ),
+        ("discount_nan", m36.INVALID_INPUT, "repeated.discount", None),
+        ("discount_zero", m36.INVALID_INPUT, "repeated.discount", None),
+        ("discount_above_one", m36.INVALID_INPUT, "repeated.discount", None),
+        (
+            "absolute_gap_nan",
+            m36.INVALID_INPUT,
+            "absolute_gap_tolerance",
+            None,
+        ),
+        (
+            "absolute_gap_malformed",
+            m36.INVALID_INPUT,
+            "absolute_gap_tolerance",
+            None,
+        ),
+        (
+            "relative_gap_nan",
+            m36.INVALID_INPUT,
+            "relative_gap_tolerance",
+            None,
+        ),
+        (
+            "relative_gap_negative",
+            m36.INVALID_INPUT,
+            "relative_gap_tolerance",
+            None,
+        ),
+        (
+            "integration_limit_bool",
+            m36.INVALID_INPUT,
+            "limits.max_point_evaluations",
+            None,
+        ),
+        (
+            "integration_limit_ceiling",
+            m36.INVALID_INPUT,
+            "limits.max_point_evaluations",
+            None,
+        ),
+        ("optimizer_wrong_type", m36.INVALID_INPUT, "request", None),
+        (
+            "optimizer_limit_bool",
+            m36.INVALID_INPUT,
+            "optimizer",
+            m36.INVALID_INPUT,
+        ),
+        (
+            "optimizer_limit_zero",
+            m36.INVALID_INPUT,
+            "optimizer",
+            m36.INVALID_INPUT,
+        ),
+        (
+            "optimizer_limit_ceiling",
+            m36.INVALID_INPUT,
+            "optimizer",
+            m36.INVALID_INPUT,
+        ),
+        (
+            "optimizer_pin_malformed",
+            m36.INVALID_INPUT,
+            "optimizer",
+            m36.INVALID_INPUT,
+        ),
+        ("m39_pin_malformed", m36.INVALID_INPUT, "pins", None),
+        (
+            "exact_rational_growth",
+            m36.NUMERIC_FAILURE,
+            "repeated.post_weight",
+            None,
+        ),
+    ],
+)
+def test_18c_all_real_card_m39_controls_preflight_before_m35_allocation(
+    monkeypatch,
+    case,
+    expected_status,
+    expected_phase,
+    expected_cause,
+):
+    request = real_card_request()
+    if case == "horizon_zero":
+        request = replace(
+            request,
+            source=replace(
+                request.source,
+                repeated=replace(request.source.repeated, horizon=0),
+            ),
+        )
+    elif case == "adaptation_zero":
+        request = replace(request, adaptation_opportunity=0)
+    elif case == "discount_nan":
+        request = replace(
+            request,
+            source=replace(
+                request.source,
+                repeated=replace(
+                    request.source.repeated, discount=float("nan")
+                ),
+            ),
+        )
+    elif case == "discount_zero":
+        request = replace(
+            request,
+            source=replace(
+                request.source,
+                repeated=replace(request.source.repeated, discount=0.0),
+            ),
+        )
+    elif case == "discount_above_one":
+        request = replace(
+            request,
+            source=replace(
+                request.source,
+                repeated=replace(request.source.repeated, discount=1.01),
+            ),
+        )
+    elif case == "absolute_gap_nan":
+        request = replace(request, absolute_gap_tolerance=float("nan"))
+    elif case == "absolute_gap_malformed":
+        request = replace(request, absolute_gap_tolerance="1/0")
+    elif case == "relative_gap_nan":
+        request = replace(request, relative_gap_tolerance=float("nan"))
+    elif case == "relative_gap_negative":
+        request = replace(request, relative_gap_tolerance="-1")
+    elif case == "integration_limit_bool":
+        request = replace(
+            request,
+            integration_limits=replace(
+                request.integration_limits, max_point_evaluations=True
+            ),
+        )
+    elif case == "integration_limit_ceiling":
+        request = replace(
+            request,
+            integration_limits=replace(
+                request.integration_limits,
+                max_point_evaluations=module.MAX_POINT_EVALUATIONS + 1,
+            ),
+        )
+    elif case == "optimizer_wrong_type":
+        request = replace(request, optimizer_limits=object())
+    elif case == "optimizer_limit_bool":
+        request = replace(
+            request,
+            optimizer_limits=replace(
+                request.optimizer_limits, max_oracle_calls=True
+            ),
+        )
+    elif case == "optimizer_limit_zero":
+        request = replace(
+            request,
+            optimizer_limits=replace(
+                request.optimizer_limits, max_oracle_calls=0
+            ),
+        )
+    elif case == "optimizer_limit_ceiling":
+        request = replace(
+            request,
+            optimizer_limits=replace(
+                request.optimizer_limits,
+                max_oracle_calls=m36.HARD_MAX_ORACLE_CALLS + 1,
+            ),
+        )
+    elif case == "optimizer_pin_malformed":
+        request = replace(
+            request,
+            optimizer_pins=m36.CertifiedGlobalOptimizerPins(
+                run_identity="0" * 63
+            ),
+        )
+    elif case == "m39_pin_malformed":
+        request = replace(
+            request,
+            pins=module.ThreePlayerCertifiedGlobalPins(
+                request_identity="sha256:" + "0" * 63
+            ),
+        )
+    elif case == "exact_rational_growth":
+        request = replace(
+            request,
+            source=replace(
+                request.source,
+                repeated=replace(
+                    request.source.repeated, horizon=10, discount="2/3"
+                ),
+            ),
+            integration_limits=replace(
+                request.integration_limits,
+                max_rational_numerator_bits=8,
+                max_rational_denominator_bits=8,
+            ),
+        )
+    else:
+        raise AssertionError(f"unknown case {case}")
+
+    calls = {"prepare": 0}
+
+    def forbidden(*args, **kwargs):
+        calls["prepare"] += 1
+        raise AssertionError("M35 preparation must not run")
+
+    monkeypatch.setattr(m35, "_prepare_support_internal", forbidden)
+    result = module.analyze_known_board_real_card_three_player_certified_global(
+        request
+    )
+    assert result.status == expected_status
+    assert result.error.phase == expected_phase
+    assert result.error.cause_status == expected_cause
+    assert result.payload is None
+    assert result.partial_result is False
+    assert calls["prepare"] == 0
+    assert all(
+        value == 0
+        for value in asdict(result.optimizer_work_counters).values()
+    )
+    assert all(
+        value == 0 for value in asdict(result.oracle_work_counters).values()
+    )
+
+
+def test_18d_cross_stale_optimizer_pin_preflights_before_m35_allocation(
+    monkeypatch,
+):
+    baseline = module.analyze_known_board_real_card_three_player_certified_global(
+        real_card_request()
+    )
+    assert baseline.payload is not None
+    identity = baseline.payload.preparation.identities["response_oracle_identity"]
+    stale = ("0" if identity[0] != "0" else "1") + identity[1:]
+    request = replace(
+        real_card_request(),
+        pins=module.ThreePlayerCertifiedGlobalPins(
+            response_oracle_identity=identity
+        ),
+        optimizer_pins=m36.CertifiedGlobalOptimizerPins(
+            response_oracle_identity=stale
+        ),
+    )
+    calls = {"prepare": 0}
+
+    def forbidden(*args, **kwargs):
+        calls["prepare"] += 1
+        raise AssertionError("M35 preparation must not run")
+
+    monkeypatch.setattr(m35, "_prepare_support_internal", forbidden)
+    result = module.analyze_known_board_real_card_three_player_certified_global(
+        request
+    )
+    assert result.status == m36.STALE_INPUT
+    assert result.error.phase == "optimizer"
+    assert result.error.cause_status == m36.STALE_INPUT
+    assert result.payload is None
+    assert result.partial_result is False
+    assert calls["prepare"] == 0
+    assert all(
+        value == 0
+        for value in asdict(result.optimizer_work_counters).values()
+    )
+    assert all(
+        value == 0 for value in asdict(result.oracle_work_counters).values()
+    )
+
+
+def test_18e_valid_real_card_preflight_preserves_m35_seam_and_public_result(
+    monkeypatch,
+):
+    request = real_card_request()
+    baseline = module.analyze_known_board_real_card_three_player_certified_global(
+        request
+    )
+    assert baseline.payload is not None
+    expected_json = module.exact_three_player_certified_global_json(baseline)
+    expected_records = recursive_count(baseline.to_dict())
+    expected_baseline_identity = (
+        baseline.payload.preparation.real_card.baseline_identity
+    )
+    original = m35._prepare_support_internal
+    calls = {"prepare": 0}
+
+    def counted(*args, **kwargs):
+        calls["prepare"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(m35, "_prepare_support_internal", counted)
+    actual = module.analyze_known_board_real_card_three_player_certified_global(
+        request
+    )
+    assert actual.payload is not None
+    assert calls["prepare"] == 1
+    assert module.exact_three_player_certified_global_json(actual) == expected_json
+    assert recursive_count(actual.to_dict()) == expected_records
+    assert actual.optimizer_work_counters == baseline.optimizer_work_counters
+    assert actual.oracle_work_counters == baseline.oracle_work_counters
+    assert (
+        actual.payload.preparation.real_card.baseline_identity
+        == expected_baseline_identity
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "changed_value"),
+    [
+        ("verifier", "DIFFERENT INDEPENDENT VERIFIER"),
+        ("verification_date", "2026-07-26"),
+        ("evidence_version", "m39-independent-test-v2"),
+    ],
+)
+def test_18f_perfect_recall_provenance_changes_relevant_m39_identity_chain(
+    field,
+    changed_value,
+):
+    request = two_action_request()
+    baseline = success(request)
+    changed = success(
+        replace(
+            request,
+            attestation=replace(
+                request.attestation, **{field: changed_value}
+            ),
+        )
+    )
+    baseline_ids = baseline.payload.preparation.identities
+    changed_ids = changed.payload.preparation.identities
+    for identity_field in (
+        "request_identity",
+        "response_oracle_identity",
+        "objective_identity",
+        "analysis_identity",
+    ):
+        assert baseline_ids[identity_field] != changed_ids[identity_field]
+    for stable_field in (
+        "scenario_identity",
+        "tree_structure_identity",
+        "baseline_identity",
+        "domain_identity",
+    ):
+        assert baseline_ids[stable_field] == changed_ids[stable_field]
+    baseline_perfect_recall = (
+        baseline.payload.baseline_point.scenario_response.scenario_evaluation[
+            "identities"
+        ]["perfect_recall_evidence"]
+    )
+    changed_perfect_recall = (
+        changed.payload.baseline_point.scenario_response.scenario_evaluation[
+            "identities"
+        ]["perfect_recall_evidence"]
+    )
+    assert baseline_perfect_recall != changed_perfect_recall
+    assert (
+        module.exact_three_player_certified_global_json(baseline)
+        != module.exact_three_player_certified_global_json(changed)
+    )
+
+
+def test_18g_old_request_pin_rejects_changed_perfect_recall_provenance():
+    request = two_action_request()
+    baseline = success(request)
+    old_identity = baseline.payload.preparation.identities["request_identity"]
+    changed = replace(
+        request,
+        attestation=replace(
+            request.attestation, verifier="DIFFERENT INDEPENDENT VERIFIER"
+        ),
+        pins=module.ThreePlayerCertifiedGlobalPins(
+            request_identity=old_identity
+        ),
+    )
+    result = module.analyze_abstract_three_player_certified_global(changed)
+    assert result.status == m36.STALE_INPUT
+    assert result.error.phase == "pins"
+    assert result.payload is None
+    assert result.partial_result is False
+
+
 def test_19_public_claim_identity_and_serializer_are_deterministic():
     first = success(two_action_request())
     second = success(two_action_request())
@@ -1251,7 +1636,7 @@ def test_20_example_is_two_process_byte_deterministic():
     assert first.count(b"\r") == 0
     assert (
         hashlib.sha256(first).hexdigest()
-        == "7cac73238b5fa7f4b3e5038f22092e2a5d122b91ac247e503f8a1b6f57869d5d"
+        == "46aa85c8be78f38c95d368fa00b78a208d89e8c86c547ad4b6a3f74d900ddf9f"
     )
 
 

@@ -559,7 +559,10 @@ def _validate_pins(value: object) -> ThreePlayerCertifiedGlobalPins:
 
 
 def _repeated_projection(
-    value: object, limits: ThreePlayerCertifiedGlobalLimits
+    value: object,
+    limits: ThreePlayerCertifiedGlobalLimits,
+    *,
+    maximum_bits: int | None = None,
 ) -> tuple[dict[str, Any], Fraction, Fraction, Fraction]:
     if type(value) is not ThreePlayerCertifiedRepeatedConfig:
         raise _M39Failure(
@@ -582,12 +585,20 @@ def _repeated_projection(
         limits.max_rational_numerator_bits,
         limits.max_rational_denominator_bits,
     )
+    if maximum_bits is not None:
+        bit_cap = min(bit_cap, maximum_bits)
     discount = _parse_exact(
         value.discount,
         "repeated.discount",
         nonnegative=True,
         maximum_bits=bit_cap,
     )
+    if not 0 < discount <= 1:
+        raise _M39Failure(
+            _m36.INVALID_INPUT,
+            "repeated.discount",
+            "discount must satisfy 0 < discount <= 1",
+        )
     term = Fraction(1)
     pre = Fraction(0)
     post = Fraction(0)
@@ -1086,15 +1097,132 @@ class ThreePlayerCertifiedScalarOracle:
 
 
 @dataclass(frozen=True)
+class _PreflightedControls:
+    repeated_projection: Mapping[str, Any]
+    pre_adaptation_weight: Fraction
+    post_adaptation_weight: Fraction
+    total_weight: Fraction
+    absolute_gap_tolerance: str
+    relative_gap_tolerance: str
+    integration_limits: ThreePlayerCertifiedGlobalLimits
+    optimizer_limits: _m36.CertifiedGlobalOptimizerLimits
+    optimizer_pins: _m36.CertifiedGlobalOptimizerPins
+    pins: ThreePlayerCertifiedGlobalPins
+
+
+def _preflight_controls(
+    *,
+    repeated: object,
+    absolute_gap_tolerance: object,
+    relative_gap_tolerance: object,
+    integration_limits: object,
+    optimizer_limits: object,
+    optimizer_pins: object,
+    pins: object,
+) -> _PreflightedControls:
+    """Normalize every M39-only control without allocating consumer support."""
+
+    limits = _validate_limits(integration_limits)
+    normalized_pins = _validate_pins(pins)
+    if type(optimizer_limits) is not _m36.CertifiedGlobalOptimizerLimits:
+        raise _M39Failure(
+            _m36.INVALID_INPUT,
+            "request",
+            "optimizer_limits has the wrong type",
+        )
+    if type(optimizer_pins) is not _m36.CertifiedGlobalOptimizerPins:
+        raise _M39Failure(
+            _m36.INVALID_INPUT,
+            "request",
+            "optimizer_pins has the wrong type",
+        )
+    try:
+        validated_optimizer_limits = _m36._validate_limits(optimizer_limits)
+        validated_optimizer_pins = _m36._validate_pins(optimizer_pins)
+    except _m36._OptimizerFailure as exc:
+        raise _M39Failure(
+            exc.status,
+            "optimizer",
+            str(exc) or "M36 optimizer control validation failed",
+            cause_status=exc.status,
+        ) from exc
+
+    for optimizer_name, m39_name in (
+        ("baseline_policy_identity", "baseline_identity"),
+        ("response_oracle_identity", "response_oracle_identity"),
+        ("objective_identity", "objective_identity"),
+    ):
+        optimizer_value = getattr(validated_optimizer_pins, optimizer_name)
+        m39_value = getattr(normalized_pins, m39_name)
+        if (
+            optimizer_value is not None
+            and m39_value is not None
+            and optimizer_value != m39_value
+        ):
+            raise _M39Failure(
+                _m36.STALE_INPUT,
+                "optimizer",
+                (
+                    f"optimizer_pins.{optimizer_name} conflicts with "
+                    f"pins.{m39_name}"
+                ),
+                cause_status=_m36.STALE_INPUT,
+            )
+
+    bit_cap = min(
+        limits.max_rational_numerator_bits,
+        limits.max_rational_denominator_bits,
+        validated_optimizer_limits.max_rational_numerator_bits,
+        validated_optimizer_limits.max_rational_denominator_bits,
+    )
+    repeated_projection, pre, post, total = _repeated_projection(
+        repeated,
+        limits,
+        maximum_bits=bit_cap,
+    )
+    absolute = _rational_text(
+        _parse_exact(
+            absolute_gap_tolerance,
+            "absolute_gap_tolerance",
+            nonnegative=True,
+            maximum_bits=bit_cap,
+        )
+    )
+    relative = _rational_text(
+        _parse_exact(
+            relative_gap_tolerance,
+            "relative_gap_tolerance",
+            nonnegative=True,
+            maximum_bits=bit_cap,
+        )
+    )
+    return _PreflightedControls(
+        repeated_projection=repeated_projection,
+        pre_adaptation_weight=pre,
+        post_adaptation_weight=post,
+        total_weight=total,
+        absolute_gap_tolerance=absolute,
+        relative_gap_tolerance=relative,
+        integration_limits=limits,
+        optimizer_limits=validated_optimizer_limits,
+        optimizer_pins=validated_optimizer_pins,
+        pins=normalized_pins,
+    )
+
+
+@dataclass(frozen=True)
 class _PreparedInputs:
     surface_kind: str
     scenario: _m31.ThreePlayerRiverRakeScenario
     baseline_policy: _m31.ExactBehaviorPolicy
     initial_profile: _m31.OpponentInitialProfile
     attestation: _m31.PerfectRecallAttestation
-    repeated: ThreePlayerCertifiedRepeatedConfig
-    absolute_gap_tolerance: object
-    relative_gap_tolerance: object
+    repeated_projection: Mapping[str, Any]
+    pre_adaptation_weight: Fraction
+    post_adaptation_weight: Fraction
+    total_weight: Fraction
+    absolute_gap_tolerance: str
+    relative_gap_tolerance: str
     integration_limits: ThreePlayerCertifiedGlobalLimits
     optimizer_limits: _m36.CertifiedGlobalOptimizerLimits
     m31_limits: _m31.RiverRakeLimits
@@ -1109,25 +1237,30 @@ class _PreparedInputs:
 def _real_card_inputs(
     request: KnownBoardRealCardThreePlayerCertifiedGlobalRequest,
 ) -> _PreparedInputs:
-    _validate_limits(request.integration_limits)
-    _validate_pins(request.pins)
-    if type(request.optimizer_limits) is not _m36.CertifiedGlobalOptimizerLimits:
+    if type(request) is not KnownBoardRealCardThreePlayerCertifiedGlobalRequest:
         raise _M39Failure(
             _m36.INVALID_INPUT,
             "request",
-            "optimizer_limits has the wrong type",
-        )
-    if type(request.optimizer_pins) is not _m36.CertifiedGlobalOptimizerPins:
-        raise _M39Failure(
-            _m36.INVALID_INPUT,
-            "request",
-            "optimizer_pins has the wrong type",
+            "real-card request has the wrong type",
         )
     if type(request.source) is not _m35.KnownBoardRealCardThreePlayerRequest:
         raise _M39Failure(
             _m36.INVALID_INPUT, "real_card", "source has the wrong type"
         )
     source = _m35._validate_request_types(request.source)
+    controls = _preflight_controls(
+        repeated=ThreePlayerCertifiedRepeatedConfig(
+            horizon=source.repeated.horizon,
+            adaptation_opportunity=request.adaptation_opportunity,
+            discount=source.repeated.discount,
+        ),
+        absolute_gap_tolerance=request.absolute_gap_tolerance,
+        relative_gap_tolerance=request.relative_gap_tolerance,
+        integration_limits=request.integration_limits,
+        optimizer_limits=request.optimizer_limits,
+        optimizer_pins=request.optimizer_pins,
+        pins=request.pins,
+    )
     limits = source.limits
     initial = _m35._parse_rational(
         source.initial_contribution,
@@ -1346,28 +1479,26 @@ def _real_card_inputs(
             "evaluator": _m35._identity({"evaluator": _m35.EVALUATOR_ID}),
         },
     )
-    repeated = ThreePlayerCertifiedRepeatedConfig(
-        horizon=source.repeated.horizon,
-        adaptation_opportunity=request.adaptation_opportunity,
-        discount=source.repeated.discount,
-    )
     return _PreparedInputs(
         surface_kind=KNOWN_BOARD_REAL_CARD,
         scenario=scenario,
         baseline_policy=hero_policy,
         initial_profile=initial_profile,
         attestation=evidence,
-        repeated=repeated,
-        absolute_gap_tolerance=request.absolute_gap_tolerance,
-        relative_gap_tolerance=request.relative_gap_tolerance,
-        integration_limits=request.integration_limits,
-        optimizer_limits=request.optimizer_limits,
+        repeated_projection=controls.repeated_projection,
+        pre_adaptation_weight=controls.pre_adaptation_weight,
+        post_adaptation_weight=controls.post_adaptation_weight,
+        total_weight=controls.total_weight,
+        absolute_gap_tolerance=controls.absolute_gap_tolerance,
+        relative_gap_tolerance=controls.relative_gap_tolerance,
+        integration_limits=controls.integration_limits,
+        optimizer_limits=controls.optimizer_limits,
         m31_limits=source.m31_limits,
         m30_limits=source.m30_limits,
         m31_pins=_m31.RiverRakeIdentityPins(),
         m30_pins=_m30.ResponseIdentityPins(),
-        optimizer_pins=request.optimizer_pins,
-        pins=request.pins,
+        optimizer_pins=controls.optimizer_pins,
+        pins=controls.pins,
         real_card=real_card,
     )
 
@@ -1396,43 +1527,45 @@ def _abstract_inputs(
             _m31.PerfectRecallAttestation,
             "attestation",
         ),
-        (
-            request.optimizer_limits,
-            _m36.CertifiedGlobalOptimizerLimits,
-            "optimizer_limits",
-        ),
         (request.m31_limits, _m31.RiverRakeLimits, "m31_limits"),
         (request.m30_limits, _m30.ExactResponseLimits, "m30_limits"),
         (request.m31_pins, _m31.RiverRakeIdentityPins, "m31_pins"),
         (request.m30_pins, _m30.ResponseIdentityPins, "m30_pins"),
-        (
-            request.optimizer_pins,
-            _m36.CertifiedGlobalOptimizerPins,
-            "optimizer_pins",
-        ),
     )
     for value, expected, name in nested:
         if type(value) is not expected:
             raise _M39Failure(
                 _m36.INVALID_INPUT, "request", f"{name} has the wrong type"
             )
+    controls = _preflight_controls(
+        repeated=request.repeated,
+        absolute_gap_tolerance=request.absolute_gap_tolerance,
+        relative_gap_tolerance=request.relative_gap_tolerance,
+        integration_limits=request.integration_limits,
+        optimizer_limits=request.optimizer_limits,
+        optimizer_pins=request.optimizer_pins,
+        pins=request.pins,
+    )
     return _PreparedInputs(
         surface_kind=ABSTRACT,
         scenario=request.scenario,
         baseline_policy=request.baseline_fixed_hero_policy,
         initial_profile=request.initial_profile,
         attestation=request.attestation,
-        repeated=request.repeated,
-        absolute_gap_tolerance=request.absolute_gap_tolerance,
-        relative_gap_tolerance=request.relative_gap_tolerance,
-        integration_limits=request.integration_limits,
-        optimizer_limits=request.optimizer_limits,
+        repeated_projection=controls.repeated_projection,
+        pre_adaptation_weight=controls.pre_adaptation_weight,
+        post_adaptation_weight=controls.post_adaptation_weight,
+        total_weight=controls.total_weight,
+        absolute_gap_tolerance=controls.absolute_gap_tolerance,
+        relative_gap_tolerance=controls.relative_gap_tolerance,
+        integration_limits=controls.integration_limits,
+        optimizer_limits=controls.optimizer_limits,
         m31_limits=request.m31_limits,
         m30_limits=request.m30_limits,
         m31_pins=request.m31_pins,
         m30_pins=request.m30_pins,
-        optimizer_pins=request.optimizer_pins,
-        pins=request.pins,
+        optimizer_pins=controls.optimizer_pins,
+        pins=controls.pins,
         real_card=None,
     )
 
@@ -1446,6 +1579,7 @@ def _request_projection(
     scenario_identity: str,
     tree_identity: str,
     baseline_identity: str,
+    perfect_recall_evidence_identity: str,
 ) -> dict[str, Any]:
     return {
         "contract_version": CONTRACT_VERSION,
@@ -1453,6 +1587,7 @@ def _request_projection(
         "scenario_identity": scenario_identity,
         "tree_structure_identity": tree_identity,
         "baseline_identity": baseline_identity,
+        "perfect_recall_evidence_identity": perfect_recall_evidence_identity,
         "repeated": dict(repeated_projection),
         "absolute_gap_tolerance": absolute_gap_tolerance,
         "relative_gap_tolerance": relative_gap_tolerance,
@@ -1480,31 +1615,14 @@ def _prepare(
     ThreePlayerCertifiedGlobalPins,
     str,
 ]:
-    limits = _validate_limits(inputs.integration_limits)
-    pins = _validate_pins(inputs.pins)
-    repeated_projection, pre, post, total = _repeated_projection(
-        inputs.repeated, limits
-    )
-    bit_cap = min(
-        limits.max_rational_numerator_bits,
-        limits.max_rational_denominator_bits,
-    )
-    absolute_gap_tolerance = _rational_text(
-        _parse_exact(
-            inputs.absolute_gap_tolerance,
-            "absolute_gap_tolerance",
-            nonnegative=True,
-            maximum_bits=bit_cap,
-        )
-    )
-    relative_gap_tolerance = _rational_text(
-        _parse_exact(
-            inputs.relative_gap_tolerance,
-            "relative_gap_tolerance",
-            nonnegative=True,
-            maximum_bits=bit_cap,
-        )
-    )
+    limits = inputs.integration_limits
+    pins = inputs.pins
+    repeated_projection = inputs.repeated_projection
+    pre = inputs.pre_adaptation_weight
+    post = inputs.post_adaptation_weight
+    total = inputs.total_weight
+    absolute_gap_tolerance = inputs.absolute_gap_tolerance
+    relative_gap_tolerance = inputs.relative_gap_tolerance
     counters.preparation_m31_runs += 1
     baseline_result = _m31.evaluate_three_player_river_rake(
         inputs.scenario,
@@ -1608,6 +1726,9 @@ def _prepare(
             "tree_structure_identity": ids["tree_structure"],
             "baseline_fixed_hero_identity": ids["fixed_hero"],
             "initial_profile_identity": ids["initial_profile"],
+            "perfect_recall_evidence_identity": ids[
+                "perfect_recall_evidence"
+            ],
             "terminal_records_identity": _identity(terminal_records),
             "terminal_envelope": {
                 "minimum": _rational_text(min(terminal_values)),
@@ -1638,6 +1759,7 @@ def _prepare(
         scenario_identity=ids["scenario"],
         tree_identity=ids["tree_structure"],
         baseline_identity=baseline_identity,
+        perfect_recall_evidence_identity=ids["perfect_recall_evidence"],
     )
     request_identity = _identity(request_projection)
     analysis_identity = _identity(
@@ -1930,32 +2052,12 @@ def _analyze(inputs: _PreparedInputs) -> ThreePlayerCertifiedGlobalResult:
         preparation, oracle, _pins, _analysis_identity = _prepare(
             inputs, counters
         )
-        bit_cap = min(
-            inputs.integration_limits.max_rational_numerator_bits,
-            inputs.integration_limits.max_rational_denominator_bits,
-        )
-        absolute_gap_tolerance = _rational_text(
-            _parse_exact(
-                inputs.absolute_gap_tolerance,
-                "absolute_gap_tolerance",
-                nonnegative=True,
-                maximum_bits=bit_cap,
-            )
-        )
-        relative_gap_tolerance = _rational_text(
-            _parse_exact(
-                inputs.relative_gap_tolerance,
-                "relative_gap_tolerance",
-                nonnegative=True,
-                maximum_bits=bit_cap,
-            )
-        )
         native = _m36.optimize_certified_global_hero_commitment(
             preparation.m36_scenario,
             preparation.baseline_policy,
             oracle,
-            absolute_gap_tolerance=absolute_gap_tolerance,
-            relative_gap_tolerance=relative_gap_tolerance,
+            absolute_gap_tolerance=inputs.absolute_gap_tolerance,
+            relative_gap_tolerance=inputs.relative_gap_tolerance,
             limits=inputs.optimizer_limits,
             pins=inputs.optimizer_pins,
         )

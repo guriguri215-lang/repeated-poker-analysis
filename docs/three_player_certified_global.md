@@ -40,7 +40,8 @@ the complete exact two-opponent non-cooperative Nash response
 correspondence. `l(p)` is the minimum Hero value over that entire
 correspondence.
 
-For horizon `N`, discount `d`, and fixed adaptation opportunity `m`:
+For horizon `N`, exact discount `0 < d <= 1`, and fixed adaptation opportunity
+`m`:
 
 ```text
 W_pre  = sum(d^(t-1), 1 <= t < m)
@@ -113,15 +114,21 @@ identities remain in the M39 success payload.
 Canonical rational text is reduced integer or `numerator/denominator`.
 Binary64 inputs such as the historical M32 discount are lifted with
 `float.as_integer_ratio()`; they are not reparsed from display decimals.
-Nonfinite values, excessive rational growth, malformed structures, or
-unsupported domains fail closed.
+Nonfinite values, out-of-range discount, excessive rational growth, malformed
+structures, or unsupported domains fail closed. On the real-card public path,
+all M39 repeated/gap controls, limits, and pins are normalized before M35
+support allocation; the same normalized values are reused by preparation and
+M36.
 
 Canonical SHA-256 identities bind the M30/M31 contracts, scenario, tree,
-baseline, complete domain, terminal envelope, repeated objective, all
-effective caps, response oracle, and analysis. M39 pins accept raw lowercase
-64-hex and the equivalent `sha256:` form. Stale or malformed pins return no
-payload. Semantic mapping permutations have byte-identical output; meaningful
-changes alter identities and bytes.
+baseline, M31-validated perfect-recall evidence, complete domain, terminal
+envelope, repeated objective, all effective caps, response oracle, and
+analysis. The request, response-oracle, objective, and analysis identity chain
+uses M31's validated perfect-recall evidence identity rather than
+re-serializing the raw attestation. M39 pins accept raw lowercase 64-hex and
+the equivalent `sha256:` form. Stale or malformed pins return no payload.
+Semantic mapping permutations have byte-identical output; meaningful changes
+alter identities and bytes.
 
 Preparation, response, point, bound, aggregate M31 work, M36 cells/nodes/
 oracles, rational growth, and output all have caller-lowerable immutable
