@@ -40,7 +40,11 @@ Security / safety: it binds to ``127.0.0.1`` by default and makes no external
 calls. It reads and writes only the local paths you type, refuses to overwrite an
 existing file unless the overwrite box is checked, requires real booleans for the
 save options, keeps the raw ``format_version`` (no coercion), and returns short
-``error`` messages (never a traceback).
+``error`` messages (never a traceback). The common handler accepts only JSON
+POSTs for the exact listening ``Host``, rejects foreign browser origins and
+cross-site fetches before API dispatch, and never authorizes CORS preflight.
+Originless JSON remains supported for non-browser clients. This request boundary
+does not restrict an accepted local client's arbitrary path or explicit overwrite.
 """
 
 from __future__ import annotations
