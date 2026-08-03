@@ -7,10 +7,10 @@ This document specifies the M36 in-memory core in
 > simplexes, certify the largest baseline-relative total repeated Hero-EV
 > uplift supplied by a conforming scalar response oracle.
 
-The core does not yet connect the M28 real-card preflop, M29 known-board
-heads-up river, or M30-M35 abstract/real-card three-player consumers. Those
-consumer-specific domain and bound proofs belong to M37-M39. M36 also does not
-change the existing finite M27/M32 candidate workflows.
+The core remains consumer-agnostic. Separate M37-M39 adapters connect the M28
+real-card preflop, M29 known-board heads-up river, and M30-M35
+abstract/real-card three-player consumers; M40 provides an exactly-one-consumer
+wrapper. M36 does not change the existing finite M27/M32 candidate workflows.
 
 ## Full continuous domain
 

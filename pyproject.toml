@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "repeated-poker-analysis"
-version = "0.2.0"
-description = "Exact Villain best-response analysis against a fully fixed Hero strategy in a finite two-player extensive-form poker game with rake."
+version = "0.2.1"
+description = "Research prototype for exact-response and bounded commitment analysis in small two- and three-player poker models."
 requires-python = ">=3.10"
 readme = "README.md"
 license = { file = "LICENSE" }

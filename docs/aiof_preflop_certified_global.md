@@ -10,8 +10,9 @@ The adapter certifies the specified-tolerance global maximum of one identified
 baseline-relative repeated Hero ChipEV objective. It is not an equilibrium,
 Nash chart, ICM model, solver-grade scalability claim, real-world
 profitability claim, or strategy recommendation. M37 completes this real-card
-preflop consumer integration; it does not by itself fulfill R8. The remaining
-dependency order is M38, M39, and M40.
+preflop consumer integration. Separate M38, M39, and M40 integrations are now
+implemented and complete the documented R8 lifecycle; that completion does not
+broaden M37's certificate claim.
 
 Only exact exhaustive equity is supported. Fee, third-party dead money, side
 pots, Monte Carlo, and nonzero response tolerance fail closed. Every failure

@@ -1,13 +1,14 @@
-# Public Readiness Checklist
+# Public Release Readiness Checklist
 
 ## Purpose
 
-- This checklist is used before making the repository public.
+- This checklist is used before a public release or a material public-metadata
+  update. The repository is already public.
 - It is not a release note and not a marketing document.
 - It helps prevent accidental disclosure, overclaiming, and confusing project
   scope.
 
-## Required checks before public visibility
+## Required checks before a public release
 
 ### Repository hygiene
 
@@ -65,7 +66,7 @@
 
 ### Publication posture
 
-- [ ] The repository can be public as an MVP research project.
+- [ ] The release remains suitable for a public experimental research project.
 - [ ] It should not be presented as a professional solver, commercial product,
       or real-money strategy engine.
 - [ ] Longer-form articles, if written later, should link back to assumptions
@@ -81,7 +82,7 @@ python -m pytest -q
 ## Manual review notes
 
 - Review README, MVP walkthrough, examples guide, assumptions document.
-- Review GitHub repository settings before switching visibility.
+- Review GitHub Description, Homepage, Topics, and release settings.
 - Confirm the MIT License file exists and README links to it.
 - Confirm README links to the publication policy
   (`docs/publication_policy.md`).

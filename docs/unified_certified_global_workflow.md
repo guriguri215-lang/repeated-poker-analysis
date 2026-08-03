@@ -161,8 +161,7 @@ python examples/unified_certified_global_workflow.py
 The example emits one LF-terminated deterministic M37-through-M40 result.
 Two fresh-process byte identity and SHA-256 equality are tested.
 
-This implementation is M40-T0/T1 review material only. It does not constitute
-an independent review, mandatory-eight formal closeout, human merge, or
-post-merge verification. R8 and the extended product lifecycle remain not
-complete until a separate read-only review, human merge, and post-merge final
-closeout establish the roadmap condition on current main.
+M40 is merged on `main` and included in the v0.2.0 release line. Its
+independent review, human merge, post-merge verification, and release evidence
+live in repository history and the release notes. That lifecycle evidence does
+not broaden the claim beyond the selected bounded scalar objective.

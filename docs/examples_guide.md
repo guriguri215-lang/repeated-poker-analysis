@@ -4,7 +4,7 @@
 
 - Explain what each example under `examples/` demonstrates.
 - Help readers choose the right example to run first.
-- Clarify that the examples are small abstract demonstrations, not real poker
+- Clarify that the examples are small bounded demonstrations, not real poker
   recommendations.
 
 ## Recommended order
@@ -36,6 +36,16 @@
 14. `examples/known_board_real_card_three_player_river_rake.py` - run one
     known-board real-card H/O1/O2 joint-support analysis through the same exact
     M30-M32 response/repeated path.
+15. `examples/certified_global_optimizer_core.py` - inspect the
+    consumer-agnostic exact-rational M36 branch-and-bound contract.
+16. `examples/aiof_preflop_certified_global.py` - run the bounded M37
+    real-card preflop certified-global consumer.
+17. `examples/known_board_real_card_hu_certified_global.py` - run the bounded
+    M38 known-board heads-up river/rake consumer.
+18. `examples/three_player_certified_global.py` - run the bounded M39
+    abstract and real-card three-player consumers.
+19. `examples/unified_certified_global_workflow.py` - dispatch exactly one
+    M37-M39 consumer through the M40 wrapper.
 
 The order moves from the simplest hand-checkable tree, through candidate
 generation / filtering, to the full pipeline, and finally to presentation and
@@ -187,6 +197,28 @@ initial profile `34/-20/-20/6`, and post-response `20/-10/-10/0` for
 H/O1/O2/R. The finite shift is a worked input, not a global domain. The example
 is not a continuous/global optimizer, equilibrium certificate, profitability
 result, or strategy recommendation and adds no CLI or saved-file schema.
+
+## Certified-global workflow family
+
+Run the family from the consumer-agnostic core through the unified wrapper:
+
+```powershell
+python examples/certified_global_optimizer_core.py
+python examples/aiof_preflop_certified_global.py
+python examples/known_board_real_card_hu_certified_global.py
+python examples/three_player_certified_global.py
+python examples/unified_certified_global_workflow.py
+```
+
+Read the
+[M36 core](certified_global_optimizer_core.md),
+[M37 preflop adapter](aiof_preflop_certified_global.md),
+[M38 heads-up river adapter](known_board_real_card_hu_certified_global.md),
+[M39 three-player adapter](three_player_certified_global.md), and
+[M40 unified workflow](unified_certified_global_workflow.md) before interpreting
+the output. A certificate covers only its identified bounded scalar objective
+and declared tolerance. It is not an equilibrium certificate, a solver-scale
+claim, a profitability result, or strategy advice.
 
 ## Example reference
 
@@ -638,3 +670,5 @@ exports.
 - [Real-card AIoF public workflow](aiof_real_card_workflow.md)
 - [Guarded three-player CFR-style diagnostic workflow](three_player_cfr_diagnostic_workflow.md)
 - [Exact three-player candidate / repeated workflow](three_player_candidate_repeated_workflow.md)
+- [Certified-global optimizer core](certified_global_optimizer_core.md)
+- [Unified certified-global workflow](unified_certified_global_workflow.md)

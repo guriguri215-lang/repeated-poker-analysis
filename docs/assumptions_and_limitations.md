@@ -8,7 +8,7 @@
 
 ## Project status
 
-- Experimental research / learning tool.
+- Alpha-stage experimental research / learning tool.
 - Built by a non-professional solver developer. Here "non-professional" is not
   self-deprecation; it simply means this is not a warranted, production-grade
   product.
@@ -76,8 +76,10 @@
   the scenario. The scenario author is responsible for matching actions,
   bucket ids, ranges, payoff model, rake or ICM assumptions, and information-set
   meanings.
-- Raw solver export parsing, real-card range import, card removal, and
-  large-scale range solving remain non-goals.
+- Raw solver export parsing or general solver-format range import remains a
+  non-goal. The documented real-card adapters accept only their own
+  `RangeSpec` / exact-combo inputs, and large-scale range solving remains out
+  of scope.
 
 ## ICM assumptions
 
@@ -168,9 +170,9 @@
   local box, warm start, sampling, truncation, or fallback controls. M32
   finite candidates remain a separate valid R6 workflow, never an R8
   certificate.
-- M37-M40 implementation does not by itself fulfill the broader R8 lifecycle;
-  separate independent review, human merge, and post-merge final closeout
-  remain outstanding.
+- M37-M40 are merged on `main` and included in the v0.2.0 release line. Their
+  review and post-merge verification evidence does not broaden the claim:
+  certificates still cover only each identified bounded scalar objective.
 - A candidate passing the implemented robust above-baseline EV criterion does
   **not** mean it is a true repeated-game equilibrium.
 - The tool helps search for commitment candidates and produce diagnostics; it
@@ -257,7 +259,9 @@
 ## Current non-goals
 
 - Full poker solver
-- Raw solver export parsing or real-card range import
+- Raw solver export parsing or general solver-format range import (the
+  documented real-card adapters accept only their own `RangeSpec` /
+  exact-combo inputs)
 - Large-scale range solving
 - Cross-spot reach detection and real opponent-learning models (within-spot
   reach-weighted `T_detect` v1 is implemented)

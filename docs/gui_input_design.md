@@ -1,12 +1,11 @@
 # GUI/form input design
 
-This is a design document only. No GUI code, web app, server, framework, or new
-dependency is introduced here. It plans how a future GUI/form input layer would
-let a user who does not know the JSON format still build a scenario, validate it,
-run the analysis, and export the result. It builds on the existing JSON scenario
-format (see [scenario_format_reference.md](scenario_format_reference.md)) and the
-existing command-line workflow; it is the screen-level design of that workflow,
-not a new solver or game-theory model.
+This document began as the GUI/form design plan and now records the implemented
+prototype boundary. Five local standard-library browser GUIs let a user who does
+not know the JSON format build a scenario, validate it, run the analysis, and
+save it. They build on the existing JSON scenario format (see
+[scenario_format_reference.md](scenario_format_reference.md)) and command-line
+workflow; they are input/output layers, not a new solver or game-theory model.
 
 ## 1. Purpose
 
@@ -14,15 +13,15 @@ not a new solver or game-theory model.
   guided form instead of hand-editing JSON.
 - Turn the existing CLI workflow into a screen flow: the same steps
   (create / pick -> validate -> analyse -> export), exposed as forms and panels.
-- Decide, before any GUI implementation, what belongs in an MVP GUI and what is
-  deferred, so the first implementation stays small.
+- Record the original MVP scope, implemented slices, and deferred work.
 - Keep JSON as the source of truth: the GUI is an editor/runner on top of the
   format, not a replacement for it.
 
 ## 2. Non-goals
 
-- The GUI implementation itself (this document is design only).
-- Choosing a web app, server, or UI framework, or adding any dependency.
+- Public hosting, authentication, filesystem sandboxing, or production
+  deployment.
+- Adopting a GUI framework or adding a runtime dependency.
 - A real-card parser (parsing real hole cards / boards into ranges).
 - Importing solver outputs or proprietary formats (no external solver import).
 - Being a commercial poker solver.
@@ -238,9 +237,9 @@ built on the standard library (`http.server` plus inline HTML / CSS / vanilla
 JavaScript -- no framework or dependency). It serves a form page (`GET /`) and a
 small JSON API (`POST /api/load`, `/api/validate`, `/api/save`) that reuse the
 same `SingleHandScenarioForm` helpers, field value parsing, safe writer, and
-strict-JSON serialiser as the CLIs. It is deliberately tiny and single-hand only:
-the screens, MVP scope, and phases above describe where a fuller GUI would go
-(other modes, the matrix editor, analysis, and export), all still future work.
+strict-JSON serialiser as the CLIs. It is deliberately tiny and single-hand only.
+Later sections document the four additional implemented editors; graphs and a
+unified multi-mode shell remain out of scope.
 Safety: it binds to `127.0.0.1`, makes no external calls, reads/writes only
 user-supplied paths, refuses to overwrite without the overwrite box, and returns
 short error messages rather than tracebacks.
@@ -251,8 +250,9 @@ The prototype also runs the analysis locally from the current form (`POST
 excluded), the resolved horizon and discount, and the Markdown summary (shown as
 plain text). Optional `horizon` / `discount` overrides are validated (a positive
 int / a finite positive number) and `render_markdown` must be a boolean. This is
-the "analyze and view a summary" step of the screen flow; charts, export beyond
-the existing save, and the other modes remain future work.
+the "analyze and view a summary" step of the screen flow. Charts and export
+beyond the existing save remain out of scope; the other modes are separate
+prototypes documented below.
 
 A small UX-polish pass exposes those analyze options in the page -- a horizon
 override and a discount override (blank for the scenario default) and a "render
@@ -275,9 +275,9 @@ horizon / discount validators and `run_river_scenario_analysis`): the **Analyze*
 section exposes a horizon override, a discount override, and a "render Markdown
 summary" toggle, and shows the candidate counts (generated / kept / excluded), the
 resolved horizon and discount, and the Markdown summary as plain text, separate
-from the status and validation messages. It remains Hero-range-only and abstract;
-the matrix and betting-tree editors, graphing, and any new solver or model remain
-future work.
+from the status and validation messages. It remains Hero-range-only and
+abstract. The matrix and betting-tree editors are separate prototypes documented
+below; graphing and any new solver or model remain out of scope.
 
 `scripts/serve_showdown_matrix_gui.py [--host 127.0.0.1] [--port 8002]` is the
 first matrix-mode editor: a local-only browser prototype of the discrete
@@ -299,8 +299,8 @@ section exposes a horizon override, a discount override, and a "render Markdown
 summary" toggle, and shows the candidate counts (generated / kept / excluded), the
 resolved horizon and discount, and the Markdown summary as plain text, separate
 from the status and validation messages. It remains showdown-matrix-only and
-abstract; the equity-matrix and betting-tree editors, graphing, and any new solver
-or model remain future work.
+abstract. The equity-matrix and betting-tree editors are separate prototypes
+documented below; graphing and any new solver or model remain out of scope.
 
 `scripts/serve_equity_matrix_gui.py [--host 127.0.0.1] [--port 8003]` is the equity
 flavour of that matrix editor: a local-only browser prototype of the `equity_matrix`
@@ -357,9 +357,8 @@ Markdown summary as plain text, separate from the status and validation messages
 an invalid form (bad sizes, distributions, or matrix cells) reports messages and is
 not analyzed. It remains betting-tree-only and abstract; graphing, any new solver or
 model, real-card equity calculation, and any betting-tree v2 expansion (re-raises /
-multi-street) remain out of scope. (The equity cell soft-parse is currently
-duplicated from the equity-matrix GUI; consolidating it into `gui_common` is noted
-as future cleanup.)
+multi-street) remain out of scope. The equity-cell soft parse is centralized in
+`scripts/gui_common.py`.
 
 With this slice all five scenario modes (single-hand, Hero-range-only,
 showdown-matrix, equity-matrix, betting-tree) have a local GUI covering
@@ -368,10 +367,11 @@ The GUI surface is frozen at this slice for now (bug fixes only, no new GUI
 features) while the research core is prioritised; the phases below describe
 the intended long-term shape, not scheduled work.
 
-## 10. Implementation phases after this doc
+## 10. Original implementation phases
 
-The implementation phases below are deliberately incremental, so each step is
-small and testable:
+This historical plan was deliberately incremental. Phases 1-5 were completed
+within the prototype boundary; export, batch processing, and advanced controls
+remain available through the CLI rather than a unified GUI:
 
 - Phase 1: a static form prototype or a CLI-backed local UI mock (no engine
   changes), to validate the screen flow.
@@ -385,7 +385,8 @@ small and testable:
 
 ## 11. Open questions
 
-- Local desktop GUI vs a simple local web UI (no external server).
+- The prototypes use a local standard-library web UI; any future production UI
+  surface remains undecided.
 - Whether to adopt a framework later, and which, kept out of scope here.
 - How to handle large matrices (entry, display, and validation performance).
 - Whether the GUI should allow raw JSON editing alongside the forms.

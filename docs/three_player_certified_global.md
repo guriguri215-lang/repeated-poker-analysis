@@ -148,6 +148,6 @@ A success certifies only the reported specified-tolerance global maximum of
 the identified bounded scalar objective, conditional on the documented exact
 consumer bound. It does not certify a poker equilibrium, a repeated-game
 equilibrium, opponent learning or switch behavior, solver-grade scale,
-profitability, collusion resistance, or strategy advice. M39 integration does
-not complete the broader R8 or extended-product lifecycle; unified M40
-workflow/closeout remains separate.
+profitability, collusion resistance, or strategy advice. The unified M40
+workflow now exposes this M39 integration without reimplementing it; that
+orchestration does not broaden the certificate claim.
