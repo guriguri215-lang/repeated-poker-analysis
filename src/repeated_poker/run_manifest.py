@@ -29,7 +29,7 @@ PathLike = Union[str, Path]
 # ``repeated_poker.__version__``.  Kept in sync with ``pyproject.toml`` by a
 # test rather than by an install-time dependency, so a plain source checkout
 # (no editable install) still reports the right version.
-PACKAGE_VERSION = "0.2.0"
+PACKAGE_VERSION = "0.2.1"
 
 
 @dataclass(frozen=True)

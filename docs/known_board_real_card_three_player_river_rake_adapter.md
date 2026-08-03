@@ -13,8 +13,9 @@ It is not a raw solver-export parser, general poker-tree builder, CLI or saved
 schema, unknown-runout evaluator, Monte Carlo method, coalition response,
 equilibrium certificate, continuous/global optimizer, profitability claim, or
 strategy advice. In particular, M35 implements the added mandatory R7
-real-card three-player requirement. The added mandatory R8 certified global
-commitment optimizer remains future M36-M39 work.
+real-card three-player requirement. Separate M39 and M40 certified-global
+workflows are now implemented; they do not turn this finite M32 workflow into a
+continuous optimizer.
 
 The module is public as
 `repeated_poker.known_board_real_card_three_player_river`; it is intentionally

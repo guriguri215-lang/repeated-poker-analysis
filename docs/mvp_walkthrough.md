@@ -4,7 +4,7 @@ This is a technical walkthrough of the current minimum viable workflow: what the
 repository can do today, how to run it, and how to read its output. It is not a
 tutorial on poker strategy and not promotional material.
 
-## What this project currently does
+## What the original abstract MVP path currently does
 
 - Works on small abstract two-player non-zero-sum poker subgames.
 - Generates candidate Hero commitment strategies.
@@ -20,14 +20,21 @@ tutorial on poker strategy and not promotional material.
 - Can render a Markdown summary.
 - Provides a high-level pipeline API.
 
-## What this project does not yet do
+The v0.2.0 repository also contains separate prepared-file, three-player,
+real-card exact-combo, and certified-global workflows. Those bounded workflows
+are indexed in the README and [Examples Guide](examples_guide.md); they do not
+change the scope of this original two-player walkthrough.
+
+## What the original abstract MVP path does not do
 
 - It is **not a full poker solver**.
 - It does not parse raw solver exports. External profiles must be prepared
   outside the repository as scenario-native abstract mixed-strategy maps under
   the existing [baseline profile import contract](baseline_solution_import_format.md).
-- It does not import or evaluate real-card ranges, perform card removal, or run
-  large-scale range solving.
+- This original path does not import or evaluate real-card ranges or perform
+  card removal. Separate v0.2.0 real-card adapters accept their documented
+  `RangeSpec` / exact-combo inputs, but raw solver formats and large-scale
+  range solving remain unsupported.
 - It does not model cross-spot detection or real opponent learning. Within one
   analysed spot, opt-in `reach_weighted_v1` does include root-to-terminal reach
   in a per-hand public observation distribution.
@@ -251,9 +258,10 @@ Interpretation:
   assume monotonicity.
 - Detection is a local, reach-conditional sensitivity estimate, not a
   prediction of real adaptation.
-- Scenario inputs remain abstract and scenario-native. Raw solver export
-  parsing, real-card range import or evaluation, card removal, and large-scale
-  range solving are unsupported.
+- Inputs in this original MVP path remain abstract and scenario-native.
+  Separate v0.2.0 adapters support their documented bounded exact-combo inputs;
+  raw solver export parsing, general solver-format range import, and large-scale
+  range solving remain unsupported.
 - CLI runners, file exporters, and feature-frozen local GUI prototypes are thin
   input/output layers over the same small-tree analysis core.
 - The experimental STT ICM runner covers only the documented abstract SB-vs-BB

@@ -1,958 +1,427 @@
 # Repeated Poker Analysis
 
-This is an experimental research / learning project for analyzing small abstract
-poker subgames as repeated-game commitment problems. It focuses on candidate
-Hero commitment strategies, exact Villain responses in small finite trees,
-`T_deadline`, `T_detect`, and readable summaries.
+Repeated Poker Analysis is a Python research prototype for exact fixed-strategy
+response analysis and bounded Hero-commitment experiments in small poker models.
+It accepts explicit finite models, compares a supplied baseline with candidate or
+continuous Hero commitments, and produces response, repeated-value, timing, and
+audit outputs.
+
+> **Status: Alpha research prototype (v0.2.1).** The documented small-model
+> workflows are implemented and heavily tested, but the package is not a full
+> poker solver, its APIs may change, and its numerical claims have not been
+> independently validated against a production solver.
+
+## Problem
+
+Locking one player's policy and asking how the other player responds is a
+commitment problem, not automatically an equilibrium calculation. Repeating the
+same spot also does not by itself create a reputation equilibrium. This project
+makes those boundaries explicit: it represents a finite game, fixes Hero's
+policy, computes the supported opponent response, and reports repeated-value and
+detectability diagnostics under declared assumptions.
+
+The intended users are researchers and developers studying game theory, poker
+abstractions, exact-response algorithms, or bounded optimization. It is not
+intended for real-money decision making.
 
 ## What this project is
 
-- A small Python toolkit for abstract repeated-poker analysis.
-- A way to generate and evaluate candidate Hero commitment strategies.
-- A tool for exact-response diagnostics on small finite trees.
-- A project with explicit assumptions, limitations, examples, and MVP checks.
+It is a small-model analysis toolkit with the following implemented boundaries:
+
+| Capability | Status | Implemented boundary |
+|---|---|---|
+| Two-player fixed-Hero response | Implemented | Exact Villain best-response correspondence in a supplied finite tree, using backward induction by default and complete enumeration as a small-tree oracle. |
+| Candidate commitment analysis | Implemented | Generate, filter, compare, rank, and conditionally select a declared finite Hero candidate library. |
+| Repeated-game diagnostics | Implemented / experimental interpretation | Known-horizon or discounted value comparisons, T_deadline, and local or reach-weighted T_detect diagnostics. |
+| Abstract river and STT inputs | Implemented | Versioned JSON for small river models with rake and a separate abstract SB-vs-BB push/fold ICM path. |
+| Prepared one-/two-street analysis | Experimental | Strict bounded inspect/run workflows over caller-supplied finite prepared trees and profiles. |
+| Real-card adapters | Implemented for documented models | Exact-combo AIoF preflop and known-five-card-board river/rake workflows with card-removal checks and explicit workload caps. |
+| Three-player analysis | Implemented for bounded contracts | Exact non-cooperative O1/O2 response for documented tiny models; a separate finite-iteration CFR-style diagnostic remains diagnostic only. |
+| Certified global commitment objective | Implemented for conforming bounded oracles | Exact-rational branch-and-bound over the scenario-derived Hero simplex product; success certifies only the identified scalar objective at the reported tolerance. |
+| CLI, reports, and local GUI | Implemented | Python scripts, JSON/CSV/Markdown exports, and five loopback-only browser editors/runners for the abstract river scenario modes. |
+
+Implementation evidence is in src/repeated_poker, tests, examples, and
+.github/workflows/ci.yml. Detailed workflow contracts are linked under
+[Documentation](#documentation).
 
 ## What this project is not
 
-- Not a full poker solver.
-- Not a real-money strategy recommendation tool.
-- Not gambling, bankroll, financial, or legal advice.
-- Not a guarantee of profitable play.
-- Not yet connected to real solver ranges or large-scale range solving.
+- It does not compute a general GTO, Nash, repeated-game, or tournament
+  equilibrium.
+- It is not a large-scale range solver and does not claim solver-grade
+  performance.
+- It does not parse or certify raw commercial-solver exports. External profiles
+  must first be converted into a documented scenario-native strategy map.
+- It does not predict human learning, psychology, table image, or when an
+  opponent will actually adapt.
+- It does not implement Future ICM, FGS, tournament simulation, arbitrary
+  multi-street no-limit trees, or a public hosted service.
+- It does not use an LLM, external model provider, remote data service, or paid
+  API.
+- It does not provide gambling, bankroll, financial, legal, or real-money
+  strategy advice, and a positive model EV is not a profitability guarantee.
 
-## Fastest way to run the MVP
+## Current implementation
 
-```powershell
-python scripts/check_mvp.py
-```
+The main abstract two-player path is:
 
-- This runs the test suite and key examples.
-- For a guided explanation, see `docs/mvp_walkthrough.md`.
-- For example order, see `docs/examples_guide.md`.
-- For assumptions and limitations, see `docs/assumptions_and_limitations.md`.
+1. Parse and validate a versioned JSON scenario or construct a GameTree through
+   the Python API.
+2. Build the finite game, complete baseline Hero policy, and baseline Villain
+   comparison policy.
+3. Generate and optionally filter a finite Hero candidate library with
+   `run_candidate_analysis_pipeline`.
+4. Evaluate the fixed baseline and compute a fresh exact Villain response to
+   each fixed Hero candidate.
+5. Calculate repeated-value, T_deadline, and optional T_detect diagnostics.
+6. Return Python dataclasses and optional JSON, CSV, or Markdown reports with a
+   run manifest.
 
-## Current design decisions
+An explicit `baseline_villain_strategy` is a caller-chosen comparison profile,
+not an equilibrium claim.
 
-| Topic | Decision |
+The certified-global workflows are a separate branch. They derive the full
+legal Hero behavior-policy simplex product for one supported consumer, evaluate
+an exact point objective and a sound whole-cell upper bound, and run the bounded
+branch-and-bound core. They return either a certificate for the identified
+scalar objective or a controlled no-certificate result; they do not silently
+fall back to a grid, sample, local optimizer, or finite candidate list.
+
+### Architecture
+
+~~~mermaid
+flowchart LR
+    A["JSON scenario or Python request"] --> B["Schema and model validation"]
+    G["Local GUI or CLI"] --> A
+    B --> C["Finite game and supplied baseline"]
+    C --> D["Finite candidate pipeline"]
+    D --> E["Fixed-profile evaluation"]
+    E --> F["Exact opponent response"]
+    F --> H["Repeated-value, T_deadline, and T_detect diagnostics"]
+    C --> I["Supported full Hero simplex domain"]
+    I --> J["Point and whole-cell oracle"]
+    J --> K["Certified branch-and-bound"]
+    K --> L["Certificate or controlled no-certificate status"]
+    H --> M["Python objects, JSON, CSV, and Markdown"]
+    L --> M
+~~~
+
+This diagram describes the current implementation. The original research and
+planned-architecture document is useful design history, but it is not a current
+feature-status list.
+
+## Requirements
+
+| Requirement | Current state |
 |---|---|
-| First target | A river spot with ranges and rake. This is where the repeated-game core will be validated. |
-| Second target | Confirmed: preflop SB-vs-BB Push/Fold in an STT (fixed 2026-07-05). The earlier phrase "flop BvB" is interpreted as preflop because the described spot begins after everyone folds to the small blind. |
-| STT value backend | The first STT value backend is ICM only. Future-ICM and tournament-simulation backends are later, separately designed extensions (fixed 2026-07-05). |
-| Game model | Two strategic players plus a non-strategic house rake account. Rake makes the game non-zero-sum; it does not by itself create a third strategic player. |
-| Hero lock | Hero's mixed strategy is fixed at every Hero information set in the target tree, including check, fold, bet, call, and raise decisions where legal. |
-| Villain response | Villain retains every legal action. The tool calculates Villain's exact best-response set to the fully fixed Hero strategy. |
-| Baseline solution import contract | Baseline-solution import v1 is the existing scenario-native mixed strategy map format. External-source profiles may be converted outside this project into the current baseline strategy fields; the project does not parse or certify raw solver exports. |
-| Public observables / adaptation interpretation | Public observations are the public action path plus optional builder-supplied reveal labels. `T_detect` can be compared with `T_deadline` only as a diagnostic under the idealized threshold-observer convention; real opponent-learning and behavioural prediction remain unsupported. |
-| Analysis form | A fixed-Hero response is a commitment analysis, not automatically a repeated-game equilibrium. Known finite repetition, uncertain horizon, and discounted infinite repetition are reported separately. |
-| Implementation | Start a clean standalone project rather than extending the earlier prototype. |
-| Quality bar | Mathematical specifications, input validation, hand-calculated benchmarks, reproducible run manifests, and tests are required from the beginning. |
+| Python | 3.10 or newer |
+| Runtime dependencies | None beyond the Python standard library |
+| Development dependency | pytest 7 or newer through the dev extra |
+| Verified operating systems | Ubuntu in CI; Windows in the publication review |
+| Not independently verified | macOS |
+| External tools | Git is optional and used only for best-effort commit metadata in run manifests |
+| Environment variables | None required |
+| Network or API keys | None required |
+| GPU | Not used |
+| Paid service | Not required |
 
-The original idea - find Hero strategies that lower Villain's EV while Villain initially remains at the baseline strategy, then evaluate Villain's response - is retained as a candidate generator. It is not the only criterion. Each candidate is evaluated after Villain's response, with explicit treatment of best-response ties.
+CI runs the MVP validation on Python 3.10 and 3.13. This review also reproduced
+the full suite on Windows with Python 3.12. Pure-Python implementation does not
+by itself establish untested platform support.
 
-## Project document
+## Quickstart
 
-- [02_research_and_implementation_plan.md](02_research_and_implementation_plan.md) - mathematical model, response correspondence, timing measures, inputs and outputs, and development phases.
-- [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md) - v1 baseline-solution import boundary over existing scenario-native profile fields.
-- [docs/article_m4_t26_final_artifact/index.html](docs/article_m4_t26_final_artifact/index.html) - internal model-scoped diagnostic article artifact, not strategy advice or public advice.
+### Fastest way to run the MVP
 
-## Current working state
+Clone the repository and install it from source:
 
-- The project is tracked in Git and developed through small pull requests.
-- The current MVP includes candidate generation, candidate pre-filtering, exact response diagnostics for small trees, `T_deadline`, `T_detect` (`local_v0` by default, `reach_weighted_v1` opt-in), analysis reports, Markdown summaries, a high-level pipeline API, and an experimental STT SB-vs-BB push/fold ICM scenario path.
-- The main end-to-end entry point is `run_candidate_analysis_pipeline`.
-- The quickest local sanity check is `python scripts/check_mvp.py`.
-- The project remains experimental and intended for small abstract games; see the assumptions and limitations document before interpreting outputs.
-
-## Decisions to fix before implementation expands
-
-No open blocking decisions are currently tracked here. The baseline-solution
-import format is fixed conservatively as existing scenario-native mixed strategy
-maps; see [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md).
-
-## Development
-
-The first program lives in `src/repeated_poker/` with worked inputs in
-`examples/` and tests in `tests/`. It is a self-contained, finite exact
-best-response analyser; it does not call any external solver.
-
-Install the development dependencies (pytest) into a virtual environment:
-
-```
+~~~powershell
+git clone https://github.com/guriguri215-lang/repeated-poker-analysis.git
+cd repeated-poker-analysis
 python -m venv .venv
-# Windows:        .venv\Scripts\activate
-# macOS / Linux:  source .venv/bin/activate
-pip install -e ".[dev]"
-```
 
-Run the test suite from the project root:
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 
-```
-pytest
-```
+# macOS / Linux instead
+# source .venv/bin/activate
 
-For a quick local sanity check that runs the test suite and the key examples in
-one command, use:
-
-```
-python scripts/check_mvp.py
-```
-
-Run the worked examples:
-
-```
+python -m pip install -e .
 python examples/nuts_chop_river.py
-python examples/value_bluff_river.py
-```
+~~~
 
-### Prepared one-/two-street file workflow
+The example prints a JSON-like exact-response record. The bundled fixture should
+include these values:
 
-Small abstract prepared games can use the strict two-phase
-prepared two-street file workflow. `prepared-two-street-file-v1` preserves the
-factorized root distribution; `prepared-two-street-file-v2` requires an
-explicit ordered joint Hero/Villain root distribution. `inspect` generates the
-information-set IDs and legal-action profile template; after the Hero
-probabilities (and an optional complete Villain profile) are filled, `run`
-returns the bounded M16 orchestration result.
+~~~text
+"villain_max_ev": -0.8
+"ev_h_worst": -0.8
+"expected_house_rake_worst": 1.6
+"num_villain_pure_strategies": 36
+~~~
 
-```powershell
-python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v1.json
-python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v2.json
-```
+For the full validation path:
 
-See [docs/prepared_two_street_file_workflow.md](docs/prepared_two_street_file_workflow.md)
-for the exact format and guardrails. This is an abstract fixed-Hero response
-workflow, not an equilibrium solver, real-card model, or strategy advice.
+~~~powershell
+python -m pip install -e ".[dev]"
+python scripts/check_mvp.py
+~~~
 
-### Bounded stage-plan diagnostic workflow
+A successful run ends with:
 
-M11's top-level public API can run a tiny exact-rational two-state diagnostic
-with explicit public monitoring and a tree-bound manual perfect-recall
-attestation. The worked fixture intentionally has a positive Hero deviation, so
-its analytic status is `FAIL`; that is a successful diagnostic execution, not a
-process failure.
+~~~text
+All 9 MVP checks passed.
+~~~
 
-```powershell
-python examples/stage_plan_diagnostic_workflow.py
-```
+The MVP script runs the complete pytest suite before the worked examples, so it
+can take several minutes.
 
-See [docs/stage_plan_diagnostic_workflow.md](docs/stage_plan_diagnostic_workflow.md)
-for the `{C,P}` absorbing-grim timing, complete pure stage-plan enumeration,
-allocation-before-materialization cap, identity and no-partial rules, and status
-interpretation. The bounded one-period result does not establish equilibrium,
-Nash, subgame perfection, sequential rationality, optimality, or proof, and it
-is not strategy or real-money advice.
+## Minimal Python example
 
-#### Bounded stage-plan diagnostic file workflow
+This high-level API loads the bundled abstract river JSON and runs the candidate
+pipeline:
 
-Saved exact-rational fixtures can use the strict two-phase
-`stage-plan-diagnostic-file-v1` adapter. `inspect` validates the tree, public
-monitoring, complete C/P profiles, canonical exact rational numeric envelope,
-and caps, then returns identity-bound 11/15-field human-evidence templates
-without running the analytic diagnostic:
+~~~python
+from repeated_poker import run_river_scenario_analysis
 
-```powershell
-python scripts/run_stage_plan_diagnostic_file.py examples/stage_plan_diagnostic_file_v1.json
-```
-
-After a human fills every model assertion and fixture-specific perfect-recall
-record, `run` revalidates identity, stale/false/invalidated evidence, and all
-caps before invoking the existing public M11 diagnostic exactly once. See
-[docs/stage_plan_diagnostic_file_workflow.md](docs/stage_plan_diagnostic_file_workflow.md)
-for the exact schema, canonical exact rational strings, complete deterministic
-row projection, and strict no-partial failure contract. The workflow never
-auto-attests, normalizes, clamps, truncates, samples, skips, or silently fills
-data. It is not an equilibrium/Nash, certificate, proof, optimality, strategy,
-profitability, or real-money claim, and it adds no pipeline, manifest, report,
-GUI, or top-level-package integration.
-
-### Guarded three-player CFR-style diagnostic workflow
-
-The isolated `repeated_poker.three_player_cfr` submodule can run a tiny
-fixed-Hero, two-opponent example without adding a top-level package export. The
-worked path combines a deterministic two-iteration CFR-style diagnostic with
-an explicitly requested, completely enumerated capped pure-profile reference
-attachment.
-
-```powershell
-python examples/three_player_cfr_diagnostic_workflow.py
-```
-
-See [docs/three_player_cfr_diagnostic_workflow.md](docs/three_player_cfr_diagnostic_workflow.md)
-for the simultaneous 2x2 fixture, human-authored perfect-recall evidence,
-allocation-before-materialization caps, identity and no-partial rules, and
-status interpretation. `DIAGNOSTIC_COMPLETE` means execution completed, not
-that the returned profile is stable. Oracle `MATCH` is a tiny reference
-cross-check only; this workflow does not establish an exact best response,
-equilibrium, Nash, convergence, joint or coalition stability, optimality, or
-solver-grade output, and it is not strategy or real-money advice.
-
-#### Three-player CFR-style diagnostic file workflow
-
-Saved tiny fixtures can use the strict two-phase
-`three-player-cfr-file-v1` adapter. `inspect` validates the recursive tree,
-complete fixed-Hero policy, config and limits, then returns an identity-bound
-O1/O2 action template and an unconfirmed human-attestation template without
-running CFR or the oracle:
-
-```powershell
-python scripts/run_three_player_cfr_file.py examples/three_player_cfr_file_v1.json
-```
-
-After a human explicitly fills both confirmations and all evidence fields,
-`run` revalidates the tree/policy/config/limits inspection identity and invokes
-the existing public diagnostic once. See
-[docs/three_player_cfr_file_workflow.md](docs/three_player_cfr_file_workflow.md)
-for the exact recursive schema, caller-lowerable caps, deterministic full
-projection, and strict no-partial failures. The workflow never auto-attests,
-clamps, truncates, samples, or silently fills data. It is not an exact best
-response, equilibrium/Nash or convergence result, solver-grade output,
-strategy recommendation, profitability claim, or real-money advice, and it
-does not add pipeline, manifest, report, GUI, or top-level-package integration.
-
-### Exact three-player candidate / repeated workflow
-
-The separate M30-M32 path evaluates a caller-declared tiny abstract one-street
-river/rake scenario with fixed Hero and separate O1/O2 players. It computes the
-bounded complete non-cooperative exact O1/O2 response correspondence for the
-baseline and every candidate in a declared finite `robust_all` Hero-shift
-universe, then reports simultaneous-O1/O2-adaptation repeated-value sensitivity
-and full selection ties.
-
-```powershell
-python examples/three_player_candidate_repeated_workflow.py
-```
-
-See
-[docs/three_player_candidate_repeated_workflow.md](docs/three_player_candidate_repeated_workflow.md)
-for the zero-rake hand calculation, complete Hero/O1/O2 profiles,
-human-traceable perfect-recall attestation, deterministic output allowlist, and
-current v1 boundary:
-`search_mode=robust_all`, `adaptation_mode=simultaneous_o1_o2`, and a declared
-bounded finite universe. Hero safety uses only the native complete M31
-`response.hero_worst`; it never substitutes current CFR, a first witness, the
-pure subset, coalition stress, or `hero_best`.
-
-This exact path is not the guarded CFR-style diagnostic above. It is also not a
-full solver, Nash/equilibrium certificate, Hero equilibrium, global or
-continuous optimum, real-card three-player evaluation, profitability claim, or
-real-money advice. It adds no CLI, saved-file schema, pipeline, manifest,
-report, GUI, dependency, CI workflow, or top-level package export.
-
-### Known-board real-card three-player river/rake adapter
-
-The in-memory
-`repeated_poker.known_board_real_card_three_player_river` adapter expands
-separate weighted H/O1/O2 real-card ranges on one exact five-card river board,
-removes board/dead/private collisions, and conditions the complete compatible
-combo-triple support once. Exact seven-card ranks drive every three-way,
-heads-up, tie, and fold terminal in a native M31 tree. The unchanged M30/M31/M32
-path evaluates the complete baseline and a fresh exact non-cooperative O1/O2
-response for every bounded finite Hero candidate.
-
-```powershell
-python examples/known_board_real_card_three_player_river_rake.py
-```
-
-See
-[docs/known_board_real_card_three_player_river_rake_adapter.md](docs/known_board_real_card_three_player_river_rake_adapter.md)
-for the public data model, joint-conditioning rule, complete H/O1/O2 profile,
-rake/conservation semantics, preflight caps, identities, no-partial status
-contract, and hand-calculated worked example. This is not a two-player
-marginal-product approximation, raw solver import, coalition response,
-continuous/global optimizer, equilibrium certificate, profitability claim, or
-strategy advice. The M36 certified-global core described below is separate;
-real-card three-player integration remains later consumer scope.
-
-### Certified continuous/global commitment optimizer core
-
-`repeated_poker.certified_global_optimizer` derives the full product of legal
-Hero behavior-policy simplexes directly from an in-memory scenario and runs an
-exact-rational cell branch-and-bound search. It accepts no candidate list,
-probability shifts, grid resolution, local domain bounds, or warm-start
-neighbourhood. A supplied baseline is only the repeated-EV comparison point
-and an initial feasible policy; it cannot restrict the search domain.
-
-```powershell
-python examples/certified_global_optimizer_core.py
-```
-
-Every search cell must receive a deterministic oracle-attested upper bound for
-the same baseline-relative total repeated Hero-EV uplift used at points. The
-oracle contract requires complete-response-correspondence `hero_worst`
-semantics and binds the full response, objective, cell, bound, and policy
-identities. The core maintains a full-domain leaf cover and returns only
-`CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL` after the incumbent/global
-upper-bound gap meets the exact requested tolerance. Missing safe bounds,
-unsupported domains, or resource ceilings return a null payload such as
-`LIMIT_REACHED_NO_CERTIFICATE`; they never fall back to a grid, sample, local
-optimizer, random restart, or partial prefix.
-
-See
-[docs/certified_global_optimizer_core.md](docs/certified_global_optimizer_core.md)
-for the scalar-oracle boundary, soundness argument, certificate fields, caps,
-identity contract, analytic example, and direct API. M36 is the optimizer core
-only. M37 connects the real-card preflop consumer and M38 connects the
-known-board real-card heads-up river/rake consumer as described next;
-abstract/real-card three-player consumers are connected by M39 below. The certificate
-claims only a specified-tolerance global optimum for a
-conforming bounded scalar oracle, not an equilibrium, solver-grade scale,
-real-world profitability, or strategy advice.
-
-### Real-card AIoF preflop certified global integration
-
-`repeated_poker.aiof_preflop_certified_global` derives one Hero information set
-for every exact combo surviving the existing real-card range expansion and
-joint blocker conditioning, attaches both legal push/fold actions, and sends
-that full product simplex to the unchanged M36 core. The supplied baseline is
-only the no-commitment comparison/incumbent. This path accepts no M28 shift
-amounts, candidate library, grid, local domain, or warm-start neighbourhood;
-the existing finite M28 workflow remains available and unchanged.
-
-```powershell
-python examples/aiof_preflop_certified_global.py
-```
-
-At each exact policy, the adapter composes fixed-opponent Hero ChipEV before a
-declared adaptation opportunity with a freshly calculated, factorized complete
-opponent response afterward. The post-response scalar is correspondence-wide
-Hero worst. Binary64 values already declared through the M13/M28 public
-dataclasses are lifted losslessly to their exact integer ratios, exhaustive
-showdown counts remain integers, and discount/gap inputs are canonical exact
-rationals. A consumer-specific affine/min inequality supplies the whole-cell
-upper bound; M36 metadata, samples, grids, vertices, and M28 candidate values
-are not used as bounds.
-
-See
-[docs/aiof_preflop_certified_global.md](docs/aiof_preflop_certified_global.md)
-for the objective equation, complete-response identity, whole-cell proof,
-caps, no-partial contract, public API, and claim boundary. Success is only
-`CERTIFIED_GLOBAL` or `CERTIFIED_EPSILON_GLOBAL`. It certifies the identified
-real-card preflop scalar objective at the requested tolerance, not an
-equilibrium, ICM result, solver-grade scale, profitability result, or strategy
-recommendation. M37 is one R8 consumer integration, M38 adds a second, and M39
-adds the two three-player consumers below. M40 provides the unified
-exactly-one-consumer public workflow described after those integrations.
-The M37 output caps measure the complete public result wrapper in the same
-canonical UTF-8 shape returned by
-`exact_aiof_preflop_certified_global_json`; a deterministic streaming preflight
-runs before any aggregate success projection or full encoded output is
-allocated. An exact cap is accepted, while a result one record or byte over the
-cap fails with a null payload and retains the completed work counters.
-
-### Known-board real-card HU certified global integration
-
-`repeated_poker.known_board_real_card_hu_certified_global` reuses M29's strict
-five-card board, extra-dead filtering, ordered joint combo conditioning,
-bucket mappings, seven-line IP-vs-OOP river tree, and rake accounting. It
-derives every surviving Hero action simplex and sends their complete product
-to M36; M29 shift candidates and M27 selection do not define or narrow this
-domain.
-
-```powershell
-python examples/known_board_real_card_hu_certified_global.py
-```
-
-The M38 point oracle distinguishes the fixed baseline Villain value from a
-fresh complete Villain response. The latter is solved exactly by a
-Villain-bucket perfect-recall DP, retaining all ties and using Hero-worst in
-the repeated objective without enumerating the full opponent pure-strategy
-product. A known-board terminal-affine interval DP supplies a sound whole-cell
-bound and agrees with the exact response at singleton cells. Binary64 public
-inputs are losslessly lifted before objective and bound arithmetic.
-
-See
-[docs/known_board_real_card_hu_certified_global.md](docs/known_board_real_card_hu_certified_global.md)
-for the proof, identities, caps, output wrapper, and claim boundary. Success
-certifies only the identified bounded scalar maximum at its reported gap. It
-does not certify an equilibrium, ICM, solver-grade scale, profitability,
-adaptation behavior, or strategy advice.
-
-### Abstract and known-board real-card three-player certified global integration
-
-`repeated_poker.three_player_certified_global` integrates M36 with both the
-abstract M31 river/rake scenario and M35's strict known-board real-card
-three-player source. It derives the complete Hero action-simplex product from
-the validated tree. M32 candidates, shifts, grids, pure vertices, local boxes,
-and warm-start neighbourhoods do not define or narrow that domain.
-
-```powershell
-python examples/three_player_certified_global.py
-```
-
-Each non-baseline point preserves the fixed supplied-profile value, then makes
-a fresh M31 call and uses only the Hero-worst value from M30's complete exact
-two-opponent non-cooperative response correspondence. A consumer-owned exact
-terminal envelope covers every policy, response tie, and rake/cap boundary in
-each whole cell; simplex singleton cells call the same point oracle and agree
-exactly. The envelope is intentionally conservative: insufficient search caps
-produce no certificate rather than a finite-candidate or local fallback.
-
-See
-[docs/three_player_certified_global.md](docs/three_player_certified_global.md)
-for the objective, bound proof, real-card ordered-triple preservation,
-identities, final-wrapper caps, failure taxonomy, and public API. Success
-certifies only the identified bounded scalar maximum at its reported
-tolerance. It does not certify an equilibrium, solver-grade scale,
-profitability, adaptation behavior, collusion resistance, or strategy advice.
-M40 unifies these consumers below; independent review, human merge, and
-post-merge broader lifecycle closeout remain separate.
-
-### Unified certified-global public workflow
-
-`repeated_poker.unified_certified_global_workflow` exposes one discriminated
-public request for the M37 real-card AIoF preflop, M38 known-board real-card HU
-river/rake, M39 abstract three-player river/rake, and M39 known-board real-card
-three-player river/rake paths. It validates the exact variant/request pair and
-calls exactly one existing public analyzer. The complete native result,
-certificate, identities, counters, and failure cause are retained without
-reimplementing poker, response, objective, or bound semantics.
-
-```powershell
-python examples/unified_certified_global_workflow.py
-```
-
-See
-[docs/unified_certified_global_workflow.md](docs/unified_certified_global_workflow.md)
-for the four-way mapping, canonical identities and pins, final-wrapper caps,
-no partial failure contract, and the R1-R8 cross-module test crosswalk. M40
-accepts no candidate, grid, local box, warm start, sampling, truncation, or
-fallback controls. Its claim is only the selected variant's identified bounded
-scalar objective certified maximum at the specified tolerance; it makes no
-cross-variant, equilibrium, profitability, solver-grade, or strategy advice
-claim.
-
-This implementation does not itself complete R8. A separate independent
-review, human merge, and post-merge verification/final closeout are mandatory.
-
-### Real-card AIoF public workflow
-
-M13's existing submodule APIs also provide a bounded real-card path. The worked
-example uses the exact combos `AsAh` versus `KsKh`, leaves one known five-card
-board live, and marks the other 43 cards dead so exact equity, fee-zero heads-up
-ChipEV, and the rational strategy wrapper each require one board evaluation.
-
-```powershell
-python examples/aiof_real_card_workflow.py
-```
-
-See [docs/aiof_real_card_workflow.md](docs/aiof_real_card_workflow.md) for the
-range/card-removal semantics, caps, identity, no-partial failure contract, and
-interpretation boundaries. The ChipEV correspondence is a fixed-opponent
-response. The fully qualified strategy claim is restricted to
-`aiof-rational-lift-game-v1`; it is not a range chart, an external-game Nash
-certificate, an optimal-Hero or profitability claim, or real-money strategy
-advice. Exact exhaustive and deterministic Monte Carlo requests are explicit,
-non-interchangeable algorithms with no silent fallback.
-
-#### Exact rational-lift versioned file workflow
-
-For saved fixtures and machine-readable automation, the primary M13 exact
-rational-lift path also has a strict run-only JSON adapter:
-
-```powershell
-python scripts/run_aiof_rational_lift_file.py examples/aiof_rational_lift_file_v1.json
-```
-
-See [docs/aiof_rational_lift_file_workflow.md](docs/aiof_rational_lift_file_workflow.md)
-for the `aiof-rational-lift-file-v1` schema, caller-lowerable caps, deterministic
-success projection, nested strategy status, and no-partial failure contract.
-The adapter uses the existing public exact solver and excludes runtime/run
-identity, Monte Carlo, reference-oracle and phase-1 diagnostics, heuristic BR,
-supplied-profile analysis, top-level exports, pipeline/GUI integration, and any
-range-chart, external-game, profitability, or real-money claim.
-
-#### Supplied-profile exact analysis file workflow
-
-Saved class/combo fixtures that need caller-supplied shove and call probabilities
-can use a separate strict two-phase adapter. Start with `inspect` to obtain the
-canonical post-removal compatible support and an identity-bound complete profile
-template:
-
-```powershell
-python scripts/run_aiof_supplied_profile_file.py examples/aiof_supplied_profile_file_v1.json
-```
-
-After copying the returned identity/template into a `run` document and filling
-every probability, the same command returns exact fee-zero ChipEV plus both
-fixed-opponent best-response correspondences. See
-[docs/aiof_supplied_profile_file_workflow.md](docs/aiof_supplied_profile_file_workflow.md)
-for the `aiof-supplied-profile-file-v1` schema, identity and caller-lowerable
-caps, strict no-partial failure contract, and deterministic full projection.
-The workflow never normalizes, clamps, truncates, or silently fills a profile.
-It is supplied-profile commitment analysis, not endogenous solving, a range
-chart, a joint/external-game equilibrium or optimality claim, profitability or
-real-money advice, a real-world dataset, or pipeline/GUI integration.
-
-#### Exact real-card candidate/repeated bridge
-
-The in-memory `repeated_poker.aiof_preflop_candidate_repeated` bridge composes
-the supplied-profile real-card evaluator with bounded one-/two-exact-combo Hero
-probability shifts and automatic repeated-value selection. It supports only
-exact exhaustive, heads-up, fee-zero net ChipEV: SB Hero shifts shove
-probability and BB Hero shifts call probability. The complete declared
-candidate set is retained without filtering, and each candidate keeps the
-native factorized per-combo opponent response rather than a pure-strategy
-Cartesian product.
-
-All candidate, total-board, response-row, and timing-row workloads are checked
-before candidate construction and analysis. Any failure returns the existing
-`AiofStatus` with no payload; there is no sampling, normalization, clamping,
-truncation, or fallback. See
-[docs/aiof_preflop_candidate_repeated_bridge.md](docs/aiof_preflop_candidate_repeated_bridge.md)
-for the API, identities, cap formulas, value semantics, and interpretation
-boundary. This is a conditional comparison over a finite caller-declared
-library, not a range chart, global optimum, equilibrium, adaptation prediction,
-profitability claim, or real-money strategy recommendation.
-
-#### Known-board real-card heads-up river/rake adapter
-
-The in-memory `repeated_poker.known_board_real_card_hu_river` adapter accepts one
-fixed five-card river board, weighted real-card Hero=IP and Villain=OOP ranges,
-complete action profiles, rake, and a bounded one-/two-information-set Hero
-shift lattice. It conditions the ordered exact-combo joint distribution once,
-keeps each compatible combo pair and showdown result explicit, and builds a
-dedicated native seven-line river tree. It then retains the native fixed-profile
-comparison, DP-only exact-response correspondence, and unchanged M27 automatic
-commitment selection result.
-
-All workload caps are projected before joint-row, evaluator, tree, candidate,
-or analysis materialization. Failures use `AiofStatus` with no partial payload;
-there is no factorized-marginal reconstruction, automatic bucket grouping,
-sampling, truncation, or fallback. See
-[docs/known_board_real_card_hu_river_rake_adapter.md](docs/known_board_real_card_hu_river_rake_adapter.md)
-for the v1 API, exact accounting and mapping rules, hard ceilings, identities,
-worked example, and interpretation boundary.
-
-The exact Villain response is computed by lexicographic backward induction
-over Villain information sets by default (`solve_exact_response(...,
-method="dp")`), whose cost is linear in the tree size. The v0 enumerator is
-kept as `method="enumerate"`: it materialises the entire Villain pure-strategy
-space, is guarded by a configurable `max_pure_strategies` limit, and serves as
-the small-tree oracle in the equivalence tests. Both methods compute Villain's
-best response to a fixed Hero strategy; neither is an equilibrium computation.
-
-### Detection time (`T_detect`)
-
-`repeated_poker.detection` provides the default `local_v0` detection-time
-estimate (`calculate_detection_time`, `calculate_candidate_local_detection`). It
-compares two observable event distributions (for example, action frequencies)
-with the total variation distance and the KL divergence in nats, then converts
-the divergence into a required number of observations via a log-likelihood
-threshold.
-
-See [docs/public_observables_and_adaptation.md](docs/public_observables_and_adaptation.md)
-for the shared public-observation contract and the narrow threshold-observer
-adaptation convention.
-
-`T_detect` is a sensitivity analysis based on observable event distributions. It
-is not a psychological model, not a real learning-speed estimate, and not a full
-opponent-adaptation model. It is separate from `T_deadline`: `T_deadline` is an
-economic adaptation deadline, while `T_detect` is a detectability diagnostic.
-Strategy-space L1 distance and observable-distribution distance are different
-concepts and must not be conflated.
-
-`build_candidate_analysis_report` can optionally include per-candidate
-`T_detect`: pass `baseline_hero_strategy` together with
-`detection_log_likelihood_threshold`. The default `local_v0` method can also use
-`detection_occurrence_probability_per_opportunity`. In `local_v0`, that
-probability converts local observations at the changed information set into
-comparable-spot opportunities; it is not a physical dealt-hand frequency. The
-opt-in `reach_weighted_v1` method additionally takes the tree, baseline Villain
-strategy, and an observation model (`actions_only` or `showdown_reveal`), then
-builds per-hand public observation distributions from root-to-terminal path
-probabilities. In v1, one observation is one complete abstract hand /
-opportunity in the model, not necessarily one physical dealt hand in a wider
-population. Each row then carries detection fields and two distinct
-detection-vs-deadline reads:
-
-- `t_detect_is_no_later_than_t_deadline` is a pure time comparison
-  (`estimated_opportunities <= t_deadline`). It does **not** mean Hero is
-  economically safe: `t_deadline` is only the latest passing opportunity, and
-  Hero EV need not be monotone in the switching opportunity.
-- `detected_adaptation_is_at_least_baseline` is the economic read. It maps the
-  estimated detection opportunity onto the adaptation-deadline timing rows
-  (clamped to the `m = N+1` never-adapts row beyond the horizon) and reports
-  whether Hero is at least at baseline EV if Villain adapts exactly then.
-
-The default local model is conditional on reaching the candidate's information
-set and does not include tree reach probability. The opt-in v1 model includes
-within-spot reach in its per-hand observation distribution. Neither model is a
-real opponent-learning model, and neither should be read as a behavioural
-prediction outside the documented threshold-observer convention.
-
-Reports can also include an optional diagnostic physical-hand conversion by
-passing `detection_comparable_spot_occurrence_probability_per_physical_hand` to
-the report or pipeline API. The corresponding report configuration key is
-`comparable_spot_occurrence_probability_per_physical_hand`, and candidate rows
-add `t_detect_estimated_physical_hands`. This is a cross-spot population
-frequency for how often the comparable abstract spot occurs per physical dealt
-hand, not a single-tree reach probability. It is computed only after
-`t_detect_estimated_opportunities` exists and never changes detection math,
-filtering, ranking, `T_deadline`, or selection. It is not a scenario JSON field,
-not a real-world prediction, not opponent learning, and not a profitability
-guarantee.
-The river, batch, and STT runners expose the same run option as
-`--detection-comparable-spot-occurrence-probability-per-physical-hand`; it is
-recorded in the run manifest with the report configuration key above.
-
-### Markdown summary
-
-`format_candidate_analysis_markdown` can render a human-readable Markdown
-summary from a `CandidateAnalysisReport`. It is presentation-only: it does not
-change analysis results, and it does not write files (it returns a string).
-
-### Candidate pre-filter
-
-`filter_candidates` is a lightweight pre-comparison pruning helper for generated
-candidates (by allowed information set, strategy-space L1 distance, or a
-detection minimum). It does not replace `compare_candidates` or
-`select_candidates`. The detection-based filter uses the default `local_v0`
-observable-distribution model unless the caller selects `reach_weighted_v1`;
-under v1 the existing minimum is interpreted as a minimum finite
-`t_detect_hands`. A candidate whose v1 `t_detect_hands` is `null` / `None` is
-not removed by this filter. This is a diagnostic pruning option before the
-comparison stage, not an opponent-learning or behavioural-prediction model.
-
-### Analysis pipeline
-
-`run_candidate_analysis_pipeline` wires candidate generation, optional
-pre-filtering, fixed-profile comparison, analysis reporting, and optional
-Markdown rendering into a single call for a small abstract game. It is an
-orchestration helper, not a new solver; it does not write files and adds no
-CLI.
-
-### Automatic conditional commitment selection
-
-The pipeline can also return an opt-in bounded automatic-selection report. It
-searches every kept comparison for each opponent adaptation opportunity
-`m = 1, ..., N + 1`, reusing the exact Hero-worst response calculation and
-choosing the largest repeated total Hero-EV delta. The previous pipeline
-behavior is unchanged unless `automatic_selection` is supplied:
-
-```python
-from repeated_poker.automatic_commitment_selection import (
-    AutomaticCommitmentSelectionConfig,
+result = run_river_scenario_analysis(
+    "examples/scenarios/nuts_chop_steal_bet98.json"
 )
+counts = result.pipeline_result.filter_result.summary_counts
 
-result = run_candidate_analysis_pipeline(
-    tree,
-    baseline_hero_strategy,
-    baseline_villain_strategy,
-    horizon=100,
-    automatic_selection=AutomaticCommitmentSelectionConfig(
-        minimum_total_uplift=0.25,
-    ),
-)
-selection = result.automatic_selection_report
-```
+print(result.scenario_id)
+print(counts.total, counts.kept, counts.excluded)
+~~~
 
-A row selects a commitment only when its best delta is strictly greater than
-`minimum_total_uplift + tolerance`; otherwise it reports
-`NO_BENEFICIAL_COMMITMENT`. Primary ties and deterministic secondary tie-break
-evidence are retained. This is only a conditional optimum over the declared
-finite kept candidate library. It is not a global optimum, equilibrium claim,
-adaptation prediction, or strategy/profitability advice. See
-[`docs/automatic_commitment_selection.md`](docs/automatic_commitment_selection.md)
-for the full contract, validation bounds, coverage metadata, and direct API.
+Expected output for the bundled file:
 
-### JSON scenario input
+~~~text
+nuts_chop_steal_bet98
+1 1 0
+~~~
 
-An abstract river spot can be described in a JSON file and turned into a
-`GameTree` plus pipeline inputs with `load_river_scenario_json` and
-`build_river_steal_game_from_scenario` (see
-`examples/scenarios/nuts_chop_steal_bet98.json` and
-`python scripts/run_river_scenario.py <scenario.json>`).
+The package-root API focuses on the original abstract two-player workflow.
+Specialized real-card, three-player, file-adapter, and certified-global APIs live
+in their documented repeated_poker submodules. Public API stability is not yet
+guaranteed; versioned file formats and explicit status objects are the stronger
+compatibility boundaries.
 
-The scenario JSON format is currently version `"1"`. New files should declare it
-with a top-level `"format_version": "1"`; the field is optional for backward
-compatibility, so a file without it is treated as `"1"`. Unknown versions (and a
-numeric `1`, `null`, a bool, or an empty string) are rejected. The format is
-still experimental and may get a v2, so the version is recorded in the build
-metadata and in the analysis / validation / batch outputs.
+## CLI and local GUI
 
-The input has three mutually exclusive modes:
+The project does not install a console-script entry point. Run the scripts from a
+checkout and use --help for the exact options. The main abstract runner is:
 
-- **single-hand mode**: a top-level `showdown` and `baseline_hero_strategy`.
-- **abstract Hero range mode**: a `hero_range` of weighted hands, each with its
-  own `showdown` and `baseline_strategy` (see
-  `examples/scenarios/abstract_range_steal_bet98.json`).
-- **abstract Hero/Villain range matrix mode**: a `hero_range` (without per-hand
-  `showdown`), a `villain_range`, and exactly one matchup matrix keyed by
-  `[hero_id][villain_id]` -- either a `showdown_matrix` of discrete
-  `chop`/`hero`/`villain` results (see
-  `examples/scenarios/range_matrix_steal_bet98.json`) or an `equity_matrix` of
-  Hero pot shares before rake in `[0, 1]` (see
-  `examples/scenarios/range_equity_steal_bet98.json`).
+~~~powershell
+python scripts/run_river_scenario_analysis.py --help
+python scripts/run_river_scenario_analysis.py examples/scenarios/nuts_chop_steal_bet98.json --output-json reports/result.json --output-markdown reports/result.md --output-csv reports/result.csv --strict-json
+~~~
 
-By default the baseline Villain is derived automatically as the exact best
-response to the baseline Hero strategy. Any mode may instead pin it explicitly
-with an optional top-level `baseline_villain_strategy`
-(`{ villain_info_set: { action: probability } }`). An explicit baseline Villain
-is a **chosen comparison profile, not an equilibrium claim**: it need not be a
-best response to baseline Hero, and it asserts no optimality or profitability --
-it only fixes the reference profile the baseline value and the candidate
-comparison are measured against. The build records the origin as
-`baseline_villain_source` (`explicit` or `auto_best_response`), and the scenario
-SHA-256 in the run manifest captures the exact input. The GUI/form editors do
-not carry this field and reject scenarios that use it, so edit it directly in the
-JSON. See `docs/scenario_format_reference.md` section 3a for the full field spec.
+Create a minimal versioned scenario template with:
 
-To run a scenario all the way through the candidate-analysis pipeline and print
-the Markdown summary, use `run_river_scenario_analysis` or
-`python scripts/run_river_scenario_analysis.py <scenario.json>`. That script can
-also save the result to files with `--output-json`, `--output-markdown`, and
-`--output-csv` (each creates missing parent directories and overwrites an
-existing file); without them it prints to stdout only. By default the JSON may
-contain `Infinity` for a non-finite value; pass `--strict-json` for
-RFC 8259-compatible JSON that maps non-finite floats to `null` (recommended when
-the output is read by JavaScript `JSON.parse`).
+~~~powershell
+python scripts/create_scenario_template.py --help
+~~~
 
-To compare several scenarios at once, use `run_batch_scenario_analysis` or
-`python scripts/run_scenario_batch.py <dir-or-files>`, which runs the same
-single-scenario analysis on each input (a directory's `*.json` in filename order,
-or the given files in order) and prints one comparison row per scenario. It also
-takes `--output-json`, `--output-csv`, `--output-markdown`, and `--strict-json`,
-plus `--continue-on-error` to record failing scenarios instead of stopping. The
-batch CSV and Markdown are meant for comparing scenarios side by side: the
-Markdown report has an overview (total / ok / error counts), a comparison table
-(model kind, horizon, candidate counts, and the top-ranked candidate columns),
-and a short notes section, while the CSV stays machine-friendly. The
-`top_candidate_*` columns are only populated when ranking is enabled (for example
-`--rank-by t_deadline`), and `--strict-json` affects only the JSON export. The
-batch runner is an analysis/reporting helper over the existing pipeline, not a
-new solver model.
+Inputs are versioned JSON files. Results are written to stdout unless an output
+path is requested. Argparse usage errors and controlled input failures return a
+nonzero exit status; successful runs return 0.
 
-Every analysis run carries a **run manifest** for reproducibility: the SHA-256
-of the scenario file (`null` when the run started from an in-memory scenario),
-the scenario `format_version`, the package version, the git commit of the
-package source (best effort; `null` when git or a checkout is unavailable), a
-UTC timestamp, and the effective parameters (horizon, discount, response mode,
-tolerances, and so on). The manifest appears as a `manifest` object in the JSON
-exports (per scenario, plus a batch-level manifest with the requested overrides
-in batch JSON), as a single `# run_manifest: {...}` comment line before the
-header row in the CSV exports (skip `#` lines when parsing, for example pandas
-`comment="#"`), and as a `### Run manifest` section in the Markdown exports.
-It is descriptive metadata only and changes no analysis result; see
-`docs/scenario_format_reference.md` for the field list.
+### Extended workflow command index
 
-To check that a scenario JSON is well formed *before* running any analysis, use
-`validate_river_scenario_inputs` or
-`python scripts/validate_river_scenario.py <dir-or-files>`. It loads, parses, and
-builds the game for each input (a directory's `*.json` in filename order, or the
-given files in order) and prints one row per scenario with its `scenario_id`,
-derived `model_kind`, information-set / terminal counts, and an `ok`/error flag.
-Unlike the analysis and batch runners it stops at the parser/build level: it does
-*not* generate candidates, run the exact-response solver, or run the analysis
-pipeline. A bad file reports a short `error: ...` line instead of a Python
-traceback; pass `--continue-on-error` to record failing files and keep going,
-and `--output-json` (optionally with `--strict-json`) to save the rows as JSON.
+These are bounded adapters, not additional solver claims. Read the linked
+contract before interpreting an output:
 
-### STT push/fold ICM scenario input
+| Workflow | Command | Boundary |
+|---|---|---|
+| [Real-card AIoF](docs/aiof_real_card_workflow.md) | `python examples/aiof_real_card_workflow.py` | `aiof-rational-lift-game-v1`; fixed-opponent response; not a range chart. |
+| [AIoF rational-lift file](docs/aiof_rational_lift_file_workflow.md) | `python scripts/run_aiof_rational_lift_file.py examples/aiof_rational_lift_file_v1.json` | Two-phase, no-partial exact rational-lift runtime adapter; not an external-game solver or real-money tool. |
+| [AIoF supplied-profile file](docs/aiof_supplied_profile_file_workflow.md) | `python scripts/run_aiof_supplied_profile_file.py examples/aiof_supplied_profile_file_v1.json` | Two-phase and no-partial; fixed-opponent input is not endogenous and is not real-money advice. |
+| [Prepared two-street file](docs/prepared_two_street_file_workflow.md) | `python scripts/run_prepared_two_street_file.py inspect examples/prepared_two_street_file_v2.json` | Strict `prepared-two-street-file-v2` inspection of caller-supplied finite data. |
+| [Stage-plan file](docs/stage_plan_diagnostic_file_workflow.md) | `python scripts/run_stage_plan_diagnostic_file.py examples/stage_plan_diagnostic_file_v1.json` | Two-phase, human-authored, canonical exact rational, and no-partial diagnostic; not real-money advice. |
+| [Stage-plan worked example](docs/stage_plan_diagnostic_workflow.md) | `python examples/stage_plan_diagnostic_workflow.py` | A reported `FAIL` is successful diagnostic execution, not a process failure. |
+| [Three-player CFR file](docs/three_player_cfr_file_workflow.md) | `python scripts/run_three_player_cfr_file.py examples/three_player_cfr_file_v1.json` | Two-phase, human-authored, no-partial diagnostic; not real-money advice. |
+| [Three-player CFR example](docs/three_player_cfr_diagnostic_workflow.md) | `python examples/three_player_cfr_diagnostic_workflow.py` | Fixed Hero and separate O1/O2 finite-iteration diagnostic with an allocation-before-materialization cap; not a convergence claim. |
+| [Three-player exact candidate workflow](docs/three_player_candidate_repeated_workflow.md) | `python examples/three_player_candidate_repeated_workflow.py` | Bounded finite exact-response/candidate workflow, not the guarded CFR-style diagnostic. |
+| [Known-board HU certified global](docs/known_board_real_card_hu_certified_global.md) | `python examples/known_board_real_card_hu_certified_global.py` | M38 certificate for its identified bounded scalar objective only. |
 
-The STT path uses a separate JSON format, `stt_pushfold-1`, for preflop
-SB-vs-BB push/fold spots in a single-table tournament. It is intentionally
-separate from the river format because the payoff backend is ICM prize EV delta,
-not chip EV or river pot share.
-
-To run the bundled 2x2 abstract bucket example:
-
-```bash
-python scripts/run_stt_pushfold_analysis.py examples/stt_pushfold_2x2.json
-```
-
-The STT runner shares the same candidate-analysis pipeline and supports
-`--output-json`, `--output-markdown`, `--output-csv`, and `--strict-json`.
-Analysis values are modelled tournament prize EV deltas from
-Malmuth-Harville ICM. They are not real tournament predictions, not real-money
-advice, and not push/fold charts. The repeated layer assumes the same abstract
-spot is repeated for sensitivity analysis; it is not a tournament simulation,
-Future-ICM, or FGS model.
-
-The STT terminal triple still uses the core field name `house_rake` for API
-compatibility, but in STT reports that third slot is a bystander prize EV delta
-and may be negative. See `docs/stt_pushfold_format_reference.md` for the full
-field specification and validation rules.
-
-To start from a working file instead of an empty one, generate a starter
-scenario with `create_scenario_template` or
-`python scripts/create_scenario_template.py --kind <kind>` (use `--list-kinds`
-to see the kinds). It prints the JSON to stdout, or saves it with `--output`
-(`--force` to overwrite). Every template includes `"format_version": "1"` and is
-validated at the parser/build level by default. The generated templates are
-abstract toy examples, not strategic recommendations: edit them, then re-check
-with `python scripts/validate_river_scenario.py <file>`. Example:
-
-```bash
-python scripts/create_scenario_template.py --list-kinds
-python scripts/create_scenario_template.py --kind range-matrix-equity-betting-tree --output reports/template.json
-python scripts/validate_river_scenario.py reports/template.json
-```
-
-To fill in the common fields without editing JSON by hand, use the interactive
-wizard `python scripts/wizard_create_scenario.py`. It starts from a template and
-asks for the scenario id, description, rake, initial commitment, bet size,
-repeated horizons / discount, and output path; anything passed as a flag
-(`--kind`, `--output`, ...) is not asked. It validates before writing and refuses
-to overwrite without `--force`. Range buckets and matrices keep the template's
-toy values, so edit those in the JSON afterwards. This is the precursor to a
-future GUI/form input layer.
-
-To run the whole path in one go, use the guided workflow
-`python scripts/wizard_run_scenario.py`. It either creates a scenario from a
-template (`--kind`, saved to `--scenario-output`) or analyses an existing one
-(`--scenario PATH`), validating it, running the analysis, printing a short
-summary, and optionally saving the result with `--output-json` /
-`--output-markdown` (`--strict-json` for RFC 8259 JSON). It sequences the
-existing wizard / validation / analysis / export pieces, adding no new model.
-
-```bash
-python scripts/wizard_run_scenario.py --scenario examples/scenarios/nuts_chop_steal_bet98.json
-python scripts/wizard_run_scenario.py --kind single-hand --scenario-output reports/my.json --non-interactive
-```
-
-Scope of the abstract range modes in v1:
-
-- Matchup outcomes are given directly as abstract inputs: a discrete
-  `showdown_matrix`, or an `equity_matrix` of Hero pot shares (for example
-  precomputed by an external tool). There is no real card or hand evaluation, so
-  it does not parse real cards, hand ranges, or solver exports.
-- By default the JSON action tree is limited to OOP `check`/`bet` and IP
-  `call`/`fold`, and an OOP `check` resolves immediately to a check-check
-  showdown.
-
-Matrix-mode scenarios may also add an optional **river betting tree v1** via a
-`betting_tree` object (`oop_bet_size`, `ip_bet_after_check_size`,
-`ip_raise_size`; see `examples/scenarios/range_equity_betting_tree_bet98.json`).
-This adds an IP stab after an OOP check (with an OOP call/fold response) and one
-IP raise versus an OOP bet (with an OOP call/fold response). In betting-tree mode
-each Hero bucket supplies `baseline_strategies` for both decision points instead
-of the simple `baseline_strategy`. It is still one river street only: no
-re-raise, no multiple sizes per node, no nested betting trees, and no street
-transitions, even though the core `GameTree` itself allows arbitrary action
-labels.
-
-### MVP walkthrough
-
-See [docs/mvp_walkthrough.md](docs/mvp_walkthrough.md) for an end-to-end
-explanation of the current minimum viable workflow and how to read the pipeline
-output.
-
-The original nuts-chop steal example is covered by a regression test and
-summarized in the MVP walkthrough.
-
-### Assumptions and limitations
-
-See [docs/assumptions_and_limitations.md](docs/assumptions_and_limitations.md)
-for the modelling assumptions, interpretation limits, and responsible-publication
-notes.
-
-### Examples guide
-
-See [docs/examples_guide.md](docs/examples_guide.md) for a guide to the example
-scripts and the recommended order for running them.
-
-### Scenario format reference
-
-See [docs/scenario_format_reference.md](docs/scenario_format_reference.md) for
-the full JSON scenario format: every top-level field, each input mode and its
-required fields, the information-set naming, payoff conventions, and validation
-troubleshooting.
-
-See [docs/stt_pushfold_format_reference.md](docs/stt_pushfold_format_reference.md)
-for the separate STT SB-vs-BB push/fold JSON format and its ICM prize-EV
-accounting conventions.
-
-See [docs/baseline_solution_import_format.md](docs/baseline_solution_import_format.md)
-for the shared v1 contract that treats existing river and STT baseline strategy
-fields as scenario-native profile imports, not raw solver-export imports.
-
-### GUI/form input design
-
-See [docs/gui_input_design.md](docs/gui_input_design.md) for the design of the
-GUI/form input layer over the existing CLI workflow (screens, MVP scope,
-validation and results UX, implementation phases, and the per-mode details of
-the current prototypes). Local-only prototype GUIs exist for all five scenario
-modes (see the table below). The GUI-independent
-building blocks live in `repeated_poker.scenario_form`: `SingleHandScenarioForm`,
-`HeroRangeScenarioForm`, `ShowdownMatrixScenarioForm`, `EquityMatrixScenarioForm`,
-and `BettingTreeScenarioForm` (each with `*_form_from_dict` / `*_form_to_dict` /
-`validate_*_form`), form <-> JSON bridges with field-level validation messages
-covering all five scenario modes (single-hand, Hero-range-only, discrete
-showdown-matrix, equity-matrix, and river betting-tree).
-
-The local GUI prototypes (standard library only, bound to `127.0.0.1`) are:
+Five standard-library browser prototypes edit, validate, save, and analyze the
+abstract river modes:
 
 | Scenario mode | Command | Port | Editor | Analyze |
-|---|---|---|---|---|
-| single-hand | `python scripts/serve_single_hand_gui.py` | 8000 | yes | yes |
-| Hero-range-only | `python scripts/serve_hero_range_gui.py` | 8001 | yes | yes |
-| showdown-matrix | `python scripts/serve_showdown_matrix_gui.py` | 8002 | yes | yes |
-| equity-matrix | `python scripts/serve_equity_matrix_gui.py` | 8003 | yes | yes |
-| river betting-tree | `python scripts/serve_betting_tree_gui.py` | 8004 | yes | yes |
+|---|---|---:|---|---|
+| Single hand | `python scripts/serve_single_hand_gui.py` | 8000 | Yes | Yes |
+| Hero range | `python scripts/serve_hero_range_gui.py` | 8001 | Yes | Yes |
+| Showdown matrix | `python scripts/serve_showdown_matrix_gui.py` | 8002 | Yes | Yes |
+| Equity matrix | `python scripts/serve_equity_matrix_gui.py` | 8003 | Yes | Yes |
+| River betting tree | `python scripts/serve_betting_tree_gui.py` | 8004 | Yes | Yes |
 
-All five prototypes share the same shape and limits. Each uses `--port`
-(defaulting to the value above) and `--host` (default `127.0.0.1`), is built on
-the standard library only (no framework), and makes no external calls. Each
-loads a scenario JSON of its mode into an editable form, validates it, saves
-only after the form validates and a parser/build round-trip succeeds (with an
-overwrite checkbox and a strict-JSON option), and runs the analysis from the
-current form values via a local `/api/analyze` endpoint (horizon and discount
-overrides plus a Markdown toggle; the result shows the candidate counts, the
-resolved horizon/discount, and the Markdown summary). Everything stays
-local-only and abstract: graphing, real-card equity, external solver imports,
-result persistence, public serving, and any new solver or model are out of
-scope. The GUI surface is currently frozen (bug fixes only) while the research
-core is prioritised; per-mode editor details live in the design document
-linked above.
+Keep the default 127.0.0.1 bind and use the GUI only on a trusted machine. The
+shared handler checks Host, JSON content type, browser origin/fetch metadata,
+and rejects CORS preflight before POST dispatch. This is a browser
+request-provenance boundary, not authentication or a filesystem sandbox: an
+accepted local client can still supply a local path and explicitly request an
+overwrite.
 
-To exercise the form models from the command line (a lower-level alternative to
-the GUIs), run
-`python scripts/inspect_scenario_form.py <scenario.json>`. It detects the mode,
-runs that mode's form `from_dict` / `validate` / `to_dict`, and re-parses and
-rebuilds the result, printing a short report (mode, form class, validation, and
-round-trip status). It is an inspect-only developer utility: it never edits the
-scenario and adds no analysis.
+## Use cases
 
-To write the round-tripped scenario back out (a stand-in for a future GUI
-"save"), run `python scripts/roundtrip_scenario_form.py <scenario.json>
-[--output PATH|-] [--force] [--strict-json]`. It loads the form, and only when
-the form validates cleanly and the `to_dict` output re-parses and rebuilds, emits
-that JSON -- to `--output PATH` (refusing to overwrite without `--force`) or, by
-default or with `--output -`, to stdout as JSON only. `--strict-json` reuses the
-same RFC 8259 serialiser as the analysis exporters.
+- Hand-check the exact response to a completely fixed Hero policy in a tiny
+  extensive-form game.
+- Compare a declared finite set of commitment candidates before and after the
+  opponent response.
+- Explore how an assumed adaptation opportunity or idealized detection channel
+  changes a repeated-value comparison.
+- Validate a bounded real-card or three-player fixture with explicit card,
+  response, identity, and workload contracts.
+- Exercise a supported certified-global scalar objective and inspect the
+  certificate or controlled no-certificate evidence.
+- Use small reproducible examples when teaching or testing game-theoretic
+  software.
 
-To edit fields and save (the smallest "form edit -> save" flow, single-hand mode
-only), run `python scripts/edit_scenario_form.py <scenario.json> --set
-FIELD=VALUE [...] [--output PATH|-] [--force] [--strict-json]`. Each `--set`
-updates one flat `SingleHandScenarioForm` field (for example `bet_size=50`,
-`horizons=10,20`, `shift_amounts=0.25,0.5,1.0`, `rake_cap=none`), with dotted
-aliases such as `rake.rate` and `baseline.call`; the result is only written when
-the edited form validates and round-trips. Non-single-hand scenarios, unknown
-fields, and bad values are rejected with a clean `error:` message. The three form
-CLIs compose: `edit` -> stdout -> `inspect` / `roundtrip`.
+None of these use cases turns the output into real-world poker advice.
 
-### Public readiness
+## Validation and testing
 
-See [docs/public_readiness_checklist.md](docs/public_readiness_checklist.md)
-before changing repository visibility from private to public.
+At main commit 0accab0, this publication review ran:
 
-### License and publication policy
+| Validation | Result | Scope |
+|---|---|---|
+| pytest suite | 3,491 passed | Unit, property-style, schema, CLI, docs, security-boundary, numerical, cap, and integration tests |
+| MVP validation | 9 of 9 checks passed | Full suite plus eight representative examples |
+| CI configuration | Python 3.10 and 3.13 on Ubuntu | The v0.2.0 release records successful runs for both versions |
+| Hand-calculated fixtures | Present | Tiny nuts/chop, ICM, AIoF, stage-plan, three-player, and optimizer examples |
+| Public-content scan | Automated test plus review | Checks public files for private paths and sensitive strings |
+| External solver comparison | Not performed | No independent production-solver certification |
+| macOS execution | Not verified | No macOS CI job |
 
-This project is released under the MIT License. See [LICENSE](LICENSE) and
-[docs/publication_policy.md](docs/publication_policy.md) for the publication
-posture and wording guidelines.
+Test volume is evidence of exercised contracts, not proof of correctness for
+arbitrary games. Some exact-rational and strict file workflows test byte
+determinism. General run manifests include a UTC timestamp and best-effort Git
+commit, so they provide provenance rather than guaranteeing that every complete
+output file is byte-identical across runs.
 
-### MVP check script
+## Limitations
 
-Run `python scripts/check_mvp.py` before opening a PR or sharing the MVP. It runs
-the test suite and the key examples. The script uses only the Python standard
-library and has no network or file-output side effects; the commands it runs may
-read the local git commit while building run manifests (never writing
-version-control state).
+- **Scale and complexity:** complete trees, response ties, exact rational
+  arithmetic, card combinations, and branch-and-bound cells can grow
+  combinatorially. The APIs use explicit caps and may return no result or no
+  certificate.
+- **Exactness boundary:** "exact" means exact within the supplied finite model
+  and the documented numeric contract. It does not make the model a complete
+  representation of poker.
+- **Optimization boundary:** a certified-global success covers one identified
+  bounded scalar objective and conforming bound oracle, not a Nash equilibrium
+  or universal Hero optimum.
+- **Model dependence:** results depend on the action tree, ranges, weights,
+  rake, ICM payouts, fixed profiles, and timing assumptions supplied by the
+  caller.
+- **Detection:** T_detect is an idealized public-signal sensitivity diagnostic,
+  not an opponent-learning or psychological forecast.
+- **ICM:** the STT path uses Malmuth-Harville ICM prize-EV deltas and omits blind
+  evolution, Future ICM, FGS, future hands, skill, and tournament dynamics.
+- **Three players:** the exact workflow models separate non-cooperative O1 and
+  O2 responses in the documented bounded tree. The CFR-style path is a finite
+  diagnostic snapshot and does not establish convergence.
+- **Real cards:** supported adapters cover explicit combos or known-board
+  bounded models. There is no general range shorthand parser, raw solver import,
+  arbitrary runout engine, or general multi-street solver.
+- **Security and privacy:** no remote service is used, but CLIs and local GUIs
+  can read or write user-selected local paths. There is no authentication,
+  sandbox, or formal security-response policy.
+- **API stability:** this is alpha software; Python APIs and experimental
+  schemas may change between releases.
+- **UI/UX:** the local GUIs are feature-frozen prototypes without graphing,
+  authentication, deployment support, or a public-service threat model.
+  The surface is frozen (bug fixes only).
 
-### Ranking report rows
+See [Assumptions and Limitations](docs/assumptions_and_limitations.md) before
+interpreting any result.
 
-`rank_candidate_rows` can sort analysis report rows by diagnostic criteria (for
-example, post-response worst-case Hero EV difference, baseline-Villain EV, L1
-distance, `T_deadline`, or local `T_detect`). It is not automatic strategy
-selection and does not claim optimality.
+## Project structure
+
+| Path | Purpose |
+|---|---|
+| src/repeated_poker | Library code and specialized workflow submodules |
+| tests | Automated test suite |
+| examples | Executable Python and JSON fixtures |
+| scripts | CLI adapters, validation/export tools, MVP checker, and local GUIs |
+| docs | Mathematical contracts, formats, workflows, and limitations |
+| .github/workflows/ci.yml | Ubuntu CI for Python 3.10 and 3.13 |
+| 02_research_and_implementation_plan.md | Original research model and design plan; not a current status tracker |
+
+## Documentation
+
+Start with:
+
+- [MVP Walkthrough](docs/mvp_walkthrough.md) - original abstract two-player
+  pipeline and output interpretation.
+- [Examples Guide](docs/examples_guide.md) - recommended example order and
+  commands.
+- [Assumptions and Limitations](docs/assumptions_and_limitations.md) - model
+  boundaries and non-claims.
+- [Scenario Format Reference](docs/scenario_format_reference.md) - abstract
+  river JSON schema.
+- [STT Push/Fold Format Reference](docs/stt_pushfold_format_reference.md) -
+  separate ICM scenario schema.
+- [Baseline Solution Import Format](docs/baseline_solution_import_format.md) -
+  scenario-native profile boundary, not raw solver import.
+- [GUI/Form Input Design and Status](docs/gui_input_design.md) - implemented
+  local editors, request boundary, and remaining UI limits.
+- [Public Release Readiness Checklist](docs/public_readiness_checklist.md) -
+  publication checks for releases and metadata changes.
+- [Publication Policy](docs/publication_policy.md) - public positioning and
+  disclosure boundaries.
+
+Specialized workflows:
+
+- [Prepared Two-Street File Workflow](docs/prepared_two_street_file_workflow.md)
+- [Stage-Plan Diagnostic](docs/stage_plan_diagnostic_workflow.md)
+- [Three-Player CFR-Style Diagnostic](docs/three_player_cfr_diagnostic_workflow.md)
+- [Exact Three-Player Candidate/Repeated Workflow](docs/three_player_candidate_repeated_workflow.md)
+- [Real-Card AIoF Workflow](docs/aiof_real_card_workflow.md)
+- [Known-Board HU River/Rake Adapter](docs/known_board_real_card_hu_river_rake_adapter.md)
+- [Known-Board Three-Player River/Rake Adapter](docs/known_board_real_card_three_player_river_rake_adapter.md)
+- [Certified Global Optimizer Core](docs/certified_global_optimizer_core.md)
+- [AIoF Preflop Certified Global](docs/aiof_preflop_certified_global.md)
+- [Known-Board HU Certified Global](docs/known_board_real_card_hu_certified_global.md)
+- [Three-Player Certified Global](docs/three_player_certified_global.md)
+- [Unified Certified-Global Workflow](docs/unified_certified_global_workflow.md)
+
+## Roadmap and status separation
+
+Completed in the current release line:
+
+- [x] Small-tree exact fixed-Hero response and finite candidate pipeline
+- [x] JSON validation, reports, manifests, CLI adapters, and five local GUI modes
+- [x] Abstract STT ICM, prepared-tree, real-card, and bounded three-player paths
+- [x] M36-M40 certified-global core, consumer adapters, and unified workflow
+- [x] v0.2.0 release validation on Python 3.10 and 3.13
+- [x] v0.2.1 public documentation and repository metadata refresh
+
+Experimental or only partially validated:
+
+- [ ] Independent comparison with an external solver or published benchmark
+- [ ] Stable public-API and deprecation policy
+- [ ] macOS CI and documented platform verification
+- [ ] Formal security-response and contribution processes
+
+Not implemented and not promised by a dated roadmap:
+
+- Full GTO or repeated-game equilibrium solving
+- Large-scale commercial-solver range import or replacement
+- Future ICM, FGS, real opponent learning, or public hosted deployment
+
+The older [Research and Implementation Plan](02_research_and_implementation_plan.md)
+contains target architecture and historical development phases. Current status is
+defined by code, tests, this README, and the workflow documents above.
+
+## Contributing
+
+The repository does not yet have a formal external-contribution policy. Use
+[GitHub Issues](https://github.com/guriguri215-lang/repeated-poker-analysis/issues)
+for a reproducible bug report or documentation problem before proposing a large
+change. Run python scripts/check_mvp.py before submitting code changes.
+
+## License
+
+Released under the [MIT License](LICENSE). The software is provided as-is,
+without warranty.

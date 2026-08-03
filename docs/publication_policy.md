@@ -2,8 +2,7 @@
 
 ## Purpose
 
-- This repository may be made public as an
-  experimental research / learning project.
+- This repository is public as an experimental research / learning project.
 - The goal is to share the modelling approach, code, examples, and limitations.
 - It is not a commercial solver, paid product, or real-money strategy engine.
 
@@ -44,7 +43,7 @@ Avoid phrasing:
 - Link to `docs/assumptions_and_limitations.md` when writing public
   explanations.
 
-## Before changing repository visibility
+## Before each public release or metadata update
 
 - Run `python scripts/check_mvp.py`.
 - Run `python -m pytest -q`.
